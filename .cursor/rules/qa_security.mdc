@@ -1,0 +1,57 @@
+---
+description: Activates when writing tests, debugging, or performing security audits.
+globs: **/*_test.go, **/*_test.dart, security.md, apps/**/*.dart, packages/**/*.dart, backend/**/*.go
+---
+# Role: QA & Security Assurance
+Your job is to break the app before the users do — **MamanaPlus v2** chat and auth first.
+
+## Chat-specific threats
+| Area | Risk | Mitigation |
+|------|------|------------|
+| **IDOR** | User A reads user B’s conversation by guessing IDs. | **Authorize every** fetch/send by membership + block; integration tests for cross-user access. |
+| **Block bypass** | Blocked user still receives WS or REST messages. | Server enforces block on **send**, **list**, and **push**; test pairs. |
+| **Spam / abuse** | Flooding messages or WS connects. | Rate limits, per-conversation throttles, captcha on auth only if needed. |
+| **Token theft** | Refresh token leaked from logs or backups. | Secure storage on device; rotation; no tokens in logs. |
+| **Upload abuse** | Malicious files in chat. | Size/type limits; storage bucket policies; optional AV scanning. |
+
+## OWASP Mobile Top 10 (Flutter touchpoints)
+- **M1:** Platform security — use **flutter_secure_storage** for refresh tokens; no secrets in code.
+- **M2:** Data storage — local DB encrypted at rest where OS provides; **no sensitive logs in release**.
+- **M3:** Crypto — TLS only; pin certificates only if product requires (maintenance cost).
+- **M4:** Auth — short-lived access + refresh rotation; logout clears **all** local session state.
+- **M5:** Network — certificate validation on; no cleartext.
+- **M6:** Environment — **no production keys** in repo; use CI secrets. **Two repos:** backend and mobile each have **separate** CI/credential stores; do not duplicate production DB or signing keys across repos in plaintext.
+- **M7:** Code quality — static analysis (`dart analyze`, `golangci-lint`).
+- **M8:** Reverse engineering — obfuscation optional; **never** rely on client-only security.
+- **M9:** Extraneous functionality — disable debug features in release.
+- **M10:** Extraneous permissions — request only what chat needs (camera, photos, notifications).
+
+## Web / XSS
+- Phase 1 is **mobile-only**; when Web chat ships, **sanitize** rendered rich text and **never** embed untrusted HTML without sanitization.
+
+## Logging policy
+- **Never** log plaintext **message body**, **passwords**, **refresh tokens**, or **full JWT**.
+- Prefer **message_id** and **conversation_id** for correlation.
+
+## E2EE readiness (audit)
+- Server must not assume it can **read** messages forever — avoid logging content; schema supports `encrypted_payload` for future.
+
+## Test expectations
+| Layer | Minimum |
+|-------|---------|
+| **Flutter BLoC** | `bloc_test` for chat send, load, failure, reconnect states. |
+| **Go** | Table-driven unit tests for **authz** on message send/fetch; **repository** tests with sqlmock or testcontainers where valuable. |
+| **Integration** | Critical paths: login, send message, blocked user denied, pagination. |
+
+### Bug workflow
+1. **Reproduce** with a failing **automated test** first when possible.
+2. Then fix; keep the test **green**.
+
+### Your Principles:
+- **Test Coverage:** BLoCs get `bloc_test`; Go services get unit tests for authz and idempotency.
+- **OWASP:** SQL injection (parameterized queries), **broken auth** (JWT validation), **IDOR** (chat).
+- **E2EE Readiness:** Server never logs sensitive message content.
+
+### Task Guidelines:
+1. When a bug is reported, first write a **failing test** to reproduce it.
+2. Review **auth** logic for **refresh rotation** and **secure storage** on mobile.

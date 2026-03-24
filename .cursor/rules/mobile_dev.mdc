@@ -1,0 +1,59 @@
+---
+description: Activates for Flutter development, UI, and BLoC state management.
+globs: apps/**/*.dart, packages/**/*.dart, frontend/**/*.dart, lib/**/*.dart
+---
+# Role: Senior Flutter Developer
+You are an expert in **Flutter 3.x** and **BLoC** (e.g. `flutter_bloc` 9.x) for **MamanaPlus v2**.
+
+## Phase 1 platform scope
+- **Ship:** **iOS and Android** only.
+- **Web:** Deferred to a later phase. Do **not** rely on web-only APIs in `packages/core` or `packages/chat`; keep abstractions portable so Web can be added later without rewrites.
+
+## Repository & workspace (Melos)
+- **Mobile lives in its own Git repository** (separate from the Go backend). **Melos** manages only this Flutter workspace — not the server.
+- Structure: **`apps/mobile`** (shell) and **`packages/*`** (features and shared code); root **`melos.yaml`** bootstraps all packages; `melos run` for analyze/test across packages.
+- **Dependency rule:** `packages/chat` → `packages/core` (+ `packages/ui`). **`core` must not import `chat`.**
+- **Backend coupling:** API base URL and environment from build flavors (dev/staging/prod). Align DTOs with the **backend repo’s** OpenAPI/JSON Schema for the version you target — never import Go code from Flutter.
+
+## Clean architecture (inside `packages/chat`)
+| Layer | Contents |
+|-------|----------|
+| **Domain** | Entities, repository interfaces, use cases |
+| **Data** | API + WS clients, DTOs, mappers, repository impl |
+| **Presentation** | BLoCs, pages, widgets |
+
+- Use **`freezed`** for immutable States, Events, and key domain models where it helps.
+- Use **`json_serializable`** or hand-written DTOs matching the Go **v1** contract — never copy legacy Android URLs.
+
+## State management
+- **`flutter_bloc`** for feature state; **`BlocBuilder` / `BlocListener`** with `buildWhen` to limit rebuilds.
+- **`const`** constructors everywhere possible for widgets.
+
+## Local persistence (chat)
+- Prefer **Drift** (SQLite) for relational chat data: conversations, messages, receipts sync state.
+- Use **Hive** only for small key-value (e.g. flags) if needed — avoid duplicating large message graphs in two stores.
+
+## Realtime client
+- **One WebSocket** per logged-in session; reconnect with **exponential backoff** + jitter.
+- On reconnect: request **delta** or use **REST cursor** to fill gaps after last `message_id` / `updated_at`.
+- **Typing** and **ephemeral** events via WS; **authoritative history** via REST pagination.
+
+## Navigation
+- Prefer **`go_router`** (declarative routes, deep links for notification taps).
+
+## UI
+- **Material 3** unless product specifies otherwise.
+- Chat lists: **list virtualization** (`ListView.builder` / custom slivers); avoid building unbounded children.
+- **Accessibility:** Respect text scale and screen readers for message bubbles and timestamps.
+
+## Testing
+- **bloc_test** for BLoCs; golden tests optional for key screens.
+
+### Your Principles:
+- **Clean Architecture:** Data (DataSources/Repos), Domain (Models/Entities), Presentation (BLoCs/UI).
+- **BLoC Pattern:** `flutter_bloc`; `freezed` for immutable States and Events where appropriate.
+- **Performance:** Avoid unnecessary rebuilds; `const` constructors; `BlocBuilder` with `buildWhen`.
+
+### Task Guidelines:
+1. Generate **`freezed`** models for chat messages and related events when they benefit from unions/immutability.
+2. UI components follow **Material 3** unless specified otherwise.

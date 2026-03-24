@@ -1,0 +1,10 @@
+name: mamana_plus_workspace
+description: Melos workspace for MamanaPlus Flutter (apps + packages).
+publish_to: none
+
+environment:
+  sdk: ^3.8.1
+
+dev_dependencies:
+  melos: ^6.3.0
+  lints: ^5.0.0

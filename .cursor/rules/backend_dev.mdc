@@ -1,0 +1,78 @@
+---
+description: Activates for Go backend development, WebSockets, and database logic.
+globs: backend/**/*.go, go.mod, **/*.sql
+---
+# Role: Senior Go Backend Developer
+You specialize in high-concurrency real-time systems for **MamanaPlus v2** chat.
+
+## Repository layout (hexagonal / clean)
+This backend is its **own Git repository** — separate from the **Flutter mobile** repo. No shared root with Flutter; contract with clients is **HTTP/WSS + published API spec**.
+
+```
+backend/
+  cmd/server/main.go
+  api/
+    openapi.yaml   # or JSON Schema — source of truth for mobile DTOs (versioned with releases)
+  internal/
+    http/          # REST handlers, middleware, routing
+    ws/            # WebSocket hub, client registry, heartbeat
+    auth/          # JWT issue/validate, refresh, OAuth callbacks
+    chat/          # domain services: conversations, messages, receipts
+    storage/       # presigned URLs, object metadata
+    push/          # FCM/APNs dispatch
+  migrations/      # SQL (e.g. goose, golang-migrate)
+  pkg/             # only truly shared, low-level helpers
+```
+
+- **Accept interfaces, return structs** at package boundaries.
+- Keep `internal` — **no** external imports of app internals from `pkg`.
+- **Release discipline:** Tag releases; mobile teams adopt a **tag** or **semver** range when updating generated clients. Keep `openapi.yaml` in sync with actual routes.
+
+## HTTP API
+- **REST JSON**, base path **`/v1/`**.
+- **Idempotency:** `POST` sends accept **`client_msg_id`** (UUID) from client; duplicate retries return same `message_id` (HTTP 200 with same body).
+- **Pagination:** Cursor-based (`cursor` or `before_id` + `limit`); avoid unbounded `offset` on large tables.
+- **Errors:** Stable JSON shape: `code`, `message`, optional `details` — never stack traces to clients.
+
+## WebSocket
+- **TLS (WSS)** in production; authenticate via **ticket** or **Bearer** in first frame/subprotocol per chosen design.
+- **Heartbeat:** ping/pong or application-level ping; drop dead peers; cap message size.
+- **Fan-out:** Deliver to all **members** of a conversation; respect **block** and **membership** before broadcast.
+- **Backpressure:** Bounded per-connection send queues; slow clients may drop non-critical events if product allows (document policy).
+
+## Database (PostgreSQL)
+Suggested core tables (names illustrative; adjust in migrations):
+
+| Table | Purpose |
+|-------|---------|
+| `users` | id, email, hashed_password nullable, oauth subject ids, created_at |
+| `refresh_tokens` | user_id, token_hash, expires_at, rotated_from |
+| `conversations` | id, type (direct/group), created_at |
+| `conversation_members` | conversation_id, user_id, role, joined_at, muted_until |
+| `messages` | id, conversation_id, sender_id, client_msg_id unique per conversation, body or encrypted_payload ref, content_type, reply_to, created_at, edited_at, deleted_at |
+| `message_receipts` | message_id, user_id, delivered_at, read_at |
+| `blocks` | blocker_id, blocked_id, created_at |
+
+**Indexes:** `(conversation_id, created_at DESC)` for history; unique `(conversation_id, client_msg_id)` for idempotency.
+
+## Media
+- Uploads via **presigned PUT** or multipart to **S3-compatible** storage; store **metadata + URL** in DB; virus scanning hook TBD.
+
+## Push
+- After message **commit**, enqueue push to offline users (FCM/APNs); **no message body** in plaintext if policy requires title-only or encrypted payload later.
+
+## Rate limiting
+- Apply to: login, refresh, send message, upload, WS connect.
+
+## Observability
+- **Structured logs:** `request_id`, `user_id` — **never log raw message body** or tokens in plaintext.
+
+### Your Principles:
+- **Concurrency:** Goroutines + channels for WS; mutex for shared maps where needed.
+- **Idiomatic Go:** Small functions; explicit error handling.
+- **Reliability:** WS heartbeat; graceful shutdown draining connections.
+- **Database:** Use clean SQL or **GORM** / **Ent** — migrations versioned.
+
+### Task Guidelines:
+1. WebSocket handlers include **error handling** for connection drops and validation failures.
+2. Structure the backend using **cmd/internal/pkg** as above.

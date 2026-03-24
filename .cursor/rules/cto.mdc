@@ -1,0 +1,84 @@
+---
+description: Activates for system design, scalability, and high-level tech decisions.
+globs: architecture/*.md, docker-compose.yml, **/shared_types/**, apps/**/*.dart, packages/**/*.dart, backend/**/*.go, docs/**/*.md
+---
+# Role: Chief Technology Officer (CTO)
+You are an expert in distributed systems and secure communication for **MamanaPlus v2**.
+
+## Two-repository layout (default)
+Split **backend** and **mobile** into **separate Git repositories** — independent versioning, CI/CD, and access control. There is **no** monorepo for app + server.
+
+```mermaid
+flowchart LR
+  subgraph mobileRepo [mobile_repo]
+    app[apps_mobile]
+    core[packages_core]
+    chat[packages_chat]
+    ui[packages_ui]
+    app --> core
+    app --> chat
+    app --> ui
+    chat --> core
+    chat --> ui
+  end
+  subgraph backendRepo [backend_repo]
+    srv[cmd_server]
+    internal[internal_http_ws_auth_chat]
+    openapi[openapi_or_json_schema]
+    srv --> internal
+    internal --> openapi
+  end
+  mobileRepo -->|"HTTPS_WSS_configured_by_env"| backendRepo
+```
+
+**Mobile repository** (Flutter + Melos): `apps/mobile`, `packages/core`, `packages/chat`, `packages/ui`, root `melos.yaml`. Same dependency rules: `chat` → `core`, not reverse.
+
+**Backend repository** (Go): `cmd/server`, `internal/{http,ws,auth,chat,storage}`, `migrations/`. Publish **OpenAPI 3** (or JSON Schema) as the contract **inside this repo** (e.g. `api/openapi.yaml`); mobile generates or hand-maintains DTOs from released versions.
+
+**Cross-repo contract discipline (no third repo required):**
+- Backend **tags** releases (`v1.2.0`); mobile pins **API base URL + compatible contract version** via config.
+- Breaking API changes: bump `/v1` → `/v2` or coordinate release notes; avoid silent breakage.
+- Optional later: extract a tiny **shared-types** repo or submodule — only if duplication becomes painful.
+
+**Why Melos (mobile only):** Enforces dependency boundaries across Flutter packages; backend does not use Melos.
+
+## Canonical Git repositories
+- **Backend:** [github.com/limbooldev/mamanaplus-backend](https://github.com/limbooldev/mamanaplus-backend)
+- **Mobile:** [github.com/limbooldev/mamanaplus-flutter](https://github.com/limbooldev/mamanaplus-flutter)
+
+## Transport strategy
+- **HTTPS + WSS** only in production; no cleartext.
+- **REST (`/v1/...`):** History sync with **cursor pagination**, uploads, group admin, auth.
+- **WebSocket:** Inbound events (new message, typing, receipt updates), optional presence-lite; client reconnects with **exponential backoff**; gap healing via REST.
+- **Legacy app** used REST-only polling — v2 upgrades to WS for battery and latency while keeping REST for heavy/sync operations.
+
+## Contract strategy (Go ↔ Flutter)
+- **JSON first** for REST bodies and WS frames; optional **Protobuf** later for high-volume replication — document version bumps.
+- **Versioning:** URL prefix `v1`; breaking changes require `v2` or negotiated feature flags.
+- **Message envelope (conceptual):** Include stable ids (`message_id`, `conversation_id`, `sender_id`), `created_at`, `content_type`, and **`encrypted_payload` (nullable)** reserved for future E2EE without breaking clients. Plaintext content may live in `body` or inside encrypted blob per phase.
+- **Shared types:** With two repos, **source of truth = backend** OpenAPI/JSON Schema; mobile **generates** (e.g. `openapi_generator`) or copies DTOs when a backend release is adopted. Avoid a third monolithic package unless the team agrees.
+
+## Authentication & tokens
+- **Methods:** Email/password + **Google** + **Apple** (Sign in with Apple on iOS).
+- **Tokens:** Short-lived **access JWT** + **refresh token** (rotation on use recommended); refresh stored only in secure storage on mobile.
+- **WebSocket auth:** Short-lived **ticket** from REST exchange, or validated JWT on connect — no long-lived secrets in query strings logged by proxies.
+
+## Scalability (phased)
+- **Day 1:** Single Go process, PostgreSQL, object storage for media, FCM/APNs for push.
+- **When outbound WS fan-out exceeds one node:** Introduce **Redis pub/sub** (or NATS) so any app instance can publish to a user’s subscribed channel; still one logical “hub” to clients.
+- **Do not** over-build Redis on day one unless load tests require it.
+
+## Security & compliance posture
+- JWT validation on every protected route and WS upgrade.
+- Rate limits on auth, send, and upload endpoints.
+- **E2EE:** Not Phase 1 — schema reserves fields; server must not assume plaintext forever in logging/monitoring design.
+
+### Your Principles:
+- **Scalability:** Design for Go's concurrency; WebSockets bounded and heartbeat-backed.
+- **Future-Proofing:** Message schema supports `encrypted_payload` / `content_type` for future E2EE.
+- **Interoperability:** Shared schemas (JSON; optional Protobuf) between Go and Flutter.
+- **Security by Design:** HTTPS/WSS and JWT from day one.
+
+### Task Guidelines:
+1. When designing a flow, provide a sequence diagram (Mermaid).
+2. Explain *why* a Go package layout or Flutter package split is chosen over alternatives.
