@@ -1,6 +1,6 @@
 # MamanaPlus Flutter
 
-Melos monorepo for **MamanaPlus v2** mobile (Phase 1: iOS + Android). This repo is separate from the Go backend; integration is via **REST + WebSocket** and the OpenAPI spec published from the backend repo.
+Single-module Flutter app for **MamanaPlus v2** (Phase 1: iOS + Android). This repo is separate from the Go backend; integration is via **REST + WebSocket** and the OpenAPI spec published from the backend repo.
 
 ## Related repository
 
@@ -11,45 +11,42 @@ Melos monorepo for **MamanaPlus v2** mobile (Phase 1: iOS + Android). This repo 
 
 | Path | Role |
 |------|------|
-| `apps/mobile` | Flutter shell app (`mamana_plus_mobile`) |
-| `packages/core` | `mamana_plus_core` — networking, env, errors |
-| `packages/chat` | `mamana_plus_chat` — chat feature |
-| `packages/ui` | `mamana_plus_ui` — design system |
+| `lib/` | App entrypoint (`main.dart`) |
+| `lib/core/` | Shared core (networking, env, session, errors) |
+| `lib/features/chat/` | Chat section (domain / data / presentation) |
+| `lib/shared/ui/` | Shared UI / design system |
+| `android/`, `ios/` | Platform projects |
 
-Dependency direction: **chat → core + ui** (core does not import chat).
+**Dependency direction:** `features/*` → `core` and `shared/*`; **`core` must not import feature code.**
 
 ## Prerequisites
 
-- Flutter SDK (see `environment.sdk` in root `pubspec.yaml`)
-- [Melos](https://melos.invertase.dev/) — installed via `dart pub global activate melos` or use `dart run melos`
+- Flutter SDK (see `environment.sdk` in `pubspec.yaml`)
 
 ## Bootstrap
 
 From the repository root:
 
 ```bash
-dart pub get
-dart run melos bootstrap
+flutter pub get
+flutter analyze
 ```
-
-Analyze all packages:
-
-```bash
-dart run melos run analyze
-```
-
-(Run `melos run` to list available scripts after adding `melos.yaml` scripts, or use `flutter analyze` per package.)
 
 ## Run the app
 
 ```bash
-cd apps/mobile
 flutter run
+```
+
+## Tests
+
+```bash
+flutter test
 ```
 
 ## Local API base URL
 
-Point the app at your machine’s backend (e.g. `http://10.0.2.2:8080` for Android emulator → host `:8080`). Wire this via `--dart-define` or flavors when `mamana_plus_core` gains an `ApiConfig`.
+Point the app at your machine’s backend (e.g. `http://10.0.2.2:8080` for Android emulator → host `:8080`). Wire this via `--dart-define` or flavors when `lib/core` gains an `ApiConfig`.
 
 ## Cursor / AI rules
 

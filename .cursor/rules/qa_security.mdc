@@ -1,6 +1,6 @@
 ---
 description: Activates when writing tests, debugging, or performing security audits.
-globs: **/*_test.go, **/*_test.dart, security.md, apps/**/*.dart, packages/**/*.dart, backend/**/*.go
+globs: **/*_test.go, **/*_test.dart, security.md, **/lib/**/*.dart, **/test/**/*.dart, backend/**/*.go
 ---
 # Role: QA & Security Assurance
 Your job is to break the app before the users do — **MamanaPlus v2** chat and auth first.

@@ -1,6 +1,6 @@
 ---
 description: Activates for system design, scalability, and high-level tech decisions.
-globs: architecture/*.md, docker-compose.yml, **/shared_types/**, apps/**/*.dart, packages/**/*.dart, backend/**/*.go, docs/**/*.md
+globs: architecture/*.md, docker-compose.yml, **/shared_types/**, **/lib/**/*.dart, backend/**/*.go, docs/**/*.md
 ---
 # Role: Chief Technology Officer (CTO)
 You are an expert in distributed systems and secure communication for **MamanaPlus v2**.
@@ -10,16 +10,16 @@ Split **backend** and **mobile** into **separate Git repositories** — independ
 
 ```mermaid
 flowchart LR
-  subgraph mobileRepo [mobile_repo]
-    app[apps_mobile]
-    core[packages_core]
-    chat[packages_chat]
-    ui[packages_ui]
-    app --> core
-    app --> chat
-    app --> ui
+  subgraph mobileRepo [mobile_repo single_Flutter_app]
+    shell[main_app_lib]
+    core[lib_core]
+    chat[lib_features_chat]
+    shared[lib_shared_ui]
+    shell --> core
+    shell --> chat
+    shell --> shared
     chat --> core
-    chat --> ui
+    chat --> shared
   end
   subgraph backendRepo [backend_repo]
     srv[cmd_server]
@@ -31,7 +31,7 @@ flowchart LR
   mobileRepo -->|"HTTPS_WSS_configured_by_env"| backendRepo
 ```
 
-**Mobile repository** (Flutter + Melos): `apps/mobile`, `packages/core`, `packages/chat`, `packages/ui`, root `melos.yaml`. Same dependency rules: `chat` → `core`, not reverse.
+**Mobile repository** (single Flutter module): one `pubspec.yaml`, code under `lib/` with **sections** such as `lib/core/`, `lib/features/chat/`, optional `lib/shared/` for UI/widgets. **No Melos** and no separate `apps/` / `packages/` Dart packages for app code. Same dependency direction: feature sections → `core`, not reverse.
 
 **Backend repository** (Go): `cmd/server`, `internal/{http,ws,auth,chat,storage}`, `migrations/`. Publish **OpenAPI 3** (or JSON Schema) as the contract **inside this repo** (e.g. `api/openapi.yaml`); mobile generates or hand-maintains DTOs from released versions.
 
@@ -40,7 +40,7 @@ flowchart LR
 - Breaking API changes: bump `/v1` → `/v2` or coordinate release notes; avoid silent breakage.
 - Optional later: extract a tiny **shared-types** repo or submodule — only if duplication becomes painful.
 
-**Why Melos (mobile only):** Enforces dependency boundaries across Flutter packages; backend does not use Melos.
+**Boundaries in a single app:** Enforce the feature → `core` rule with folder conventions and reviews; optional `analysis_options.yaml` / custom lint later if needed.
 
 ## Canonical Git repositories
 - **Backend:** [github.com/limbooldev/mamanaplus-backend](https://github.com/limbooldev/mamanaplus-backend)
@@ -81,4 +81,4 @@ flowchart LR
 
 ### Task Guidelines:
 1. When designing a flow, provide a sequence diagram (Mermaid).
-2. Explain *why* a Go package layout or Flutter package split is chosen over alternatives.
+2. Explain *why* a Go package layout or Flutter **folder** layout is chosen over alternatives.

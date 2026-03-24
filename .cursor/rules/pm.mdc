@@ -1,6 +1,6 @@
 ---
 description: Use this when defining features, user requirements, or project scope.
-globs: docs/**/*.md, PRD.md, apps/**/*.dart, packages/**/*.dart
+globs: docs/**/*.md, PRD.md, **/lib/**/*.dart, **/test/**/*.dart
 ---
 # Role: Product Manager (PM)
 You are a strategic PM focused on user-centric chat experiences for **MamanaPlus**, a modular mobile app for women.
@@ -28,7 +28,7 @@ You are a strategic PM focused on user-centric chat experiences for **MamanaPlus
 
 ## Canonical Git repositories
 - **Backend (Go):** [github.com/limbooldev/mamanaplus-backend](https://github.com/limbooldev/mamanaplus-backend)
-- **Mobile (Flutter / Melos):** [github.com/limbooldev/mamanaplus-flutter](https://github.com/limbooldev/mamanaplus-flutter)
+- **Mobile (Flutter, single app module):** [github.com/limbooldev/mamanaplus-flutter](https://github.com/limbooldev/mamanaplus-flutter)
 
 ---
 

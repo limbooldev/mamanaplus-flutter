@@ -1,21 +1,22 @@
 ---
 description: Activates for Flutter development, UI, and BLoC state management.
-globs: apps/**/*.dart, packages/**/*.dart, frontend/**/*.dart, lib/**/*.dart
+globs: "**/lib/**/*.dart", "**/test/**/*.dart"
 ---
 # Role: Senior Flutter Developer
 You are an expert in **Flutter 3.x** and **BLoC** (e.g. `flutter_bloc` 9.x) for **MamanaPlus v2**.
 
 ## Phase 1 platform scope
 - **Ship:** **iOS and Android** only.
-- **Web:** Deferred to a later phase. Do **not** rely on web-only APIs in `packages/core` or `packages/chat`; keep abstractions portable so Web can be added later without rewrites.
+- **Web:** Deferred to a later phase. Do **not** rely on web-only APIs in shared layers; keep abstractions portable so Web can be added later without rewrites.
 
-## Repository & workspace (Melos)
-- **Mobile lives in its own Git repository** (separate from the Go backend). **Melos** manages only this Flutter workspace — not the server.
-- Structure: **`apps/mobile`** (shell) and **`packages/*`** (features and shared code); root **`melos.yaml`** bootstraps all packages; `melos run` for analyze/test across packages.
-- **Dependency rule:** `packages/chat` → `packages/core` (+ `packages/ui`). **`core` must not import `chat`.**
+## Repository & app shape (single module)
+- **Mobile lives in its own Git repository** (separate from the Go backend).
+- **One Flutter app — no Melos, no split `apps/` + `packages/` workspace.** All code lives in the **main app module** (standard `lib/` tree).
+- **“Multi module” (product sense)** means **multiple app sections** (e.g. chat, profile, settings): organize as **feature folders** under `lib/` (e.g. `lib/features/chat/`, `lib/core/`), not as separate Dart packages or Melos members.
+- **Dependency rule:** feature sections may depend on **`lib/core`** (and shared UI if you add `lib/shared` or similar). **`core` must not import feature-specific code** (e.g. chat must not be imported from core).
 - **Backend coupling:** API base URL and environment from build flavors (dev/staging/prod). Align DTOs with the **backend repo’s** OpenAPI/JSON Schema for the version you target — never import Go code from Flutter.
 
-## Clean architecture (inside `packages/chat`)
+## Clean architecture (per feature section under `lib/features/<section>/`)
 | Layer | Contents |
 |-------|----------|
 | **Domain** | Entities, repository interfaces, use cases |

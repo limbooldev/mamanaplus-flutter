@@ -1,6 +1,0 @@
-# melos_managed_dependency_overrides: mamana_plus_core,mamana_plus_ui
-dependency_overrides:
-  mamana_plus_core:
-    path: ../core
-  mamana_plus_ui:
-    path: ../ui
