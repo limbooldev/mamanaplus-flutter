@@ -1,4 +1,8 @@
-/// Shared core: networking, env, session, errors (expand here).
+/// Shared core: API config, HTTP client, secure storage, local DB, JWT helpers.
 library;
 
-export 'src/core_base.dart';
+export 'api_config.dart';
+export 'database/app_database.dart';
+export 'dio_client.dart';
+export 'jwt_util.dart';
+export 'token_storage.dart';

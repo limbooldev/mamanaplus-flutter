@@ -1,40 +1,46 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
-import 'package:mamana_plus/core/core.dart';
-import 'package:mamana_plus/features/chat/chat.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:sqlite3_flutter_libs/sqlite3_flutter_libs.dart';
 
-void main() {
-  runApp(const MamanaPlusApp());
-}
+import 'app.dart';
+import 'core/api_config.dart';
+import 'core/database/app_database.dart';
+import 'core/dio_client.dart';
+import 'core/token_storage.dart';
+import 'features/chat/data/chat_remote_datasource.dart';
+import 'features/chat/data/chat_repository.dart';
+import 'features/chat/data/chat_socket.dart';
+import 'features/chat/presentation/cubit/auth_cubit.dart';
 
-class MamanaPlusApp extends StatelessWidget {
-  const MamanaPlusApp({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'MamanaPlus',
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
-        useMaterial3: true,
-      ),
-      home: const _HomePlaceholder(),
-    );
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  if (Platform.isAndroid || Platform.isIOS) {
+    await applyWorkaroundToOpenSqlite3OnOldAndroidVersions();
   }
-}
 
-/// Temporary shell until chat UI is wired. Verifies core + feature imports.
-class _HomePlaceholder extends StatelessWidget {
-  const _HomePlaceholder();
+  final config = ApiConfig.fromEnvironment();
+  final tokens = TokenStorage();
+  final db = AppDatabase();
+  final dio = createDio(config: config, tokens: tokens);
+  final remote = ChatRemoteDataSource(dio);
+  final socket = ChatSocket();
+  final repo = ChatRepository(remote: remote, db: db, socket: socket);
+  final auth = AuthCubit(config: config, tokens: tokens);
+  await auth.restore();
 
-  @override
-  Widget build(BuildContext context) {
-    final coreOk = CoreHealth().ok;
-    final chatOk = ChatHealth().ok;
-    return Scaffold(
-      appBar: AppBar(title: const Text('MamanaPlus')),
-      body: Center(
-        child: Text('App OK: core=$coreOk chat=$chatOk'),
+  runApp(
+    RepositoryProvider<ChatRepository>.value(
+      value: repo,
+      child: BlocProvider<AuthCubit>.value(
+        value: auth,
+        child: MamanaApp(
+          authCubit: auth,
+          config: config,
+          chatRepository: repo,
+        ),
       ),
-    );
-  }
+    ),
+  );
 }
