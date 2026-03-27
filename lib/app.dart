@@ -111,6 +111,22 @@ class _MamanaAppState extends State<MamanaApp> {
     super.dispose();
   }
 
+  void _syncRouteToAuth(AuthState state) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      switch (state) {
+        case AuthAuthenticated():
+          _router.go('/inbox');
+        case AuthUnauthenticated():
+        case AuthFailure():
+          _router.go('/login');
+        case AuthLoading():
+        case AuthInitial():
+          _router.go('/splash');
+      }
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     return BlocListener<AuthCubit, AuthState>(
@@ -122,6 +138,7 @@ class _MamanaAppState extends State<MamanaApp> {
         if (state is AuthUnauthenticated) {
           widget.chatRepository.socket.disconnect();
         }
+        _syncRouteToAuth(state);
       },
       child: MaterialApp.router(
         title: 'MamanaPlus',
