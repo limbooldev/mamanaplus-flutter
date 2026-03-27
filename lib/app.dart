@@ -3,6 +3,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 
 import 'core/api_config.dart';
+import 'router/app_routes.dart';
 import 'features/chat/data/chat_repository.dart';
 import 'features/chat/presentation/cubit/auth_cubit.dart';
 import 'features/chat/presentation/pages/group_create_page.dart';
@@ -11,9 +12,9 @@ import 'features/chat/presentation/pages/login_page.dart';
 import 'features/chat/presentation/pages/thread_page.dart';
 
 String _initialLocationFor(AuthState s) {
-  if (s is AuthAuthenticated) return '/inbox';
-  if (s is AuthLoading || s is AuthInitial) return '/splash';
-  return '/login';
+  if (s is AuthAuthenticated) return AppRoutes.inbox;
+  if (s is AuthLoading || s is AuthInitial) return AppRoutes.splash;
+  return AppRoutes.login;
 }
 
 /// Root widget: auth-aware routing + WebSocket lifecycle.
@@ -51,46 +52,46 @@ class _MamanaAppState extends State<MamanaApp> {
         final s = auth.state;
         final loc = state.matchedLocation;
         if (s is AuthLoading || s is AuthInitial) {
-          return loc == '/splash' ? null : '/splash';
+          return loc == AppRoutes.splash ? null : AppRoutes.splash;
         }
         if (s is AuthUnauthenticated || s is AuthFailure) {
-          if (loc == '/login') return null;
-          return '/login';
+          if (loc == AppRoutes.login) return null;
+          return AppRoutes.login;
         }
         if (s is AuthAuthenticated) {
-          if (loc == '/login' || loc == '/splash') return '/inbox';
+          if (loc == AppRoutes.login || loc == AppRoutes.splash) return AppRoutes.inbox;
           return null;
         }
         return null;
       },
       routes: [
         GoRoute(
-          path: '/splash',
+          path: AppRoutes.splash,
           builder: (_, __) => const Scaffold(
             body: Center(child: CircularProgressIndicator()),
           ),
         ),
         GoRoute(
-          path: '/login',
+          path: AppRoutes.login,
           builder: (_, __) => const LoginPage(),
         ),
         GoRoute(
-          path: '/inbox',
+          path: AppRoutes.inbox,
           builder: (_, __) => const InboxPage(),
         ),
         GoRoute(
-          path: '/thread/:id',
+          path: AppRoutes.threadPattern,
           builder: (context, state) {
             final authed = auth.state;
             if (authed is! AuthAuthenticated) {
               return const SizedBox.shrink();
             }
-            final id = int.parse(state.pathParameters['id']!);
+            final id = int.parse(state.pathParameters[AppRoutes.threadParamId]!);
             return ThreadPage(conversationId: id, accessToken: authed.accessToken);
           },
         ),
         GoRoute(
-          path: '/groups/new',
+          path: AppRoutes.groupNew,
           builder: (_, __) => const GroupCreatePage(),
         ),
       ],
@@ -116,13 +117,13 @@ class _MamanaAppState extends State<MamanaApp> {
       if (!mounted) return;
       switch (state) {
         case AuthAuthenticated():
-          _router.go('/inbox');
+          _router.go(AppRoutes.inbox);
         case AuthUnauthenticated():
         case AuthFailure():
-          _router.go('/login');
+          _router.go(AppRoutes.login);
         case AuthLoading():
         case AuthInitial():
-          _router.go('/splash');
+          _router.go(AppRoutes.splash);
       }
     });
   }

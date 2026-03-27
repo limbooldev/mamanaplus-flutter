@@ -2,8 +2,8 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:go_router/go_router.dart';
 
+import '../../../../router/app_routes.dart';
 import '../../../../core/database/app_database.dart';
 import '../../data/chat_repository.dart';
 import '../cubit/auth_cubit.dart';
@@ -23,7 +23,7 @@ class InboxPage extends StatelessWidget {
             IconButton(
               icon: const Icon(Icons.group_add),
               onPressed: () async {
-                await context.push('/groups/new');
+                await context.pushNewGroup();
                 if (context.mounted) context.read<InboxCubit>().refresh();
               },
             ),
@@ -51,7 +51,7 @@ class InboxPage extends StatelessWidget {
                   return ListTile(
                     title: Text(title),
                     subtitle: Text(c.type),
-                    onTap: () => context.push('/thread/${c.id}'),
+                    onTap: () => context.pushThread(c.id),
                   );
                 },
               ),
