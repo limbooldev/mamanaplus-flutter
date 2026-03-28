@@ -1,6 +1,9 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
+import '../../../../core/database/app_database.dart';
 import '../../../../core/jwt_util.dart';
 import '../../data/chat_repository.dart';
 import '../cubit/thread_cubit.dart';
@@ -10,10 +13,12 @@ class ThreadPage extends StatelessWidget {
     super.key,
     required this.conversationId,
     required this.accessToken,
+    this.conversationType,
   });
 
   final int conversationId;
   final String accessToken;
+  final String? conversationType;
 
   @override
   Widget build(BuildContext context) {
@@ -23,16 +28,18 @@ class ThreadPage extends StatelessWidget {
         context.read<ChatRepository>(),
         conversationId,
         myId,
+        conversationType: conversationType,
       )..init(),
-      child: _ThreadScaffold(conversationId: conversationId),
+      child: _ThreadScaffold(conversationId: conversationId, myUserId: myId),
     );
   }
 }
 
 class _ThreadScaffold extends StatefulWidget {
-  const _ThreadScaffold({required this.conversationId});
+  const _ThreadScaffold({required this.conversationId, required this.myUserId});
 
   final int conversationId;
+  final int myUserId;
 
   @override
   State<_ThreadScaffold> createState() => _ThreadScaffoldState();
@@ -40,11 +47,24 @@ class _ThreadScaffold extends StatefulWidget {
 
 class _ThreadScaffoldState extends State<_ThreadScaffold> {
   final _controller = TextEditingController();
+  Timer? _typingIdleTimer;
 
   @override
   void dispose() {
+    _typingIdleTimer?.cancel();
     _controller.dispose();
     super.dispose();
+  }
+
+  void _onTextChanged(BuildContext context, String text) {
+    final cubit = context.read<ThreadCubit>();
+    _typingIdleTimer?.cancel();
+    if (text.isEmpty) {
+      cubit.onTyping(false);
+      return;
+    }
+    cubit.onTyping(true);
+    _typingIdleTimer = Timer(const Duration(seconds: 2), () => cubit.onTyping(false));
   }
 
   @override
@@ -53,6 +73,11 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
       appBar: AppBar(
         title: Text('Thread #${widget.conversationId}'),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.image_outlined),
+            tooltip: 'Stub image (presign)',
+            onPressed: () => context.read<ThreadCubit>().sendStubAttachment(),
+          ),
           IconButton(
             icon: const Icon(Icons.block),
             onPressed: () => _blockPrompt(context),
@@ -75,6 +100,7 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
                   return const Center(child: CircularProgressIndicator());
                 }
                 final typing = state.typingUserIds.isNotEmpty;
+                final convType = context.read<ThreadCubit>().conversationType;
                 return Column(
                   children: [
                     if (typing)
@@ -89,6 +115,8 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
                         itemBuilder: (context, i) {
                           final m = state.messages[i];
                           final isReply = m.replyToMessageId != null;
+                          final mine = m.senderId == widget.myUserId;
+                          final read = state.readReceiptForOwnMessage(m.id, convType);
                           return ListTile(
                             dense: true,
                             title: Text(
@@ -100,7 +128,16 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
                             subtitle: isReply
                                 ? Text('↩ reply to #${m.replyToMessageId}')
                                 : null,
-                            onLongPress: () => context.read<ThreadCubit>().setReplyTo(m),
+                            trailing: mine
+                                ? Icon(
+                                    read ? Icons.done_all : Icons.check,
+                                    size: 18,
+                                    color: read ? Theme.of(context).colorScheme.primary : null,
+                                  )
+                                : null,
+                            onLongPress: mine
+                                ? () => _ownMessageActions(context, m)
+                                : () => context.read<ThreadCubit>().setReplyTo(m),
                           );
                         },
                       ),
@@ -137,7 +174,7 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
                       child: TextField(
                         controller: _controller,
                         decoration: const InputDecoration(hintText: 'Message'),
-                        onChanged: (_) => context.read<ThreadCubit>().onTyping(true),
+                        onChanged: (t) => _onTextChanged(context, t),
                         onSubmitted: (_) => _send(context),
                       ),
                     ),
@@ -155,9 +192,62 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
     );
   }
 
+  Future<void> _ownMessageActions(BuildContext context, LocalMessage m) async {
+    final cubit = context.read<ThreadCubit>();
+    final action = await showModalBottomSheet<String>(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.edit),
+              title: const Text('Edit'),
+              onTap: () => Navigator.pop(ctx, 'edit'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.visibility_off_outlined),
+              title: const Text('Delete for me'),
+              onTap: () => Navigator.pop(ctx, 'me'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.delete_forever_outlined),
+              title: const Text('Delete for everyone'),
+              onTap: () => Navigator.pop(ctx, 'all'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (!context.mounted) return;
+    if (action == 'edit') {
+      final ctrl = TextEditingController(text: m.body);
+      final ok = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Edit message'),
+          content: TextField(controller: ctrl, maxLines: 4),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Save')),
+          ],
+        ),
+      );
+      if (ok == true && context.mounted) {
+        await cubit.editMessage(m.id, ctrl.text);
+      }
+      ctrl.dispose();
+    } else if (action == 'me') {
+      await cubit.deleteMessage(m.id, forEveryone: false);
+    } else if (action == 'all') {
+      await cubit.deleteMessage(m.id, forEveryone: true);
+    }
+  }
+
   void _send(BuildContext context) {
     final text = _controller.text;
     _controller.clear();
+    _typingIdleTimer?.cancel();
     context.read<ThreadCubit>().onTyping(false);
     context.read<ThreadCubit>().send(text);
   }

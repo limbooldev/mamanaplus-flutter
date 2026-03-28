@@ -1,4 +1,5 @@
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:uuid/uuid.dart';
 
 const Duration _storageOpTimeout = Duration(seconds: 6);
 
@@ -13,6 +14,7 @@ class TokenStorage {
 
   static const _kAccess = 'access_token';
   static const _kRefresh = 'refresh_token';
+  static const _kDevice = 'device_install_id';
 
   Future<void> saveTokens({required String access, required String refresh}) async {
     try {
@@ -40,6 +42,19 @@ class TokenStorage {
           );
     } catch (_) {
       return null;
+    }
+  }
+
+  /// Stable id for push device registration (M5).
+  Future<String> getOrCreateDeviceId() async {
+    try {
+      final existing = await _s.read(key: _kDevice).timeout(_storageOpTimeout);
+      if (existing != null && existing.isNotEmpty) return existing;
+      final id = const Uuid().v4();
+      await _s.write(key: _kDevice, value: id).timeout(_storageOpTimeout);
+      return id;
+    } catch (_) {
+      return const Uuid().v4();
     }
   }
 

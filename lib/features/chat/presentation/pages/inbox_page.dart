@@ -51,7 +51,13 @@ class InboxPage extends StatelessWidget {
                   return ListTile(
                     title: Text(title),
                     subtitle: Text(c.type),
-                    onTap: () => context.pushThread(c.id),
+                    trailing: c.type == 'group'
+                        ? IconButton(
+                            icon: const Icon(Icons.info_outline),
+                            onPressed: () => context.pushGroupDetail(c.id),
+                          )
+                        : null,
+                    onTap: () => context.pushThread(c.id, conversationType: c.type),
                   );
                 },
               ),

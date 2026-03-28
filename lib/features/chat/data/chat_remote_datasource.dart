@@ -65,14 +65,44 @@ class ChatRemoteDataSource {
     int conversationId, {
     required String body,
     int? replyToMessageId,
+    String contentType = 'text/plain',
   }) async {
     final res = await _dio.post<Map<String, dynamic>>(
       '/v1/conversations/$conversationId/messages',
       data: {
         'body': body,
+        'content_type': contentType,
         if (replyToMessageId != null) 'reply_to_message_id': replyToMessageId,
       },
     );
+    return res.data!;
+  }
+
+  Future<Map<String, dynamic>> editMessage(
+    int conversationId,
+    int messageId, {
+    required String body,
+  }) async {
+    final res = await _dio.patch<Map<String, dynamic>>(
+      '/v1/conversations/$conversationId/messages/$messageId',
+      data: {'body': body},
+    );
+    return res.data!;
+  }
+
+  Future<void> deleteMessage(
+    int conversationId,
+    int messageId, {
+    String scope = 'for_me',
+  }) async {
+    await _dio.delete<void>(
+      '/v1/conversations/$conversationId/messages/$messageId',
+      data: {'scope': scope},
+    );
+  }
+
+  Future<Map<String, dynamic>> getGroup(int conversationId) async {
+    final res = await _dio.get<Map<String, dynamic>>('/v1/groups/$conversationId');
     return res.data!;
   }
 

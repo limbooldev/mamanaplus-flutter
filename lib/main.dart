@@ -26,7 +26,7 @@ Future<void> main() async {
   final dio = createDio(config: config, tokens: tokens);
   final remote = ChatRemoteDataSource(dio);
   final socket = ChatSocket();
-  final repo = ChatRepository(remote: remote, db: db, socket: socket);
+  final repo = ChatRepository(remote: remote, db: db, socket: socket, tokens: tokens);
   final auth = AuthCubit(config: config, tokens: tokens);
   await auth.restore();
 

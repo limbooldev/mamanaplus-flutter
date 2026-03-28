@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:drift/drift.dart';
 
 import '../../../core/database/app_database.dart';
+import '../../../core/token_storage.dart';
 import 'chat_remote_datasource.dart';
 import 'chat_socket.dart';
 
@@ -12,13 +13,16 @@ class ChatRepository {
     required ChatRemoteDataSource remote,
     required AppDatabase db,
     required ChatSocket socket,
+    TokenStorage? tokens,
   })  : _remote = remote,
         _db = db,
-        _socket = socket;
+        _socket = socket,
+        _tokens = tokens;
 
   final ChatRemoteDataSource _remote;
   final AppDatabase _db;
   final ChatSocket _socket;
+  final TokenStorage? _tokens;
 
   ChatSocket get socket => _socket;
 
@@ -49,6 +53,21 @@ class ChatRepository {
       try {
         await _remote.sendMessage(
           conversationId,
+          body: row.body,
+          replyToMessageId: row.replyToMessageId,
+        );
+        await (_db.delete(_db.messageOutbox)..where((t) => t.localId.equals(row.localId))).go();
+      } catch (_) {}
+    }
+  }
+
+  /// Sends all queued outbox rows (any conversation). Call after reconnect / inbox refresh.
+  Future<void> flushAllOutbox() async {
+    final rows = await _db.select(_db.messageOutbox).get();
+    for (final row in rows) {
+      try {
+        await _remote.sendMessage(
+          row.conversationId,
           body: row.body,
           replyToMessageId: row.replyToMessageId,
         );
@@ -131,8 +150,51 @@ class ChatRepository {
     int conversationId, {
     required String body,
     int? replyToMessageId,
+    String contentType = 'text/plain',
   }) =>
-      _remote.sendMessage(conversationId, body: body, replyToMessageId: replyToMessageId);
+      _remote.sendMessage(
+        conversationId,
+        body: body,
+        replyToMessageId: replyToMessageId,
+        contentType: contentType,
+      );
+
+  Future<Map<String, dynamic>> editMessage(
+    int conversationId,
+    int messageId, {
+    required String body,
+  }) async {
+    final m = await _remote.editMessage(conversationId, messageId, body: body);
+    await cacheMessages(conversationId, [m]);
+    return m;
+  }
+
+  Future<void> deleteMessage(
+    int conversationId,
+    int messageId, {
+    String scope = 'for_me',
+  }) async {
+    await _remote.deleteMessage(conversationId, messageId, scope: scope);
+    await (_db.delete(_db.localMessages)..where((t) => t.id.equals(messageId))).go();
+  }
+
+  Future<Map<String, dynamic>> getGroup(int conversationId) =>
+      _remote.getGroup(conversationId);
+
+  /// Dev path: presign + send object key as an image message (no binary upload).
+  Future<void> sendStubAttachment(int conversationId) async {
+    final p = await _remote.presignMedia(
+      contentType: 'image/jpeg',
+      byteSize: 1,
+      conversationId: conversationId,
+    );
+    final key = p['object_key'] as String;
+    await _remote.sendMessage(
+      conversationId,
+      body: key,
+      contentType: 'image/jpeg',
+    );
+  }
 
   Future<void> markRead(int conversationId, int lastReadMessageId) =>
       _remote.markRead(conversationId, lastReadMessageId);
@@ -149,7 +211,12 @@ class ChatRepository {
 
   Future<void> registerPush({required String token, String platform = 'fcm'}) async {
     try {
-      await _remote.registerPushDevice(platform: platform, token: token);
+      final deviceId = _tokens != null ? await _tokens.getOrCreateDeviceId() : null;
+      await _remote.registerPushDevice(
+        platform: platform,
+        token: token,
+        deviceId: deviceId,
+      );
     } catch (_) {}
   }
 

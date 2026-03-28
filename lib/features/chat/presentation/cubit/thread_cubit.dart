@@ -14,6 +14,7 @@ class ThreadState extends Equatable {
     this.error,
     this.typingUserIds = const {},
     this.replyTo,
+    this.readCursorByUserId = const {},
   });
 
   final List<LocalMessage> messages;
@@ -23,6 +24,9 @@ class ThreadState extends Equatable {
   final Set<int> typingUserIds;
   final LocalMessage? replyTo;
 
+  /// Other members' cumulative read cursor (`receipt_update.message_id`), by user id.
+  final Map<int, int> readCursorByUserId;
+
   ThreadState copyWith({
     List<LocalMessage>? messages,
     bool? loading,
@@ -30,6 +34,7 @@ class ThreadState extends Equatable {
     String? error,
     Set<int>? typingUserIds,
     LocalMessage? replyTo,
+    Map<int, int>? readCursorByUserId,
   }) =>
       ThreadState(
         messages: messages ?? this.messages,
@@ -38,22 +43,33 @@ class ThreadState extends Equatable {
         error: error,
         typingUserIds: typingUserIds ?? this.typingUserIds,
         replyTo: replyTo,
+        readCursorByUserId: readCursorByUserId ?? this.readCursorByUserId,
       );
 
+  /// Private DM: single peer read cursor — show double-check when peer read up to [messageId].
+  bool readReceiptForOwnMessage(int messageId, String? conversationType) {
+    if (conversationType != 'private') return false;
+    if (readCursorByUserId.length != 1) return false;
+    return readCursorByUserId.values.single >= messageId;
+  }
+
   @override
-  List<Object?> get props => [messages, loading, sending, error, typingUserIds, replyTo];
+  List<Object?> get props =>
+      [messages, loading, sending, error, typingUserIds, replyTo, readCursorByUserId];
 }
 
 class ThreadCubit extends Cubit<ThreadState> {
   ThreadCubit(
     this._repo,
     this.conversationId,
-    this.myUserId,
-  ) : super(const ThreadState());
+    this.myUserId, {
+    this.conversationType,
+  }) : super(const ThreadState());
 
   final ChatRepository _repo;
   final int conversationId;
   final int myUserId;
+  final String? conversationType;
   StreamSubscription<Map<String, dynamic>>? _sub;
 
   Future<void> init() async {
@@ -98,6 +114,14 @@ class ThreadCubit extends Cubit<ThreadState> {
       } else if (type == 'receipt_update' && payload is Map<String, dynamic>) {
         final cid = (payload['conversation_id'] as num?)?.toInt();
         if (cid != conversationId) return;
+        final uid = (payload['user_id'] as num?)?.toInt();
+        final mid = (payload['message_id'] as num?)?.toInt();
+        if (uid == null || mid == null || uid == myUserId) return;
+        final prev = state.readCursorByUserId[uid] ?? 0;
+        final v = mid > prev ? mid : prev;
+        emit(state.copyWith(
+          readCursorByUserId: {...state.readCursorByUserId, uid: v},
+        ));
         _reloadLocal();
       }
     });
@@ -136,6 +160,45 @@ class ThreadCubit extends Cubit<ThreadState> {
         );
       } catch (_) {}
       emit(state.copyWith(sending: false, error: e.toString()));
+    }
+  }
+
+  Future<void> sendStubAttachment() async {
+    emit(state.copyWith(sending: true, error: null));
+    try {
+      await _repo.sendStubAttachment(conversationId);
+      final data = await _repo.fetchMessages(conversationId);
+      final items = (data['items'] as List<dynamic>? ?? [])
+          .map((e) => e as Map<String, dynamic>)
+          .toList();
+      await _repo.cacheMessages(conversationId, items);
+      await _reloadLocal();
+      emit(state.copyWith(sending: false));
+    } catch (e) {
+      emit(state.copyWith(sending: false, error: e.toString()));
+    }
+  }
+
+  Future<void> editMessage(int messageId, String newBody) async {
+    if (newBody.trim().isEmpty) return;
+    try {
+      await _repo.editMessage(conversationId, messageId, body: newBody.trim());
+      await _reloadLocal();
+    } catch (e) {
+      emit(state.copyWith(error: e.toString()));
+    }
+  }
+
+  Future<void> deleteMessage(int messageId, {bool forEveryone = false}) async {
+    try {
+      await _repo.deleteMessage(
+        conversationId,
+        messageId,
+        scope: forEveryone ? 'for_everyone' : 'for_me',
+      );
+      await _reloadLocal();
+    } catch (e) {
+      emit(state.copyWith(error: e.toString()));
     }
   }
 

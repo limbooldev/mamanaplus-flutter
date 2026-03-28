@@ -38,6 +38,7 @@ class InboxCubit extends Cubit<InboxState> {
   Future<void> refresh() async {
     emit(state.copyWith(loading: true, error: null));
     try {
+      await _repo.flushAllOutbox();
       await _repo.syncConversationsFromRemote();
       final local = await _repo.loadConversationsLocal();
       emit(InboxState(items: local, loading: false));

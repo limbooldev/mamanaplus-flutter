@@ -7,6 +7,7 @@ import 'router/app_routes.dart';
 import 'features/chat/data/chat_repository.dart';
 import 'features/chat/presentation/cubit/auth_cubit.dart';
 import 'features/chat/presentation/pages/group_create_page.dart';
+import 'features/chat/presentation/pages/group_detail_page.dart';
 import 'features/chat/presentation/pages/inbox_page.dart';
 import 'features/chat/presentation/pages/login_page.dart';
 import 'features/chat/presentation/pages/thread_page.dart';
@@ -87,7 +88,23 @@ class _MamanaAppState extends State<MamanaApp> {
               return const SizedBox.shrink();
             }
             final id = int.parse(state.pathParameters[AppRoutes.threadParamId]!);
-            return ThreadPage(conversationId: id, accessToken: authed.accessToken);
+            final extra = state.extra as ThreadRouteExtra?;
+            return ThreadPage(
+              conversationId: id,
+              accessToken: authed.accessToken,
+              conversationType: extra?.conversationType,
+            );
+          },
+        ),
+        GoRoute(
+          path: AppRoutes.groupDetailPattern,
+          builder: (context, state) {
+            final authed = auth.state;
+            if (authed is! AuthAuthenticated) {
+              return const SizedBox.shrink();
+            }
+            final id = int.parse(state.pathParameters[AppRoutes.groupDetailParamId]!);
+            return GroupDetailPage(conversationId: id);
           },
         ),
         GoRoute(
