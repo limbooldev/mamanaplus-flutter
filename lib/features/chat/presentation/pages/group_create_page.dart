@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:mamana_plus/l10n/app_localizations.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../data/chat_repository.dart';
@@ -24,8 +25,9 @@ class _GroupCreatePageState extends State<GroupCreatePage> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     return Scaffold(
-      appBar: AppBar(title: const Text('New group')),
+      appBar: AppBar(title: Text(l10n.newGroupTitle)),
       body: Padding(
         padding: const EdgeInsets.all(24),
         child: Column(
@@ -33,14 +35,12 @@ class _GroupCreatePageState extends State<GroupCreatePage> {
           children: [
             TextField(
               controller: _title,
-              decoration: const InputDecoration(labelText: 'Group title'),
+              decoration: InputDecoration(labelText: l10n.labelGroupTitle),
             ),
             const SizedBox(height: 12),
             TextField(
               controller: _members,
-              decoration: const InputDecoration(
-                labelText: 'Member user ids (comma-separated)',
-              ),
+              decoration: InputDecoration(labelText: l10n.labelMemberIds),
             ),
             const SizedBox(height: 24),
             FilledButton(
@@ -53,7 +53,7 @@ class _GroupCreatePageState extends State<GroupCreatePage> {
                 await context.read<ChatRepository>().createGroup(_title.text.trim(), ids);
                 if (context.mounted) context.pop();
               },
-              child: const Text('Create'),
+              child: Text(l10n.buttonCreate),
             ),
           ],
         ),

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:mamana_plus/l10n/app_localizations.dart';
 
 import '../../data/chat_repository.dart';
 
@@ -42,20 +43,21 @@ class _GroupDetailPageState extends State<GroupDetailPage> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     return Scaffold(
-      appBar: AppBar(title: const Text('Group')),
+      appBar: AppBar(title: Text(l10n.groupAppBarTitle)),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : _error != null
               ? Center(child: Text('$_error'))
-              : _buildBody(),
+              : _buildBody(l10n),
     );
   }
 
-  Widget _buildBody() {
+  Widget _buildBody(AppLocalizations l10n) {
     final conv = _data?['conversation'] as Map<String, dynamic>?;
     final members = _data?['members'] as List<dynamic>? ?? [];
-    final title = conv?['title'] as String? ?? 'Group #${widget.conversationId}';
+    final title = conv?['title'] as String? ?? l10n.groupFallbackTitle(widget.conversationId);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -70,7 +72,7 @@ class _GroupDetailPageState extends State<GroupDetailPage> {
             itemBuilder: (context, i) {
               final m = members[i] as Map<String, dynamic>;
               final u = m['user'] as Map<String, dynamic>? ?? {};
-              final name = u['display_name'] as String? ?? 'User ${u['id']}';
+              final name = u['display_name'] as String? ?? l10n.userFallback('${u['id']}');
               final role = m['role'] as String? ?? 'member';
               return ListTile(title: Text(name), subtitle: Text(role));
             },

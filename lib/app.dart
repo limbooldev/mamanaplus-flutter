@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:mamana_plus/l10n/app_localizations.dart';
 import 'package:go_router/go_router.dart';
 
 import 'core/api_config.dart';
@@ -160,6 +161,8 @@ class _MamanaAppState extends State<MamanaApp> {
       },
       child: MaterialApp.router(
         title: 'MamanaPlus',
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
         theme: ThemeData(
           colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
           useMaterial3: true,

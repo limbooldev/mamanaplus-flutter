@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:mamana_plus/l10n/app_localizations.dart';
 
 import '../../../../router/app_routes.dart';
 import '../../../../core/database/app_database.dart';
@@ -14,11 +15,12 @@ class InboxPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     return BlocProvider(
       create: (context) => InboxCubit(context.read<ChatRepository>())..refresh(),
       child: Scaffold(
         appBar: AppBar(
-          title: const Text('Chats'),
+          title: Text(l10n.chatsTitle),
           actions: [
             IconButton(
               icon: const Icon(Icons.group_add),
@@ -47,7 +49,7 @@ class InboxPage extends StatelessWidget {
                 itemCount: state.items.length,
                 itemBuilder: (context, i) {
                   final c = state.items[i];
-                  final title = _titleFor(c);
+                  final title = _titleFor(c, l10n);
                   return ListTile(
                     title: Text(title),
                     subtitle: Text(c.type),
@@ -72,31 +74,38 @@ class InboxPage extends StatelessWidget {
     );
   }
 
-  String _titleFor(LocalConversation c) {
+  String _titleFor(LocalConversation c, AppLocalizations l10n) {
     if (c.title != null && c.title!.isNotEmpty) return c.title!;
     if (c.peerJson != null) {
       try {
         final m = jsonDecode(c.peerJson!) as Map<String, dynamic>;
-        return m['display_name'] as String? ?? 'Chat';
+        return m['display_name'] as String? ?? l10n.chatFallback;
       } catch (_) {}
     }
-    return 'Chat #${c.id}';
+    return l10n.chatFallbackId(c.id);
   }
 
   Future<void> _showDmDialog(BuildContext context) async {
+    final l10n = AppLocalizations.of(context)!;
     final idCtrl = TextEditingController();
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Open DM with user id'),
+        title: Text(l10n.dmDialogTitle),
         content: TextField(
           controller: idCtrl,
           keyboardType: TextInputType.number,
-          decoration: const InputDecoration(hintText: 'Peer user id'),
+          decoration: InputDecoration(hintText: l10n.dmPeerHint),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Open')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text(l10n.buttonCancel),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text(l10n.buttonOpen),
+          ),
         ],
       ),
     );

@@ -1,0 +1,69 @@
+{
+  "@@locale": "en",
+
+  "appTitle": "MamanaPlus",
+
+  "labelEmail": "Email",
+  "labelPassword": "Password (min 8)",
+  "labelDisplayName": "Display name",
+  "buttonLogin": "Login",
+  "buttonRegister": "Register",
+  "toggleToLogin": "Have an account? Login",
+  "toggleToRegister": "Create account",
+
+  "chatsTitle": "Chats",
+  "dmDialogTitle": "Open DM with user id",
+  "dmPeerHint": "Peer user id",
+  "buttonCancel": "Cancel",
+  "buttonOpen": "Open",
+  "chatFallback": "Chat",
+  "chatFallbackId": "Chat #{id}",
+  "@chatFallbackId": {
+    "placeholders": {
+      "id": {"type": "int"}
+    }
+  },
+
+  "newGroupTitle": "New group",
+  "labelGroupTitle": "Group title",
+  "labelMemberIds": "Member user ids (comma-separated)",
+  "buttonCreate": "Create",
+
+  "groupAppBarTitle": "Group",
+  "groupFallbackTitle": "Group #{id}",
+  "@groupFallbackTitle": {
+    "placeholders": {
+      "id": {"type": "int"}
+    }
+  },
+  "userFallback": "User {id}",
+  "@userFallback": {
+    "placeholders": {
+      "id": {"type": "String"}
+    }
+  },
+
+  "threadTitle": "Thread #{id}",
+  "@threadTitle": {
+    "placeholders": {
+      "id": {"type": "int"}
+    }
+  },
+  "replyingTo": "Replying to: {message}",
+  "@replyingTo": {
+    "placeholders": {
+      "message": {"type": "String"}
+    }
+  },
+  "userNameYou": "You",
+  "typingIndicator": "Someone is typing\u2026",
+  "composerHint": "Message",
+  "actionEdit": "Edit",
+  "actionDeleteForMe": "Delete for me",
+  "actionDeleteForEveryone": "Delete for everyone",
+  "editMessageTitle": "Edit message",
+  "buttonSave": "Save",
+  "blockDialogTitle": "Block user id",
+  "buttonBlock": "Block",
+  "snackBlocked": "Blocked"
+}

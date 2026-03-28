@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:mamana_plus/l10n/app_localizations.dart';
 
 import '../cubit/auth_cubit.dart';
 
@@ -26,8 +27,9 @@ class _LoginPageState extends State<LoginPage> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     return Scaffold(
-      appBar: AppBar(title: const Text('MamanaPlus')),
+      appBar: AppBar(title: Text(l10n.appTitle)),
       body: Padding(
         padding: const EdgeInsets.all(24),
         child: Column(
@@ -35,20 +37,20 @@ class _LoginPageState extends State<LoginPage> {
           children: [
             TextField(
               controller: _email,
-              decoration: const InputDecoration(labelText: 'Email'),
+              decoration: InputDecoration(labelText: l10n.labelEmail),
               keyboardType: TextInputType.emailAddress,
             ),
             const SizedBox(height: 12),
             TextField(
               controller: _password,
-              decoration: const InputDecoration(labelText: 'Password (min 8)'),
+              decoration: InputDecoration(labelText: l10n.labelPassword),
               obscureText: true,
             ),
             if (_register) ...[
               const SizedBox(height: 12),
               TextField(
                 controller: _name,
-                decoration: const InputDecoration(labelText: 'Display name'),
+                decoration: InputDecoration(labelText: l10n.labelDisplayName),
               ),
             ],
             const SizedBox(height: 24),
@@ -67,11 +69,11 @@ class _LoginPageState extends State<LoginPage> {
                       );
                 }
               },
-              child: Text(_register ? 'Register' : 'Login'),
+              child: Text(_register ? l10n.buttonRegister : l10n.buttonLogin),
             ),
             TextButton(
               onPressed: () => setState(() => _register = !_register),
-              child: Text(_register ? 'Have an account? Login' : 'Create account'),
+              child: Text(_register ? l10n.toggleToLogin : l10n.toggleToRegister),
             ),
           ],
         ),

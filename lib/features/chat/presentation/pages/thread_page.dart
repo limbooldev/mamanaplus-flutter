@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_chat_core/flutter_chat_core.dart';
 import 'package:flutter_chat_ui/flutter_chat_ui.dart';
+import 'package:mamana_plus/l10n/app_localizations.dart';
 
 import '../../../../core/database/app_database.dart';
 import '../../../../core/jwt_util.dart';
@@ -139,10 +140,11 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     final theme = Theme.of(context);
     return Scaffold(
       appBar: AppBar(
-        title: Text('Thread #${widget.conversationId}'),
+        title: Text(l10n.threadTitle(widget.conversationId)),
         actions: [
           IconButton(
             icon: const Icon(Icons.block),
@@ -157,11 +159,11 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
             builder: (context, state) {
               if (state.replyTo == null) return const SizedBox.shrink();
               return MaterialBanner(
-                content: Text('Replying to: ${state.replyTo!.body}'),
+                content: Text(l10n.replyingTo(state.replyTo!.body)),
                 actions: [
                   TextButton(
                     onPressed: () => context.read<ThreadCubit>().setReplyTo(null),
-                    child: const Text('Cancel'),
+                    child: Text(l10n.buttonCancel),
                   ),
                 ],
               );
@@ -200,7 +202,7 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
                   currentUserId: '${widget.myUserId}',
                   resolveUser: (id) async => User(
                     id: id,
-                    name: id == '${widget.myUserId}' ? 'You' : 'User $id',
+                    name: id == '${widget.myUserId}' ? l10n.userNameYou : l10n.userFallback(id),
                   ),
                   chatController: _chatController,
                   theme: chatTheme,
@@ -298,7 +300,7 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
                                       const IsTypingIndicator(),
                                       const SizedBox(width: 8),
                                       Text(
-                                        'Someone is typing…',
+                                        l10n.typingIndicator,
                                         style: theme.textTheme.bodySmall?.copyWith(
                                           fontStyle: FontStyle.italic,
                                           color: theme.colorScheme.onSurfaceVariant,
@@ -313,7 +315,7 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
                     },
                     composerBuilder: (ctx) => Composer(
                       textEditingController: _composerController,
-                      hintText: 'Message',
+                      hintText: l10n.composerHint,
                       sendButtonDisabled: state.sending,
                       handleSafeArea: true,
                     ),
@@ -328,6 +330,7 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
   }
 
   Future<void> _ownMessageActions(BuildContext context, LocalMessage m) async {
+    final l10n = AppLocalizations.of(context)!;
     final cubit = context.read<ThreadCubit>();
     final action = await showModalBottomSheet<String>(
       context: context,
@@ -337,17 +340,17 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
           children: [
             ListTile(
               leading: const Icon(Icons.edit),
-              title: const Text('Edit'),
+              title: Text(l10n.actionEdit),
               onTap: () => Navigator.pop(ctx, 'edit'),
             ),
             ListTile(
               leading: const Icon(Icons.visibility_off_outlined),
-              title: const Text('Delete for me'),
+              title: Text(l10n.actionDeleteForMe),
               onTap: () => Navigator.pop(ctx, 'me'),
             ),
             ListTile(
               leading: const Icon(Icons.delete_forever_outlined),
-              title: const Text('Delete for everyone'),
+              title: Text(l10n.actionDeleteForEveryone),
               onTap: () => Navigator.pop(ctx, 'all'),
             ),
           ],
@@ -360,11 +363,17 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
       final ok = await showDialog<bool>(
         context: context,
         builder: (ctx) => AlertDialog(
-          title: const Text('Edit message'),
+          title: Text(l10n.editMessageTitle),
           content: TextField(controller: ctrl, maxLines: 4),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Save')),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: Text(l10n.buttonCancel),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: Text(l10n.buttonSave),
+            ),
           ],
         ),
       );
@@ -380,18 +389,25 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
   }
 
   Future<void> _blockPrompt(BuildContext context) async {
+    final l10n = AppLocalizations.of(context)!;
     final idCtrl = TextEditingController();
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Block user id'),
+        title: Text(l10n.blockDialogTitle),
         content: TextField(
           controller: idCtrl,
           keyboardType: TextInputType.number,
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Block')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text(l10n.buttonCancel),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text(l10n.buttonBlock),
+          ),
         ],
       ),
     );
@@ -400,7 +416,9 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
       if (id != null) {
         await context.read<ChatRepository>().blockUser(id);
         if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Blocked')));
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(l10n.snackBlocked)),
+          );
         }
       }
     }
