@@ -1,3 +1,4 @@
+import 'package:dio/dio.dart';
 import 'package:equatable/equatable.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -6,6 +7,17 @@ import '../../../../core/api_config.dart';
 import '../../../../core/dio_client.dart';
 import '../../../../core/token_storage.dart';
 import '../../data/chat_remote_datasource.dart';
+
+String _extractErrorMessage(Object e) {
+  if (e is DioException) {
+    final data = e.response?.data;
+    if (data is Map) {
+      final msg = data['error'];
+      if (msg is String && msg.isNotEmpty) return msg;
+    }
+  }
+  return e.toString();
+}
 
 sealed class AuthState extends Equatable {
   @override
@@ -79,8 +91,7 @@ class AuthCubit extends Cubit<AuthState> {
       await _tokens.saveTokens(access: access, refresh: refresh);
       emit(AuthAuthenticated(access));
     } catch (e) {
-      emit(AuthFailure(e.toString()));
-      emit(AuthUnauthenticated());
+      emit(AuthFailure(_extractErrorMessage(e)));
     }
   }
 
@@ -95,8 +106,7 @@ class AuthCubit extends Cubit<AuthState> {
       await _tokens.saveTokens(access: access, refresh: refresh);
       emit(AuthAuthenticated(access));
     } catch (e) {
-      emit(AuthFailure(e.toString()));
-      emit(AuthUnauthenticated());
+      emit(AuthFailure(_extractErrorMessage(e)));
     }
   }
 

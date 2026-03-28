@@ -28,56 +28,80 @@ class _LoginPageState extends State<LoginPage> {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
-    return Scaffold(
-      appBar: AppBar(title: Text(l10n.appTitle)),
-      body: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            TextField(
-              controller: _email,
-              decoration: InputDecoration(labelText: l10n.labelEmail),
-              keyboardType: TextInputType.emailAddress,
+    return BlocConsumer<AuthCubit, AuthState>(
+      listenWhen: (_, state) => state is AuthFailure,
+      listener: (context, state) {
+        if (state is AuthFailure) {
+          ScaffoldMessenger.of(context)
+            ..hideCurrentSnackBar()
+            ..showSnackBar(SnackBar(content: Text(state.message)));
+        }
+      },
+      builder: (context, state) {
+        final isLoading = state is AuthLoading;
+        return Scaffold(
+          appBar: AppBar(title: Text(l10n.appTitle)),
+          body: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                TextField(
+                  controller: _email,
+                  decoration: InputDecoration(labelText: l10n.labelEmail),
+                  keyboardType: TextInputType.emailAddress,
+                  enabled: !isLoading,
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: _password,
+                  decoration: InputDecoration(labelText: l10n.labelPassword),
+                  obscureText: true,
+                  enabled: !isLoading,
+                ),
+                if (_register) ...[
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: _name,
+                    decoration: InputDecoration(labelText: l10n.labelDisplayName),
+                    enabled: !isLoading,
+                  ),
+                ],
+                const SizedBox(height: 24),
+                FilledButton(
+                  onPressed: isLoading
+                      ? null
+                      : () {
+                          if (_register) {
+                            context.read<AuthCubit>().register(
+                                  _email.text.trim(),
+                                  _password.text,
+                                  _name.text.trim(),
+                                );
+                          } else {
+                            context.read<AuthCubit>().login(
+                                  _email.text.trim(),
+                                  _password.text,
+                                );
+                          }
+                        },
+                  child: isLoading
+                      ? const SizedBox(
+                          height: 20,
+                          width: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : Text(_register ? l10n.buttonRegister : l10n.buttonLogin),
+                ),
+                TextButton(
+                  onPressed: isLoading ? null : () => setState(() => _register = !_register),
+                  child: Text(_register ? l10n.toggleToLogin : l10n.toggleToRegister),
+                ),
+              ],
             ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _password,
-              decoration: InputDecoration(labelText: l10n.labelPassword),
-              obscureText: true,
-            ),
-            if (_register) ...[
-              const SizedBox(height: 12),
-              TextField(
-                controller: _name,
-                decoration: InputDecoration(labelText: l10n.labelDisplayName),
-              ),
-            ],
-            const SizedBox(height: 24),
-            FilledButton(
-              onPressed: () {
-                if (_register) {
-                  context.read<AuthCubit>().register(
-                        _email.text.trim(),
-                        _password.text,
-                        _name.text.trim(),
-                      );
-                } else {
-                  context.read<AuthCubit>().login(
-                        _email.text.trim(),
-                        _password.text,
-                      );
-                }
-              },
-              child: Text(_register ? l10n.buttonRegister : l10n.buttonLogin),
-            ),
-            TextButton(
-              onPressed: () => setState(() => _register = !_register),
-              child: Text(_register ? l10n.toggleToLogin : l10n.toggleToRegister),
-            ),
-          ],
-        ),
-      ),
+          ),
+        );
+      },
     );
   }
 }

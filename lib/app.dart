@@ -54,7 +54,11 @@ class _MamanaAppState extends State<MamanaApp> {
         final s = auth.state;
         final loc = state.matchedLocation;
         if (s is AuthLoading || s is AuthInitial) {
-          return loc == AppRoutes.splash ? null : AppRoutes.splash;
+          // Stay on /login while the login/register request is in-flight so
+          // the page can show an inline loading state. Only redirect other
+          // locations (e.g. a deep link arrived before restore finished).
+          if (loc == AppRoutes.splash || loc == AppRoutes.login) return null;
+          return AppRoutes.splash;
         }
         if (s is AuthUnauthenticated || s is AuthFailure) {
           if (loc == AppRoutes.login) return null;
@@ -137,11 +141,14 @@ class _MamanaAppState extends State<MamanaApp> {
         case AuthAuthenticated():
           _router.go(AppRoutes.inbox);
         case AuthUnauthenticated():
-        case AuthFailure():
           _router.go(AppRoutes.login);
+        case AuthFailure():
         case AuthLoading():
         case AuthInitial():
-          _router.go(AppRoutes.splash);
+          // GoRouter redirect handles these via refreshListenable.
+          // AuthFailure stays on /login; AuthLoading stays on /login (inline
+          // loading state); AuthInitial is resolved before runApp().
+          break;
       }
     });
   }
