@@ -38,6 +38,13 @@ class ChatRemoteDataSource {
     return res.data!;
   }
 
+  Future<Map<String, dynamic>> getConversation(int conversationId) async {
+    final res = await _dio.get<Map<String, dynamic>>(
+      '/v1/conversations/$conversationId',
+    );
+    return res.data!;
+  }
+
   Future<Map<String, dynamic>> createPrivateDm(int peerUserId) async {
     final res = await _dio.post<Map<String, dynamic>>(
       '/v1/conversations',

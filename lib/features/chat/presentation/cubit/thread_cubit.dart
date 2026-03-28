@@ -6,6 +6,14 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../../../core/database/app_database.dart';
 import '../../data/chat_repository.dart';
 
+int? _jsonInt(dynamic v) {
+  if (v == null) return null;
+  if (v is int) return v;
+  if (v is num) return v.toInt();
+  if (v is String) return int.tryParse(v);
+  return null;
+}
+
 class ThreadState extends Equatable {
   const ThreadState({
     this.messages = const [],
@@ -46,11 +54,14 @@ class ThreadState extends Equatable {
         readCursorByUserId: readCursorByUserId ?? this.readCursorByUserId,
       );
 
-  /// Private DM: single peer read cursor — show double-check when peer read up to [messageId].
+  /// Private DM: max peer read cursor from `receipt_update` — double-check when read up to [messageId].
   bool readReceiptForOwnMessage(int messageId, String? conversationType) {
     if (conversationType != 'private') return false;
-    if (readCursorByUserId.length != 1) return false;
-    return readCursorByUserId.values.single >= messageId;
+    if (readCursorByUserId.isEmpty) return false;
+    final peerMax = readCursorByUserId.values.reduce(
+      (a, b) => a >= b ? a : b,
+    );
+    return peerMax >= messageId;
   }
 
   @override
@@ -72,7 +83,21 @@ class ThreadCubit extends Cubit<ThreadState> {
   final String? conversationType;
   StreamSubscription<Map<String, dynamic>>? _sub;
 
+  /// Route extra and/or local inbox cache (`private` / `group`).
+  String? _resolvedConversationType;
+
+  String? get effectiveConversationType =>
+      _resolvedConversationType ?? conversationType;
+
   Future<void> init() async {
+    _resolvedConversationType =
+        conversationType ?? await _repo.conversationTypeLocal(conversationId);
+    if (_resolvedConversationType == null) {
+      try {
+        final raw = await _repo.fetchConversation(conversationId);
+        _resolvedConversationType = raw['type'] as String?;
+      } catch (_) {}
+    }
     emit(state.copyWith(loading: true));
     try {
       final data = await _repo.fetchMessages(conversationId);
@@ -89,19 +114,25 @@ class ThreadCubit extends Cubit<ThreadState> {
       emit(state.copyWith(loading: false, error: e.toString()));
     }
 
-    _sub = _repo.socket.events.listen((event) {
+    _sub = _repo.socket.events.listen((event) async {
       final type = event['type'] as String?;
       final payload = event['payload'];
       if (type == 'new_message' && payload is Map<String, dynamic>) {
-        final cid = (payload['conversation_id'] as num?)?.toInt();
+        final cid = _jsonInt(payload['conversation_id']);
         if (cid != conversationId) return;
         final msg = payload['message'] as Map<String, dynamic>?;
         if (msg == null) return;
-        _repo.cacheMessages(conversationId, [msg]);
-        _reloadLocal();
+        // Write first, then read — avoids race between async cache and reload.
+        await _repo.cacheMessages(conversationId, [msg]);
+        await _reloadLocal();
+        // Mark new message as read immediately (user is in the thread).
+        final msgId = _jsonInt(msg['id']);
+        if (msgId != null) {
+          unawaited(_repo.markRead(conversationId, msgId));
+        }
       } else if (type == 'typing' && payload is Map<String, dynamic>) {
-        final cid = (payload['conversation_id'] as num?)?.toInt();
-        final uid = (payload['user_id'] as num?)?.toInt();
+        final cid = _jsonInt(payload['conversation_id']);
+        final uid = _jsonInt(payload['user_id']);
         final typing = payload['typing'] as bool? ?? false;
         if (cid != conversationId || uid == null || uid == myUserId) return;
         final next = Set<int>.from(state.typingUserIds);
@@ -112,17 +143,22 @@ class ThreadCubit extends Cubit<ThreadState> {
         }
         emit(state.copyWith(typingUserIds: next));
       } else if (type == 'receipt_update' && payload is Map<String, dynamic>) {
-        final cid = (payload['conversation_id'] as num?)?.toInt();
+        final cid = _jsonInt(payload['conversation_id']);
         if (cid != conversationId) return;
-        final uid = (payload['user_id'] as num?)?.toInt();
-        final mid = (payload['message_id'] as num?)?.toInt();
+        final uid = _jsonInt(payload['user_id']);
+        final mid = _jsonInt(payload['message_id']);
         if (uid == null || mid == null || uid == myUserId) return;
         final prev = state.readCursorByUserId[uid] ?? 0;
         final v = mid > prev ? mid : prev;
+        final newCursor = {...state.readCursorByUserId, uid: v};
+        // Load fresh messages first, then emit ONCE with both cursor + messages.
+        // Previously two separate emits (cursor, then reload) caused two concurrent
+        // setMessages calls that raced and clobbered each other.
+        final local = await _repo.loadMessagesLocal(conversationId);
         emit(state.copyWith(
-          readCursorByUserId: {...state.readCursorByUserId, uid: v},
+          readCursorByUserId: newCursor,
+          messages: local,
         ));
-        _reloadLocal();
       }
     });
   }

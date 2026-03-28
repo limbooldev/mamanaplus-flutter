@@ -113,6 +113,13 @@ class ChatRepository {
         final ct = m['content_type'] as String? ?? 'text/plain';
         final reply = m['reply_to_message_id'];
         final created = DateTime.tryParse(m['created_at'] as String? ?? '') ?? DateTime.now();
+        DateTime? recDel;
+        DateTime? recRead;
+        final receipt = m['receipt'];
+        if (receipt is Map<String, dynamic>) {
+          recDel = DateTime.tryParse(receipt['delivered_at'] as String? ?? '');
+          recRead = DateTime.tryParse(receipt['read_at'] as String? ?? '');
+        }
         b.insert(
           _db.localMessages,
           LocalMessagesCompanion.insert(
@@ -123,6 +130,8 @@ class ChatRepository {
             contentType: Value(ct),
             replyToMessageId: Value(reply == null ? null : (reply as num).toInt()),
             createdAt: created,
+            receiptDeliveredAt: Value(recDel),
+            receiptReadAt: Value(recRead),
           ),
           mode: InsertMode.insertOrReplace,
         );
@@ -143,8 +152,19 @@ class ChatRepository {
         .get();
   }
 
+  /// Cached `type` from last inbox sync (`private` / `group`), if known.
+  Future<String?> conversationTypeLocal(int conversationId) async {
+    final row = await (_db.select(_db.localConversations)
+          ..where((t) => t.id.equals(conversationId)))
+        .getSingleOrNull();
+    return row?.type;
+  }
+
   Future<Map<String, dynamic>> fetchMessages(int conversationId, {String? cursor}) =>
       _remote.listMessages(conversationId, cursor: cursor);
+
+  Future<Map<String, dynamic>> fetchConversation(int conversationId) =>
+      _remote.getConversation(conversationId);
 
   Future<Map<String, dynamic>> sendMessage(
     int conversationId, {

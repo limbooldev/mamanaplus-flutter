@@ -88,7 +88,10 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
 
   String _chatSignature(ThreadState s) {
     final parts = s.messages
-        .map((m) => '${m.id}|${m.body}|${m.contentType}|${m.replyToMessageId}')
+        .map(
+          (m) =>
+              '${m.id}|${m.body}|${m.contentType}|${m.replyToMessageId}|${m.receiptDeliveredAt}|${m.receiptReadAt}',
+        )
         .join('~');
     final reads =
         s.readCursorByUserId.entries.map((e) => '${e.key}:${e.value}').join(',');
@@ -97,14 +100,34 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
 
   Future<void> _syncChatMessages(ThreadState state) async {
     if (!mounted) return;
-    final convType = context.read<ThreadCubit>().conversationType;
+    final convType = context.read<ThreadCubit>().effectiveConversationType;
     final mapped = mapLocalMessagesToChatMessages(
       state.messages,
       myUserId: widget.myUserId,
       readReceiptForOwn: (id) => state.readReceiptForOwnMessage(id, convType),
     );
     if (!mounted) return;
-    await _chatController.setMessages(mapped, animated: state.messages.length > 1);
+
+    // For existing messages whose content changed (e.g. status: delivered→seen),
+    // use updateMessage instead of relying on setMessages's remove+insert diff.
+    // setMessages uses ValueKey(message.id) for ChatMessageInternal, so remove+insert
+    // reuses the old widget state (which still has the old status) — the status icon
+    // never updates. updateMessage emits ChatOperationType.update which
+    // ChatMessageInternal listens to and directly calls setState.
+    final existingById = {for (final m in _chatController.messages) m.id: m};
+    for (final newMsg in mapped) {
+      if (!mounted) return;
+      final old = existingById[newMsg.id];
+      if (old != null && old != newMsg) {
+        await _chatController.updateMessage(old, newMsg);
+      }
+    }
+    if (!mounted) return;
+
+    // setMessages handles structural changes only (inserts/deletes).
+    // Because updates are pre-applied above, the diff sees no "change" ops for
+    // existing messages — only new/removed messages produce insertItem/removeItem.
+    await _chatController.setMessages(mapped, animated: false);
   }
 
   LocalMessage? _localById(List<LocalMessage> messages, int id) {
@@ -161,7 +184,15 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
                 final sig = _chatSignature(state);
                 if (sig != _lastChatSyncSig) {
                   _lastChatSyncSig = sig;
-                  unawaited(_syncChatMessages(state));
+                  // Schedule AFTER the current frame so setMessages → insertItem
+                  // is not called during build (which Flutter silently drops).
+                  // Use the latest cubit state at callback time to avoid stale captures
+                  // racing with other pending setMessages calls.
+                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                    if (mounted) {
+                      unawaited(_syncChatMessages(context.read<ThreadCubit>().state));
+                    }
+                  });
                 }
                 final typing = state.typingUserIds.isNotEmpty;
                 final chatTheme = ChatTheme.fromThemeData(theme);
@@ -193,8 +224,70 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
                     }
                   },
                   builders: Builders(
+                    imageMessageBuilder:
+                        (context, message, index, {required isSentByMe, groupStatus}) {
+                      final theme = context.read<ChatTheme>();
+                      final bubble =
+                          isSentByMe ? theme.colors.primary : theme.colors.surfaceContainerHigh;
+                      final fg = isSentByMe ? theme.colors.onPrimary : theme.colors.onSurface;
+                      return Align(
+                        alignment:
+                            isSentByMe ? Alignment.centerRight : Alignment.centerLeft,
+                        child: Container(
+                          margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
+                          padding: const EdgeInsets.all(6),
+                          decoration: BoxDecoration(
+                            color: bubble,
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.end,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              ClipRRect(
+                                borderRadius: BorderRadius.circular(8),
+                                child: Image.network(
+                                  message.source,
+                                  width: 220,
+                                  fit: BoxFit.cover,
+                                  loadingBuilder: (c, child, p) => p == null
+                                      ? child
+                                      : const SizedBox(
+                                          width: 220,
+                                          height: 160,
+                                          child: Center(
+                                            child: CircularProgressIndicator(strokeWidth: 2),
+                                          ),
+                                        ),
+                                  errorBuilder: (_, __, ___) => Padding(
+                                    padding: const EdgeInsets.all(8),
+                                    child: Text(
+                                      message.text ?? message.source,
+                                      style: TextStyle(color: fg),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              if (isSentByMe)
+                                TimeAndStatus(
+                                  time: message.resolvedTime,
+                                  status: message.resolvedStatus,
+                                  showTime: true,
+                                  showStatus: true,
+                                  textStyle: theme.typography.labelSmall.copyWith(
+                                    color: fg.withValues(alpha: 0.9),
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ),
+                      );
+                    },
                     chatAnimatedListBuilder: (ctx, itemBuilder) {
-                      return ChatAnimatedListReversed(
+                      // Default (non-reversed) list: oldest at top, newest above composer.
+                      // ChatAnimatedListReversed + setMessages diffs can hit
+                      // SliverAnimatedList child-order assertions.
+                      return ChatAnimatedList(
                         itemBuilder: itemBuilder,
                         bottomSliver: typing
                             ? SliverToBoxAdapter(

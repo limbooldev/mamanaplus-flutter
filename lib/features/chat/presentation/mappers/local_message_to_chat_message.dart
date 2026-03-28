@@ -9,7 +9,7 @@ bool _looksLikeImageUrl(LocalMessage m) {
 }
 
 /// Converts local rows (newest-first) to [Message] list in **chronological** order
-/// (oldest → newest) for [InMemoryChatController] + reversed chat list.
+/// (oldest → newest) for [InMemoryChatController] + default [ChatAnimatedList].
 List<Message> mapLocalMessagesToChatMessages(
   List<LocalMessage> newestFirst, {
   required int myUserId,
@@ -21,9 +21,19 @@ List<Message> mapLocalMessagesToChatMessages(
     final authorId = '${m.senderId}';
     final replyTo =
         m.replyToMessageId != null ? '${m.replyToMessageId}' : null;
-    final status = mine
-        ? (readReceiptForOwn(m.id) ? MessageStatus.seen : MessageStatus.sent)
-        : null;
+    final MessageStatus? status;
+    if (mine) {
+      final seen = readReceiptForOwn(m.id) || m.receiptReadAt != null;
+      if (seen) {
+        status = MessageStatus.seen;
+      } else if (m.receiptDeliveredAt != null) {
+        status = MessageStatus.delivered;
+      } else {
+        status = MessageStatus.sent;
+      }
+    } else {
+      status = null;
+    }
 
     if (_looksLikeImageUrl(m)) {
       return Message.image(

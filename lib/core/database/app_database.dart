@@ -25,6 +25,9 @@ class LocalMessages extends Table {
   TextColumn get contentType => text().withDefault(const Constant('text/plain'))();
   IntColumn get replyToMessageId => integer().nullable()();
   DateTimeColumn get createdAt => dateTime()();
+  /// From API `receipt`: for own messages in a DM = peer delivery/read; for others = local read state.
+  DateTimeColumn get receiptDeliveredAt => dateTime().nullable()();
+  DateTimeColumn get receiptReadAt => dateTime().nullable()();
   @override
   Set<Column> get primaryKey => {id};
 }
@@ -45,7 +48,20 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(_openConnection());
 
   @override
-  int get schemaVersion => 1;
+  int get schemaVersion => 2;
+
+  @override
+  MigrationStrategy get migration => MigrationStrategy(
+        onCreate: (Migrator m) async {
+          await m.createAll();
+        },
+        onUpgrade: (Migrator m, int from, int to) async {
+          if (from < 2) {
+            await m.addColumn(localMessages, localMessages.receiptDeliveredAt);
+            await m.addColumn(localMessages, localMessages.receiptReadAt);
+          }
+        },
+      );
 
   static LazyDatabase _openConnection() {
     return LazyDatabase(() async {
