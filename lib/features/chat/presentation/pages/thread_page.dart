@@ -2,11 +2,14 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:flutter_chat_core/flutter_chat_core.dart';
+import 'package:flutter_chat_ui/flutter_chat_ui.dart';
 
 import '../../../../core/database/app_database.dart';
 import '../../../../core/jwt_util.dart';
 import '../../data/chat_repository.dart';
 import '../cubit/thread_cubit.dart';
+import '../mappers/local_message_to_chat_message.dart';
 
 class ThreadPage extends StatelessWidget {
   const ThreadPage({
@@ -46,17 +49,33 @@ class _ThreadScaffold extends StatefulWidget {
 }
 
 class _ThreadScaffoldState extends State<_ThreadScaffold> {
-  final _controller = TextEditingController();
+  final _composerController = TextEditingController();
+  late final InMemoryChatController _chatController;
   Timer? _typingIdleTimer;
+  String _lastChatSyncSig = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _chatController = InMemoryChatController();
+    _composerController.addListener(_handleComposerTextChanged);
+  }
 
   @override
   void dispose() {
     _typingIdleTimer?.cancel();
-    _controller.dispose();
+    _composerController.removeListener(_handleComposerTextChanged);
+    _composerController.dispose();
+    _chatController.dispose();
     super.dispose();
   }
 
-  void _onTextChanged(BuildContext context, String text) {
+  void _handleComposerTextChanged() {
+    if (!mounted) return;
+    _onTypingFromText(context, _composerController.text);
+  }
+
+  void _onTypingFromText(BuildContext context, String text) {
     final cubit = context.read<ThreadCubit>();
     _typingIdleTimer?.cancel();
     if (text.isEmpty) {
@@ -67,17 +86,41 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
     _typingIdleTimer = Timer(const Duration(seconds: 2), () => cubit.onTyping(false));
   }
 
+  String _chatSignature(ThreadState s) {
+    final parts = s.messages
+        .map((m) => '${m.id}|${m.body}|${m.contentType}|${m.replyToMessageId}')
+        .join('~');
+    final reads =
+        s.readCursorByUserId.entries.map((e) => '${e.key}:${e.value}').join(',');
+    return '$parts#$reads';
+  }
+
+  Future<void> _syncChatMessages(ThreadState state) async {
+    if (!mounted) return;
+    final convType = context.read<ThreadCubit>().conversationType;
+    final mapped = mapLocalMessagesToChatMessages(
+      state.messages,
+      myUserId: widget.myUserId,
+      readReceiptForOwn: (id) => state.readReceiptForOwnMessage(id, convType),
+    );
+    if (!mounted) return;
+    await _chatController.setMessages(mapped, animated: state.messages.length > 1);
+  }
+
+  LocalMessage? _localById(List<LocalMessage> messages, int id) {
+    for (final m in messages) {
+      if (m.id == id) return m;
+    }
+    return null;
+  }
+
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     return Scaffold(
       appBar: AppBar(
         title: Text('Thread #${widget.conversationId}'),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.image_outlined),
-            tooltip: 'Stub image (presign)',
-            onPressed: () => context.read<ThreadCubit>().sendStubAttachment(),
-          ),
           IconButton(
             icon: const Icon(Icons.block),
             onPressed: () => _blockPrompt(context),
@@ -86,8 +129,24 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
       ),
       body: Column(
         children: [
+          BlocBuilder<ThreadCubit, ThreadState>(
+            buildWhen: (a, b) => a.replyTo != b.replyTo,
+            builder: (context, state) {
+              if (state.replyTo == null) return const SizedBox.shrink();
+              return MaterialBanner(
+                content: Text('Replying to: ${state.replyTo!.body}'),
+                actions: [
+                  TextButton(
+                    onPressed: () => context.read<ThreadCubit>().setReplyTo(null),
+                    child: const Text('Cancel'),
+                  ),
+                ],
+              );
+            },
+          ),
           Expanded(
             child: BlocConsumer<ThreadCubit, ThreadState>(
+              listenWhen: (p, c) => p.error != c.error,
               listener: (context, state) {
                 if (state.error != null) {
                   ScaffoldMessenger.of(context).showSnackBar(
@@ -99,92 +158,75 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
                 if (state.loading && state.messages.isEmpty) {
                   return const Center(child: CircularProgressIndicator());
                 }
+                final sig = _chatSignature(state);
+                if (sig != _lastChatSyncSig) {
+                  _lastChatSyncSig = sig;
+                  unawaited(_syncChatMessages(state));
+                }
                 final typing = state.typingUserIds.isNotEmpty;
-                final convType = context.read<ThreadCubit>().conversationType;
-                return Column(
-                  children: [
-                    if (typing)
-                      const Padding(
-                        padding: EdgeInsets.all(8),
-                        child: Text('Someone is typing…', style: TextStyle(fontStyle: FontStyle.italic)),
-                      ),
-                    Expanded(
-                      child: ListView.builder(
-                        reverse: true,
-                        itemCount: state.messages.length,
-                        itemBuilder: (context, i) {
-                          final m = state.messages[i];
-                          final isReply = m.replyToMessageId != null;
-                          final mine = m.senderId == widget.myUserId;
-                          final read = state.readReceiptForOwnMessage(m.id, convType);
-                          return ListTile(
-                            dense: true,
-                            title: Text(
-                              m.body,
-                              style: TextStyle(
-                                fontStyle: m.body.isEmpty ? FontStyle.italic : FontStyle.normal,
-                              ),
-                            ),
-                            subtitle: isReply
-                                ? Text('↩ reply to #${m.replyToMessageId}')
-                                : null,
-                            trailing: mine
-                                ? Icon(
-                                    read ? Icons.done_all : Icons.check,
-                                    size: 18,
-                                    color: read ? Theme.of(context).colorScheme.primary : null,
-                                  )
-                                : null,
-                            onLongPress: mine
-                                ? () => _ownMessageActions(context, m)
-                                : () => context.read<ThreadCubit>().setReplyTo(m),
-                          );
-                        },
-                      ),
+                final chatTheme = ChatTheme.fromThemeData(theme);
+                return Chat(
+                  currentUserId: '${widget.myUserId}',
+                  resolveUser: (id) async => User(
+                    id: id,
+                    name: id == '${widget.myUserId}' ? 'You' : 'User $id',
+                  ),
+                  chatController: _chatController,
+                  theme: chatTheme,
+                  backgroundColor: theme.colorScheme.surface,
+                  onMessageSend: (text) {
+                    _typingIdleTimer?.cancel();
+                    context.read<ThreadCubit>().onTyping(false);
+                    context.read<ThreadCubit>().send(text);
+                  },
+                  onAttachmentTap: () => context.read<ThreadCubit>().sendStubAttachment(),
+                  onMessageLongPress: (ctx, message, {required index, required details}) {
+                    final id = int.tryParse(message.id);
+                    if (id == null) return;
+                    final cubit = context.read<ThreadCubit>();
+                    final local = _localById(cubit.state.messages, id);
+                    if (local == null) return;
+                    if (local.senderId == widget.myUserId) {
+                      unawaited(_ownMessageActions(context, local));
+                    } else {
+                      cubit.setReplyTo(local);
+                    }
+                  },
+                  builders: Builders(
+                    chatAnimatedListBuilder: (ctx, itemBuilder) {
+                      return ChatAnimatedListReversed(
+                        itemBuilder: itemBuilder,
+                        bottomSliver: typing
+                            ? SliverToBoxAdapter(
+                                child: Padding(
+                                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+                                  child: Row(
+                                    children: [
+                                      const IsTypingIndicator(),
+                                      const SizedBox(width: 8),
+                                      Text(
+                                        'Someone is typing…',
+                                        style: theme.textTheme.bodySmall?.copyWith(
+                                          fontStyle: FontStyle.italic,
+                                          color: theme.colorScheme.onSurfaceVariant,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              )
+                            : null,
+                      );
+                    },
+                    composerBuilder: (ctx) => Composer(
+                      textEditingController: _composerController,
+                      hintText: 'Message',
+                      sendButtonDisabled: state.sending,
+                      handleSafeArea: true,
                     ),
-                  ],
+                  ),
                 );
               },
-            ),
-          ),
-          SafeArea(
-            top: false,
-            maintainBottomViewPadding: true,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                BlocBuilder<ThreadCubit, ThreadState>(
-                  buildWhen: (a, b) => a.replyTo != b.replyTo,
-                  builder: (context, state) {
-                    if (state.replyTo == null) return const SizedBox.shrink();
-                    return MaterialBanner(
-                      content: Text('Replying to: ${state.replyTo!.body}'),
-                      actions: [
-                        TextButton(
-                          onPressed: () => context.read<ThreadCubit>().setReplyTo(null),
-                          child: const Text('Cancel'),
-                        ),
-                      ],
-                    );
-                  },
-                ),
-                Row(
-                  children: [
-                    Expanded(
-                      child: TextField(
-                        controller: _controller,
-                        decoration: const InputDecoration(hintText: 'Message'),
-                        onChanged: (t) => _onTextChanged(context, t),
-                        onSubmitted: (_) => _send(context),
-                      ),
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.send),
-                      onPressed: () => _send(context),
-                    ),
-                  ],
-                ),
-              ],
             ),
           ),
         ],
@@ -242,14 +284,6 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
     } else if (action == 'all') {
       await cubit.deleteMessage(m.id, forEveryone: true);
     }
-  }
-
-  void _send(BuildContext context) {
-    final text = _controller.text;
-    _controller.clear();
-    _typingIdleTimer?.cancel();
-    context.read<ThreadCubit>().onTyping(false);
-    context.read<ThreadCubit>().send(text);
   }
 
   Future<void> _blockPrompt(BuildContext context) async {
