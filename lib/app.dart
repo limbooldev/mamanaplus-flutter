@@ -4,6 +4,7 @@ import 'package:mamana_plus/l10n/app_localizations.dart';
 import 'package:go_router/go_router.dart';
 
 import 'core/api_config.dart';
+import 'shared/ui/ui.dart';
 import 'router/app_routes.dart';
 import 'features/chat/data/chat_repository.dart';
 import 'features/chat/presentation/cubit/auth_cubit.dart';
@@ -170,10 +171,9 @@ class _MamanaAppState extends State<MamanaApp> {
         title: 'MamanaPlus',
         localizationsDelegates: AppLocalizations.localizationsDelegates,
         supportedLocales: AppLocalizations.supportedLocales,
-        theme: ThemeData(
-          colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
-          useMaterial3: true,
-        ),
+        theme: AppTheme.light,
+        darkTheme: AppTheme.dark,
+        themeMode: ThemeMode.system,
         routerConfig: _router,
       ),
     );

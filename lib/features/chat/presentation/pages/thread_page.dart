@@ -4,10 +4,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_chat_core/flutter_chat_core.dart';
 import 'package:flutter_chat_ui/flutter_chat_ui.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:mamana_plus/l10n/app_localizations.dart';
 
 import '../../../../core/database/app_database.dart';
 import '../../../../core/jwt_util.dart';
+import '../../../../shared/ui/ui.dart';
 import '../../data/chat_repository.dart';
 import '../cubit/thread_cubit.dart';
 import '../mappers/local_message_to_chat_message.dart';
@@ -144,10 +146,46 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
     final theme = Theme.of(context);
     return Scaffold(
       appBar: AppBar(
-        title: Text(l10n.threadTitle(widget.conversationId)),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_ios_new_rounded),
+          onPressed: () => Navigator.of(context).pop(),
+        ),
+        title: Row(
+          children: [
+            Container(
+              width: 36,
+              height: 36,
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [AppColors.primary, Color(0xFF7B5FFF)],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                shape: BoxShape.circle,
+              ),
+              child: Center(
+                child: Text(
+                  '#',
+                  style: GoogleFonts.inter(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 16,
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                l10n.threadTitle(widget.conversationId),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ],
+        ),
         actions: [
           IconButton(
-            icon: const Icon(Icons.block),
+            icon: const Icon(Icons.block_outlined),
             onPressed: () => _blockPrompt(context),
           ),
         ],
@@ -197,7 +235,8 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
                   });
                 }
                 final typing = state.typingUserIds.isNotEmpty;
-                final chatTheme = ChatTheme.fromThemeData(theme);
+                final isDark = theme.brightness == Brightness.dark;
+                final chatTheme = _buildChatTheme(theme, isDark);
                 return Chat(
                   currentUserId: '${widget.myUserId}',
                   resolveUser: (id) async => User(
@@ -206,7 +245,7 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
                   ),
                   chatController: _chatController,
                   theme: chatTheme,
-                  backgroundColor: theme.colorScheme.surface,
+                  backgroundColor: isDark ? AppColors.backgroundDark : AppColors.backgroundLight,
                   onMessageSend: (text) {
                     _typingIdleTimer?.cancel();
                     context.read<ThreadCubit>().onTyping(false);
@@ -325,6 +364,40 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  ChatTheme _buildChatTheme(ThemeData theme, bool isDark) {
+    return ChatTheme(
+      shape: const BorderRadius.all(Radius.circular(AppShapes.bubbleRadius)),
+      colors: ChatColors(
+        primary: AppColors.primary,
+        onPrimary: AppColors.onPrimary,
+        surface: isDark ? AppColors.surfaceDark : AppColors.backgroundLight,
+        onSurface: isDark ? AppColors.onBackgroundDark : AppColors.onBackgroundLight,
+        surfaceContainerLow:
+            isDark ? AppColors.surfaceDark : AppColors.surfaceLight,
+        surfaceContainer:
+            isDark ? AppColors.cardDark : const Color(0xFFF0F0F0),
+        surfaceContainerHigh:
+            isDark ? AppColors.receivedBubbleDark : AppColors.receivedBubbleLight,
+      ),
+      typography: ChatTypography(
+        bodyLarge: GoogleFonts.inter(fontSize: 16, fontWeight: FontWeight.w400),
+        bodyMedium: GoogleFonts.inter(fontSize: 15, fontWeight: FontWeight.w400),
+        bodySmall: GoogleFonts.inter(
+          fontSize: 12,
+          color: AppColors.subtitleLight,
+        ),
+        labelLarge: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w500),
+        labelMedium:
+            GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w500),
+        labelSmall: GoogleFonts.inter(
+          fontSize: 11,
+          fontWeight: FontWeight.w400,
+          color: AppColors.subtitleLight,
+        ),
       ),
     );
   }
