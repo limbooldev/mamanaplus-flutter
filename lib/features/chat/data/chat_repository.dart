@@ -28,6 +28,10 @@ class ChatRepository {
 
   AppDatabase get database => _db;
 
+  /// Returns the authenticated user's profile from `GET /v1/me`.
+  /// Keys: id, email, display_name, created_at.
+  Future<Map<String, dynamic>> fetchMe() => _remote.fetchMe();
+
   Future<void> enqueuePendingSend({
     required String localId,
     required int conversationId,

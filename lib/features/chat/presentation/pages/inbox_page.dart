@@ -9,7 +9,6 @@ import '../../../../router/app_routes.dart';
 import '../../../../core/database/app_database.dart';
 import '../../../../shared/ui/ui.dart';
 import '../../data/chat_repository.dart';
-import '../cubit/auth_cubit.dart';
 import '../cubit/inbox_cubit.dart';
 import '../cubit/public_groups_cubit.dart';
 
@@ -56,11 +55,6 @@ class _InboxAppBar extends StatelessWidget implements PreferredSizeWidget {
       title: Text(l10n.chatsTitle),
       actions: [
         _NewGroupButton(l10n: l10n),
-        IconButton(
-          icon: const Icon(Icons.logout_outlined),
-          tooltip: 'Logout',
-          onPressed: () => context.read<AuthCubit>().logout(),
-        ),
         const SizedBox(width: 4),
       ],
       bottom: PreferredSize(

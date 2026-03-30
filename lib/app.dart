@@ -8,10 +8,11 @@ import 'shared/ui/ui.dart';
 import 'router/app_routes.dart';
 import 'features/chat/data/chat_repository.dart';
 import 'features/chat/presentation/cubit/auth_cubit.dart';
+import 'features/chat/presentation/cubit/theme_cubit.dart';
 import 'features/chat/presentation/pages/group_create_page.dart';
 import 'features/chat/presentation/pages/group_detail_page.dart';
-import 'features/chat/presentation/pages/inbox_page.dart';
 import 'features/chat/presentation/pages/login_page.dart';
+import 'features/chat/presentation/pages/main_shell.dart';
 import 'features/chat/presentation/pages/thread_page.dart';
 
 String _initialLocationFor(AuthState s) {
@@ -84,7 +85,7 @@ class _MamanaAppState extends State<MamanaApp> {
         ),
         GoRoute(
           path: AppRoutes.inbox,
-          builder: (_, __) => const InboxPage(),
+          builder: (_, __) => const MainShell(),
         ),
         GoRoute(
           path: AppRoutes.threadPattern,
@@ -167,14 +168,16 @@ class _MamanaAppState extends State<MamanaApp> {
         }
         _syncRouteToAuth(state);
       },
-      child: MaterialApp.router(
-        title: 'MamanaPlus',
-        localizationsDelegates: AppLocalizations.localizationsDelegates,
-        supportedLocales: AppLocalizations.supportedLocales,
-        theme: AppTheme.light,
-        darkTheme: AppTheme.dark,
-        themeMode: ThemeMode.system,
-        routerConfig: _router,
+      child: BlocBuilder<ThemeCubit, ThemeMode>(
+        builder: (context, themeMode) => MaterialApp.router(
+          title: 'MamanaPlus',
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          theme: AppTheme.light,
+          darkTheme: AppTheme.dark,
+          themeMode: themeMode,
+          routerConfig: _router,
+        ),
       ),
     );
   }

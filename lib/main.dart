@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqlite3_flutter_libs/sqlite3_flutter_libs.dart';
 
 import 'app.dart';
@@ -13,6 +14,7 @@ import 'features/chat/data/chat_remote_datasource.dart';
 import 'features/chat/data/chat_repository.dart';
 import 'features/chat/data/chat_socket.dart';
 import 'features/chat/presentation/cubit/auth_cubit.dart';
+import 'features/chat/presentation/cubit/theme_cubit.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -30,11 +32,17 @@ Future<void> main() async {
   final auth = AuthCubit(config: config, tokens: tokens);
   await auth.restore();
 
+  final prefs = await SharedPreferences.getInstance();
+  final themeCubit = ThemeCubit(prefs);
+
   runApp(
     RepositoryProvider<ChatRepository>.value(
       value: repo,
-      child: BlocProvider<AuthCubit>.value(
-        value: auth,
+      child: MultiBlocProvider(
+        providers: [
+          BlocProvider<AuthCubit>.value(value: auth),
+          BlocProvider<ThemeCubit>.value(value: themeCubit),
+        ],
         child: MamanaApp(
           authCubit: auth,
           config: config,
