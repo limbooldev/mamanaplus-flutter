@@ -303,6 +303,42 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Blocked'**
   String get snackBlocked;
+
+  /// No description provided for @tabChats.
+  ///
+  /// In en, this message translates to:
+  /// **'Chats'**
+  String get tabChats;
+
+  /// No description provided for @tabGroups.
+  ///
+  /// In en, this message translates to:
+  /// **'Groups'**
+  String get tabGroups;
+
+  /// No description provided for @noPublicGroups.
+  ///
+  /// In en, this message translates to:
+  /// **'No public groups yet'**
+  String get noPublicGroups;
+
+  /// No description provided for @membersCount.
+  ///
+  /// In en, this message translates to:
+  /// **'{count} members'**
+  String membersCount(int count);
+
+  /// No description provided for @buttonJoin.
+  ///
+  /// In en, this message translates to:
+  /// **'Join'**
+  String get buttonJoin;
+
+  /// No description provided for @joinFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Failed to join group'**
+  String get joinFailed;
 }
 
 class _AppLocalizationsDelegate

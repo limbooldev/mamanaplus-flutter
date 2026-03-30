@@ -65,5 +65,17 @@
   "buttonSave": "Save",
   "blockDialogTitle": "Block user id",
   "buttonBlock": "Block",
-  "snackBlocked": "Blocked"
+  "snackBlocked": "Blocked",
+
+  "tabChats": "Chats",
+  "tabGroups": "Groups",
+  "noPublicGroups": "No public groups yet",
+  "membersCount": "{count} members",
+  "@membersCount": {
+    "placeholders": {
+      "count": {"type": "int"}
+    }
+  },
+  "buttonJoin": "Join",
+  "joinFailed": "Failed to join group"
 }

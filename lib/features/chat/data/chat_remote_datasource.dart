@@ -161,6 +161,27 @@ class ChatRemoteDataSource {
     );
   }
 
+  // --- Public Groups ---
+
+  Future<Map<String, dynamic>> listPublicGroups({
+    int limit = 50,
+    int offset = 0,
+  }) async {
+    final res = await _dio.get<Map<String, dynamic>>(
+      '/v1/public-groups',
+      queryParameters: {'limit': limit, 'offset': offset},
+    );
+    return res.data!;
+  }
+
+  Future<void> joinPublicGroup(int groupId) async {
+    await _dio.post<void>('/v1/public-groups/$groupId/join');
+  }
+
+  Future<void> leavePublicGroup(int groupId) async {
+    await _dio.delete<void>('/v1/public-groups/$groupId/leave');
+  }
+
   Future<Map<String, dynamic>> presignMedia({
     required String contentType,
     required int byteSize,

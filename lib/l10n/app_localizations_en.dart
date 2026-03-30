@@ -122,4 +122,24 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get snackBlocked => 'Blocked';
+
+  @override
+  String get tabChats => 'Chats';
+
+  @override
+  String get tabGroups => 'Groups';
+
+  @override
+  String get noPublicGroups => 'No public groups yet';
+
+  @override
+  String membersCount(int count) {
+    return '$count members';
+  }
+
+  @override
+  String get buttonJoin => 'Join';
+
+  @override
+  String get joinFailed => 'Failed to join group';
 }

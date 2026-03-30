@@ -243,4 +243,18 @@ class ChatRepository {
   Future<void> blockUser(int userId) => _remote.blockUser(userId);
 
   Future<void> unblockUser(int userId) => _remote.unblockUser(userId);
+
+  // --- Public Groups ---
+
+  Future<List<Map<String, dynamic>>> listPublicGroups({
+    int limit = 50,
+    int offset = 0,
+  }) async {
+    final data = await _remote.listPublicGroups(limit: limit, offset: offset);
+    return (data['items'] as List<dynamic>? ?? []).cast<Map<String, dynamic>>();
+  }
+
+  Future<void> joinPublicGroup(int groupId) => _remote.joinPublicGroup(groupId);
+
+  Future<void> leavePublicGroup(int groupId) => _remote.leavePublicGroup(groupId);
 }
