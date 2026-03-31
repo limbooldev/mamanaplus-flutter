@@ -4,6 +4,7 @@ import 'package:drift/drift.dart';
 
 import '../../../core/database/app_database.dart';
 import '../../../core/token_storage.dart';
+import '../media_constants.dart';
 import 'chat_remote_datasource.dart';
 import 'chat_socket.dart';
 
@@ -205,19 +206,54 @@ class ChatRepository {
   Future<Map<String, dynamic>> getGroup(int conversationId) =>
       _remote.getGroup(conversationId);
 
-  /// Dev path: presign + send object key as an image message (no binary upload).
-  Future<void> sendStubAttachment(int conversationId) async {
-    final p = await _remote.presignMedia(
-      contentType: 'image/jpeg',
-      byteSize: 1,
+  /// Presign → upload → optional complete (S3/GCS) → send `application/vnd.mamana.media+json` message.
+  Future<Map<String, dynamic>> uploadAndSendMediaMessage({
+    required int conversationId,
+    required List<int> bytes,
+    required String mimeType,
+    required String kind,
+    int? durationMs,
+    int? replyToMessageId,
+  }) async {
+    final presign = await _remote.presignMedia(
+      contentType: mimeType,
+      byteSize: bytes.length,
       conversationId: conversationId,
     );
-    final key = p['object_key'] as String;
-    await _remote.sendMessage(
-      conversationId,
-      body: key,
-      contentType: 'image/jpeg',
+    final uploadUrl = presign['upload_url'] as String;
+    final headers = Map<String, String>.from(
+      (presign['headers'] as Map?)?.map((k, v) => MapEntry('$k', '$v')) ??
+          const <String, String>{},
     );
+    final objectKey = presign['object_key'] as String;
+    final isLocal = presign.containsKey('upload_token');
+    final access = isLocal ? await _tokens?.getAccessToken() : null;
+    if (isLocal && (access == null || access.isEmpty)) {
+      throw StateError('Not authenticated: cannot upload media');
+    }
+    await _remote.uploadMediaPut(
+      uploadUrl: uploadUrl,
+      headers: headers,
+      bytes: bytes,
+      bearerToken: access,
+    );
+    if (!isLocal) {
+      await _remote.completeMediaUpload(objectKey: objectKey);
+    }
+    final body = jsonEncode({
+      'object_key': objectKey,
+      'mime': mimeType,
+      'kind': kind,
+      if (durationMs != null && durationMs > 0) 'duration_ms': durationMs,
+    });
+    final m = await sendMessage(
+      conversationId,
+      body: body,
+      contentType: kMamanaMediaContentType,
+      replyToMessageId: replyToMessageId,
+    );
+    await cacheMessages(conversationId, [m]);
+    return m;
   }
 
   Future<void> markRead(int conversationId, int lastReadMessageId) =>

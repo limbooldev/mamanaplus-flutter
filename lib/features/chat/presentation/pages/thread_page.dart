@@ -5,14 +5,20 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_chat_core/flutter_chat_core.dart';
 import 'package:flutter_chat_ui/flutter_chat_ui.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:mamana_plus/l10n/app_localizations.dart';
+import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
+import 'package:record/record.dart';
 
+import '../../../../core/api_config.dart';
 import '../../../../core/database/app_database.dart';
 import '../../../../core/jwt_util.dart';
 import '../../../../shared/ui/ui.dart';
 import '../../data/chat_repository.dart';
 import '../cubit/thread_cubit.dart';
 import '../mappers/local_message_to_chat_message.dart';
+import '../widgets/thread_media_widgets.dart';
 
 class ThreadPage extends StatelessWidget {
   const ThreadPage({
@@ -29,6 +35,7 @@ class ThreadPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final myId = parseUserIdFromAccessToken(accessToken) ?? 0;
+    final apiBase = context.read<ApiConfig>().baseUrl;
     return BlocProvider(
       create: (context) => ThreadCubit(
         context.read<ChatRepository>(),
@@ -36,16 +43,28 @@ class ThreadPage extends StatelessWidget {
         myId,
         conversationType: conversationType,
       )..init(),
-      child: _ThreadScaffold(conversationId: conversationId, myUserId: myId),
+      child: _ThreadScaffold(
+        conversationId: conversationId,
+        myUserId: myId,
+        accessToken: accessToken,
+        apiBaseUrl: apiBase,
+      ),
     );
   }
 }
 
 class _ThreadScaffold extends StatefulWidget {
-  const _ThreadScaffold({required this.conversationId, required this.myUserId});
+  const _ThreadScaffold({
+    required this.conversationId,
+    required this.myUserId,
+    required this.accessToken,
+    required this.apiBaseUrl,
+  });
 
   final int conversationId;
   final int myUserId;
+  final String accessToken;
+  final String apiBaseUrl;
 
   @override
   State<_ThreadScaffold> createState() => _ThreadScaffoldState();
@@ -108,6 +127,7 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
       state.messages,
       myUserId: widget.myUserId,
       readReceiptForOwn: (id) => state.readReceiptForOwnMessage(id, convType),
+      apiBaseUrl: widget.apiBaseUrl,
     );
     if (!mounted) return;
 
@@ -251,7 +271,7 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
                     context.read<ThreadCubit>().onTyping(false);
                     context.read<ThreadCubit>().send(text);
                   },
-                  onAttachmentTap: () => context.read<ThreadCubit>().sendStubAttachment(),
+                  onAttachmentTap: () => _openAttachmentSheet(context),
                   onMessageLongPress: (ctx, message, {required index, required details}) {
                     final id = int.tryParse(message.id);
                     if (id == null) return;
@@ -291,6 +311,9 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
                                   message.source,
                                   width: 220,
                                   fit: BoxFit.cover,
+                                  headers: {
+                                    'Authorization': 'Bearer ${widget.accessToken}',
+                                  },
                                   loadingBuilder: (c, child, p) => p == null
                                       ? child
                                       : const SizedBox(
@@ -322,6 +345,34 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
                             ],
                           ),
                         ),
+                      );
+                    },
+                    videoMessageBuilder:
+                        (context, message, index, {required isSentByMe, groupStatus}) {
+                      final theme = context.read<ChatTheme>();
+                      final bubble =
+                          isSentByMe ? theme.colors.primary : theme.colors.surfaceContainerHigh;
+                      final fg = isSentByMe ? theme.colors.onPrimary : theme.colors.onSurface;
+                      return ThreadVideoBubble(
+                        message: message,
+                        accessToken: widget.accessToken,
+                        bubble: bubble,
+                        foreground: fg,
+                        isSentByMe: isSentByMe,
+                      );
+                    },
+                    audioMessageBuilder:
+                        (context, message, index, {required isSentByMe, groupStatus}) {
+                      final theme = context.read<ChatTheme>();
+                      final bubble =
+                          isSentByMe ? theme.colors.primary : theme.colors.surfaceContainerHigh;
+                      final fg = isSentByMe ? theme.colors.onPrimary : theme.colors.onSurface;
+                      return ThreadAudioBubble(
+                        message: message,
+                        accessToken: widget.accessToken,
+                        bubble: bubble,
+                        foreground: fg,
+                        isSentByMe: isSentByMe,
                       );
                     },
                     chatAnimatedListBuilder: (ctx, itemBuilder) {
@@ -362,6 +413,95 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
                 );
               },
             ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _openAttachmentSheet(BuildContext context) async {
+    final picked = await showModalBottomSheet<String>(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.photo_library_outlined),
+              title: const Text('Photo library'),
+              onTap: () => Navigator.pop(ctx, 'gallery'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.photo_camera_outlined),
+              title: const Text('Camera'),
+              onTap: () => Navigator.pop(ctx, 'camera'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.videocam_outlined),
+              title: const Text('Video'),
+              onTap: () => Navigator.pop(ctx, 'video'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.mic_none),
+              title: const Text('Voice'),
+              onTap: () => Navigator.pop(ctx, 'voice'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (!context.mounted || picked == null) return;
+    final cubit = context.read<ThreadCubit>();
+    final picker = ImagePicker();
+    switch (picked) {
+      case 'gallery':
+        final x = await picker.pickImage(source: ImageSource.gallery);
+        if (x != null) await cubit.sendMediaFile(path: x.path, kind: 'image');
+        break;
+      case 'camera':
+        final x = await picker.pickImage(source: ImageSource.camera);
+        if (x != null) await cubit.sendMediaFile(path: x.path, kind: 'image');
+        break;
+      case 'video':
+        final x = await picker.pickVideo(source: ImageSource.gallery);
+        if (x != null) await cubit.sendMediaFile(path: x.path, kind: 'video');
+        break;
+      case 'voice':
+        await _recordVoice(context, cubit);
+        break;
+    }
+  }
+
+  Future<void> _recordVoice(BuildContext context, ThreadCubit cubit) async {
+    final rec = AudioRecorder();
+    final ok = await rec.hasPermission();
+    if (!ok) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Microphone permission required')),
+        );
+      }
+      return;
+    }
+    final dir = await getTemporaryDirectory();
+    final path = p.join(dir.path, 'voice_${DateTime.now().millisecondsSinceEpoch}.m4a');
+    await rec.start(const RecordConfig(encoder: AudioEncoder.aacLc), path: path);
+    if (!context.mounted) return;
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Recording…'),
+        actions: [
+          TextButton(
+            onPressed: () async {
+              await rec.stop();
+              if (ctx.mounted) Navigator.pop(ctx);
+              if (context.mounted) {
+                await cubit.sendMediaFile(path: path, kind: 'voice');
+              }
+            },
+            child: const Text('Stop & send'),
           ),
         ],
       ),

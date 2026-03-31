@@ -1,7 +1,10 @@
 import 'dart:async';
 
+import 'dart:io';
+
 import 'package:equatable/equatable.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:mime/mime.dart';
 
 import '../../../../core/database/app_database.dart';
 import '../../data/chat_repository.dart';
@@ -199,17 +202,32 @@ class ThreadCubit extends Cubit<ThreadState> {
     }
   }
 
-  Future<void> sendStubAttachment() async {
+  /// [kind] is `image`, `video`, or `voice` (matches backend JSON).
+  Future<void> sendMediaFile({
+    required String path,
+    required String kind,
+    int? durationMs,
+  }) async {
+    final file = File(path);
+    final bytes = await file.readAsBytes();
+    final mime = lookupMimeType(path) ?? 'application/octet-stream';
     emit(state.copyWith(sending: true, error: null));
     try {
-      await _repo.sendStubAttachment(conversationId);
+      await _repo.uploadAndSendMediaMessage(
+        conversationId: conversationId,
+        bytes: bytes,
+        mimeType: mime,
+        kind: kind,
+        durationMs: durationMs,
+        replyToMessageId: state.replyTo?.id,
+      );
+      emit(state.copyWith(sending: false, replyTo: null));
       final data = await _repo.fetchMessages(conversationId);
       final items = (data['items'] as List<dynamic>? ?? [])
           .map((e) => e as Map<String, dynamic>)
           .toList();
       await _repo.cacheMessages(conversationId, items);
       await _reloadLocal();
-      emit(state.copyWith(sending: false));
     } catch (e) {
       emit(state.copyWith(sending: false, error: e.toString()));
     }

@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:dio/dio.dart';
 
 /// REST calls matching [mamanaplus-backend/api/openapi.yaml].
@@ -202,5 +204,44 @@ class ChatRemoteDataSource {
       },
     );
     return res.data!;
+  }
+
+  /// PUT bytes to [uploadUrl] (S3/GCS presigned or local API upload URL).
+  ///
+  /// Uses a bare [Dio] so absolute S3/GCS URLs are not rewritten. For **local**
+  /// storage the server requires [bearerToken] on `PUT /v1/media/upload/...`.
+  /// Do not pass [bearerToken] for presigned cloud URLs (signature may not include it).
+  Future<void> uploadMediaPut({
+    required String uploadUrl,
+    required Map<String, String> headers,
+    required List<int> bytes,
+    String? bearerToken,
+  }) async {
+    final dio = Dio(
+      BaseOptions(
+        sendTimeout: const Duration(minutes: 5),
+        receiveTimeout: const Duration(minutes: 5),
+      ),
+    );
+    final h = Map<String, String>.from(headers);
+    final ct = h.remove('Content-Type') ?? h.remove('content-type');
+    if (bearerToken != null && bearerToken.isNotEmpty) {
+      h['Authorization'] = 'Bearer $bearerToken';
+    }
+    await dio.put<dynamic>(
+      uploadUrl,
+      data: Uint8List.fromList(bytes),
+      options: Options(
+        headers: h,
+        contentType: ct,
+      ),
+    );
+  }
+
+  Future<void> completeMediaUpload({required String objectKey}) async {
+    await _dio.post<void>(
+      '/v1/media/complete',
+      data: {'object_key': objectKey},
+    );
   }
 }

@@ -6,6 +6,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqlite3_flutter_libs/sqlite3_flutter_libs.dart';
 
 import 'app.dart';
+import 'package:provider/provider.dart';
+
 import 'core/api_config.dart';
 import 'core/database/app_database.dart';
 import 'core/dio_client.dart';
@@ -36,17 +38,20 @@ Future<void> main() async {
   final themeCubit = ThemeCubit(prefs);
 
   runApp(
-    RepositoryProvider<ChatRepository>.value(
-      value: repo,
-      child: MultiBlocProvider(
-        providers: [
-          BlocProvider<AuthCubit>.value(value: auth),
-          BlocProvider<ThemeCubit>.value(value: themeCubit),
-        ],
-        child: MamanaApp(
-          authCubit: auth,
-          config: config,
-          chatRepository: repo,
+    Provider<ApiConfig>.value(
+      value: config,
+      child: RepositoryProvider<ChatRepository>.value(
+        value: repo,
+        child: MultiBlocProvider(
+          providers: [
+            BlocProvider<AuthCubit>.value(value: auth),
+            BlocProvider<ThemeCubit>.value(value: themeCubit),
+          ],
+          child: MamanaApp(
+            authCubit: auth,
+            config: config,
+            chatRepository: repo,
+          ),
         ),
       ),
     ),

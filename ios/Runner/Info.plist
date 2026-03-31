@@ -45,5 +45,11 @@
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+	<key>NSCameraUsageDescription</key>
+	<string>Camera is used to take photos and videos to send in chat.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Microphone is used to record voice messages.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Photo library is used to choose images and videos for chat.</string>
 </dict>
 </plist>
