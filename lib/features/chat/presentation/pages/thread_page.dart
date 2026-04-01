@@ -309,27 +309,34 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
                             children: [
                               ClipRRect(
                                 borderRadius: BorderRadius.circular(8),
-                                child: Image.network(
-                                  message.source,
-                                  width: 220,
-                                  fit: BoxFit.cover,
-                                  headers: {
-                                    'Authorization': 'Bearer ${widget.accessToken}',
-                                  },
-                                  loadingBuilder: (c, child, p) => p == null
-                                      ? child
-                                      : const SizedBox(
-                                          width: 220,
-                                          height: 160,
-                                          child: Center(
-                                            child: CircularProgressIndicator(strokeWidth: 2),
+                                child: GestureDetector(
+                                  onTap: () => openChatFullscreenImage(
+                                    context,
+                                    url: message.source,
+                                    accessToken: widget.accessToken,
+                                  ),
+                                  child: Image.network(
+                                    message.source,
+                                    width: 220,
+                                    fit: BoxFit.cover,
+                                    headers: {
+                                      'Authorization': 'Bearer ${widget.accessToken}',
+                                    },
+                                    loadingBuilder: (c, child, p) => p == null
+                                        ? child
+                                        : const SizedBox(
+                                            width: 220,
+                                            height: 160,
+                                            child: Center(
+                                              child: CircularProgressIndicator(strokeWidth: 2),
+                                            ),
                                           ),
-                                        ),
-                                  errorBuilder: (_, __, ___) => Padding(
-                                    padding: const EdgeInsets.all(8),
-                                    child: Text(
-                                      message.text ?? message.source,
-                                      style: TextStyle(color: fg),
+                                    errorBuilder: (_, __, ___) => Padding(
+                                      padding: const EdgeInsets.all(8),
+                                      child: Text(
+                                        message.text ?? message.source,
+                                        style: TextStyle(color: fg),
+                                      ),
                                     ),
                                   ),
                                 ),
