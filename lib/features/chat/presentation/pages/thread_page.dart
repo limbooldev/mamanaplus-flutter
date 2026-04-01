@@ -18,6 +18,7 @@ import '../../../../shared/ui/ui.dart';
 import '../../data/chat_repository.dart';
 import '../cubit/thread_cubit.dart';
 import '../mappers/local_message_to_chat_message.dart';
+import '../widgets/chat_image_editor_flow.dart';
 import '../widgets/thread_media_widgets.dart';
 
 class ThreadPage extends StatelessWidget {
@@ -456,11 +457,21 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
     switch (picked) {
       case 'gallery':
         final x = await picker.pickImage(source: ImageSource.gallery);
-        if (x != null) await cubit.sendMediaFile(path: x.path, kind: 'image');
+        if (x == null) break;
+        if (!context.mounted) return;
+        final edited = await openChatImageEditor(context, x.path);
+        if (edited != null && context.mounted) {
+          await cubit.sendMediaFile(path: edited, kind: 'image');
+        }
         break;
       case 'camera':
         final x = await picker.pickImage(source: ImageSource.camera);
-        if (x != null) await cubit.sendMediaFile(path: x.path, kind: 'image');
+        if (x == null) break;
+        if (!context.mounted) return;
+        final edited = await openChatImageEditor(context, x.path);
+        if (edited != null && context.mounted) {
+          await cubit.sendMediaFile(path: edited, kind: 'image');
+        }
         break;
       case 'video':
         final x = await picker.pickVideo(source: ImageSource.gallery);

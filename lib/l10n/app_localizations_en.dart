@@ -142,4 +142,16 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get joinFailed => 'Failed to join group';
+
+  @override
+  String get imageEditorUndo => 'Undo';
+
+  @override
+  String get imageEditorRedo => 'Redo';
+
+  @override
+  String get imageEditorDone => 'Done';
+
+  @override
+  String get imageEditorApplyingChanges => 'Applying changes…';
 }

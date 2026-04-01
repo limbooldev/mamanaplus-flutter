@@ -77,5 +77,10 @@
     }
   },
   "buttonJoin": "Join",
-  "joinFailed": "Failed to join group"
+  "joinFailed": "Failed to join group",
+
+  "imageEditorUndo": "Undo",
+  "imageEditorRedo": "Redo",
+  "imageEditorDone": "Done",
+  "imageEditorApplyingChanges": "Applying changes\u2026"
 }

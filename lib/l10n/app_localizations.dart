@@ -339,6 +339,30 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Failed to join group'**
   String get joinFailed;
+
+  /// No description provided for @imageEditorUndo.
+  ///
+  /// In en, this message translates to:
+  /// **'Undo'**
+  String get imageEditorUndo;
+
+  /// No description provided for @imageEditorRedo.
+  ///
+  /// In en, this message translates to:
+  /// **'Redo'**
+  String get imageEditorRedo;
+
+  /// No description provided for @imageEditorDone.
+  ///
+  /// In en, this message translates to:
+  /// **'Done'**
+  String get imageEditorDone;
+
+  /// No description provided for @imageEditorApplyingChanges.
+  ///
+  /// In en, this message translates to:
+  /// **'Applying changes…'**
+  String get imageEditorApplyingChanges;
 }
 
 class _AppLocalizationsDelegate
