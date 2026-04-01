@@ -19,6 +19,7 @@ import '../../data/chat_repository.dart';
 import '../cubit/thread_cubit.dart';
 import '../mappers/local_message_to_chat_message.dart';
 import '../widgets/chat_image_editor_flow.dart';
+import '../widgets/chat_video_editor_flow.dart';
 import '../widgets/thread_media_widgets.dart';
 
 class ThreadPage extends StatelessWidget {
@@ -475,7 +476,12 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
         break;
       case 'video':
         final x = await picker.pickVideo(source: ImageSource.gallery);
-        if (x != null) await cubit.sendMediaFile(path: x.path, kind: 'video');
+        if (x == null) break;
+        if (!context.mounted) return;
+        final edited = await openChatVideoEditor(context, x.path);
+        if (edited != null && context.mounted) {
+          await cubit.sendMediaFile(path: edited, kind: 'video');
+        }
         break;
       case 'voice':
         await _recordVoice(context, cubit);

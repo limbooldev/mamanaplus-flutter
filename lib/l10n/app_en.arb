@@ -82,5 +82,12 @@
   "imageEditorUndo": "Undo",
   "imageEditorRedo": "Redo",
   "imageEditorDone": "Done",
-  "imageEditorApplyingChanges": "Applying changes\u2026"
+  "imageEditorApplyingChanges": "Applying changes\u2026",
+
+  "videoEditorExportFailed": "Could not export video: {error}",
+  "@videoEditorExportFailed": {
+    "placeholders": {
+      "error": {"type": "String"}
+    }
+  }
 }

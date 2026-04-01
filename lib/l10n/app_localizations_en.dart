@@ -154,4 +154,9 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get imageEditorApplyingChanges => 'Applying changes…';
+
+  @override
+  String videoEditorExportFailed(String error) {
+    return 'Could not export video: $error';
+  }
 }

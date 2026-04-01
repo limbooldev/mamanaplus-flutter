@@ -31,6 +31,7 @@ dependencies:
   shared_preferences: ^2.3.5
   image_picker: ^1.1.2
   pro_image_editor: ^12.0.0
+  pro_video_editor: ^1.13.0
   record: ^6.2.0
   video_player: ^2.9.2
   just_audio: ^0.9.40

@@ -363,6 +363,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Applying changes…'**
   String get imageEditorApplyingChanges;
+
+  /// No description provided for @videoEditorExportFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not export video: {error}'**
+  String videoEditorExportFailed(String error);
 }
 
 class _AppLocalizationsDelegate
