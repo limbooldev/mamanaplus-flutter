@@ -10,7 +10,6 @@ import 'package:provider/provider.dart';
 
 import 'core/api_config.dart';
 import 'core/database/app_database.dart';
-import 'core/dio_client.dart';
 import 'core/token_storage.dart';
 import 'features/chat/data/chat_remote_datasource.dart';
 import 'features/chat/data/chat_repository.dart';
@@ -27,11 +26,11 @@ Future<void> main() async {
   final config = ApiConfig.fromEnvironment();
   final tokens = TokenStorage();
   final db = AppDatabase();
-  final dio = createDio(config: config, tokens: tokens);
+  final auth = AuthCubit(config: config, tokens: tokens);
+  final dio = auth.apiDio;
   final remote = ChatRemoteDataSource(dio);
   final socket = ChatSocket();
   final repo = ChatRepository(remote: remote, db: db, socket: socket, tokens: tokens);
-  final auth = AuthCubit(config: config, tokens: tokens);
   await auth.restore();
 
   final prefs = await SharedPreferences.getInstance();

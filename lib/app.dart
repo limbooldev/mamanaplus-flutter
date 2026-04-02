@@ -124,7 +124,7 @@ class _MamanaAppState extends State<MamanaApp> {
       if (!mounted) return;
       final s = widget.authCubit.state;
       if (s is AuthAuthenticated) {
-        widget.chatRepository.socket.connect(widget.config.wsUrl, s.accessToken);
+        widget.chatRepository.connectRealtime(widget.config.wsUrl);
         widget.chatRepository.registerPush(token: 'stub-device-token');
       }
     });
@@ -160,7 +160,7 @@ class _MamanaAppState extends State<MamanaApp> {
     return BlocListener<AuthCubit, AuthState>(
       listener: (context, state) {
         if (state is AuthAuthenticated) {
-          widget.chatRepository.socket.connect(widget.config.wsUrl, state.accessToken);
+          widget.chatRepository.connectRealtime(widget.config.wsUrl);
           widget.chatRepository.registerPush(token: 'stub-device-token');
         }
         if (state is AuthUnauthenticated) {

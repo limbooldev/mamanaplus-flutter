@@ -57,6 +57,16 @@ class AuthCubit extends Cubit<AuthState> {
   final ApiConfig _config;
   final TokenStorage _tokens;
 
+  Dio? _apiDio;
+
+  /// Shared HTTP client (refresh + auth callbacks). Lazily created so callbacks close over this cubit.
+  Dio get apiDio => _apiDio ??= createDio(
+        config: _config,
+        tokens: _tokens,
+        onAccessTokenRefreshed: applyRefreshedAccessToken,
+        onSessionExpired: sessionExpiredFromApi,
+      );
+
   /// Drives [GoRouter] redirect refresh.
   late final ValueNotifier<AuthState> notifier;
 
@@ -80,11 +90,27 @@ class AuthCubit extends Cubit<AuthState> {
     }
   }
 
+  /// Called when the access token was rotated via Dio refresh; keeps [AuthAuthenticated] and media URLs in sync.
+  void applyRefreshedAccessToken(String accessToken) {
+    if (state is AuthAuthenticated) {
+      emit(AuthAuthenticated(accessToken));
+    }
+  }
+
+  /// Session invalidated (refresh failed or repeated 401). Storage may already be cleared by Dio.
+  void sessionExpiredFromApi() {
+    emit(AuthUnauthenticated());
+  }
+
+  Future<void> forceLogout() async {
+    await _tokens.clear();
+    emit(AuthUnauthenticated());
+  }
+
   Future<void> login(String email, String password) async {
     emit(AuthLoading());
     try {
-      final dio = createDio(config: _config, tokens: _tokens);
-      final ds = ChatRemoteDataSource(dio);
+      final ds = ChatRemoteDataSource(apiDio);
       final data = await ds.login(email: email, password: password);
       final access = data['access_token'] as String;
       final refresh = data['refresh_token'] as String;
@@ -98,8 +124,7 @@ class AuthCubit extends Cubit<AuthState> {
   Future<void> register(String email, String password, String displayName) async {
     emit(AuthLoading());
     try {
-      final dio = createDio(config: _config, tokens: _tokens);
-      final ds = ChatRemoteDataSource(dio);
+      final ds = ChatRemoteDataSource(apiDio);
       final data = await ds.register(email: email, password: password, displayName: displayName);
       final access = data['access_token'] as String;
       final refresh = data['refresh_token'] as String;
@@ -110,8 +135,5 @@ class AuthCubit extends Cubit<AuthState> {
     }
   }
 
-  Future<void> logout() async {
-    await _tokens.clear();
-    emit(AuthUnauthenticated());
-  }
+  Future<void> logout() => forceLogout();
 }

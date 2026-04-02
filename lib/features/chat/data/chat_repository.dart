@@ -29,6 +29,13 @@ class ChatRepository {
 
   AppDatabase get database => _db;
 
+  /// Opens WebSocket using [TokenStorage] for fresh tokens on each connect/reconnect.
+  void connectRealtime(String wsUrl) {
+    final t = _tokens;
+    if (t == null) return;
+    _socket.connect(wsUrl, t.getAccessToken);
+  }
+
   /// Returns the authenticated user's profile from `GET /v1/me`.
   /// Keys: id, email, display_name, created_at.
   Future<Map<String, dynamic>> fetchMe() => _remote.fetchMe();
