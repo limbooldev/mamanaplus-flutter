@@ -177,7 +177,7 @@ class _GroupIconPreviewState extends State<_GroupIconPreview> {
         height: 80,
         decoration: const BoxDecoration(
           gradient: LinearGradient(
-            colors: [Color(0xFF7B5FFF), AppColors.primary],
+            colors: [AppColors.primaryDeep, AppColors.primary],
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
           ),

@@ -4,9 +4,12 @@ import 'package:google_fonts/google_fonts.dart';
 // ─── Color tokens (extracted from Chateo UI Kit) ─────────────────────────────
 
 abstract final class AppColors {
-  // Primary brand blue
-  static const primary = Color(0xFF4B6EFF);
-  static const onPrimary = Colors.white;
+  // Primary brand (rose)
+  static const primary = Color(0xFFE98DAD);
+  /// Text/icons on primary surfaces — dark plum for contrast on the light rose.
+  static const onPrimary = Color(0xFF3D2433);
+  /// Deeper rose for gradients and accents (pairs with [primary]).
+  static const primaryDeep = Color(0xFFC06084);
 
   // Light theme
   static const backgroundLight = Color(0xFFFFFFFF);
@@ -31,7 +34,7 @@ abstract final class AppColors {
   static const success = Color(0xFF43A047);
 
   // Avatar placeholder ring
-  static const avatarRing = Color(0xFF4B6EFF);
+  static const avatarRing = Color(0xFFE98DAD);
 }
 
 // ─── Shape tokens ─────────────────────────────────────────────────────────────
@@ -57,13 +60,16 @@ abstract final class AppTheme {
       brightness: brightness,
       primary: AppColors.primary,
       onPrimary: AppColors.onPrimary,
-      primaryContainer: isDark ? const Color(0xFF2A3A8A) : const Color(0xFFDDE4FF),
-      onPrimaryContainer: isDark ? const Color(0xFFDDE4FF) : const Color(0xFF001264),
-      secondary: AppColors.primary.withValues(alpha: 0.7),
+      primaryContainer:
+          isDark ? const Color(0xFF5C3848) : const Color(0xFFFFE4EE),
+      onPrimaryContainer:
+          isDark ? const Color(0xFFFFD8E6) : const Color(0xFF4A1F32),
+      secondary: AppColors.primary.withValues(alpha: 0.72),
       onSecondary: AppColors.onPrimary,
       secondaryContainer:
-          isDark ? const Color(0xFF2A3A8A) : const Color(0xFFDDE4FF),
-      onSecondaryContainer: isDark ? const Color(0xFFDDE4FF) : const Color(0xFF001264),
+          isDark ? const Color(0xFF523442) : const Color(0xFFF5D0DC),
+      onSecondaryContainer:
+          isDark ? const Color(0xFFFFE0EB) : const Color(0xFF4A1F32),
       error: AppColors.error,
       onError: Colors.white,
       errorContainer: const Color(0xFFFFDAD6),

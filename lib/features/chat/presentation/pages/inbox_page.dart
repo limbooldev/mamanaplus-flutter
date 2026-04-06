@@ -290,7 +290,7 @@ class _Avatar extends StatelessWidget {
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: isGroup
-              ? [const Color(0xFF7B5FFF), AppColors.primary]
+              ? [AppColors.primaryDeep, AppColors.primary]
               : [AppColors.primary, AppColors.primary.withValues(alpha: 0.75)],
         ),
         shape: BoxShape.circle,

@@ -111,7 +111,7 @@ class _GroupDetailPageState extends State<GroupDetailPage> {
                         gradient: LinearGradient(
                           colors: isAdmin
                               ? [
-                                  const Color(0xFF7B5FFF),
+                                  AppColors.primaryDeep,
                                   AppColors.primary,
                                 ]
                               : [
@@ -214,7 +214,7 @@ class _GroupHeader extends StatelessWidget {
             height: 60,
             decoration: const BoxDecoration(
               gradient: LinearGradient(
-                colors: [Color(0xFF7B5FFF), AppColors.primary],
+                colors: [AppColors.primaryDeep, AppColors.primary],
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
               ),

@@ -192,7 +192,7 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
                   height: 36,
                   decoration: const BoxDecoration(
                     gradient: LinearGradient(
-                      colors: [AppColors.primary, Color(0xFF7B5FFF)],
+                      colors: [AppColors.primary, AppColors.primaryDeep],
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
                     ),

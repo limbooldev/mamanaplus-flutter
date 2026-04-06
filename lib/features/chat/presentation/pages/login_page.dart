@@ -211,7 +211,7 @@ class _Header extends StatelessWidget {
           colors: [
             AppColors.primary,
             AppColors.primary.withValues(alpha: 0.75),
-            const Color(0xFF7B5FFF),
+            AppColors.primaryDeep,
           ],
         ),
       ),
