@@ -164,6 +164,34 @@ class ChatRepository {
         .get();
   }
 
+  /// Single cached conversation row, if present.
+  Future<LocalConversation?> loadConversationLocal(int conversationId) {
+    return (_db.select(_db.localConversations)
+          ..where((t) => t.id.equals(conversationId)))
+        .getSingleOrNull();
+  }
+
+  /// Upsert one conversation row from a `GET/POST .../conversations` DTO (e.g. after fetch).
+  Future<void> upsertLocalConversationFromDto(Map<String, dynamic> m) async {
+    final id = (m['id'] as num).toInt();
+    final type = m['type'] as String? ?? 'private';
+    final title = m['title'] as String?;
+    String? peerJson;
+    if (m['peer'] != null) {
+      peerJson = jsonEncode(m['peer']);
+    }
+    await _db.into(_db.localConversations).insert(
+          LocalConversationsCompanion.insert(
+            id: Value(id),
+            type: type,
+            title: Value(title),
+            peerJson: Value(peerJson),
+            updatedAt: DateTime.now(),
+          ),
+          mode: InsertMode.insertOrReplace,
+        );
+  }
+
   /// Cached `type` from last inbox sync (`private` / `group`), if known.
   Future<String?> conversationTypeLocal(int conversationId) async {
     final row = await (_db.select(_db.localConversations)

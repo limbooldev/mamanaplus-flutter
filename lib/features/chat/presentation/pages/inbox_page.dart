@@ -115,9 +115,12 @@ class _DmFab extends StatelessWidget {
     final id = await context.pushPickUsersSingle();
     if (id != null && context.mounted) {
       try {
-        await context.read<ChatRepository>().createDm(id);
+        final res = await context.read<ChatRepository>().createDm(id);
         if (!context.mounted) return;
         await context.read<InboxCubit>().refresh();
+        if (!context.mounted) return;
+        final conversationId = (res['id'] as num).toInt();
+        await context.pushThread(conversationId, conversationType: 'private');
       } catch (e) {
         if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(

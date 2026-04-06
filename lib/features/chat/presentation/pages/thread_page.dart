@@ -172,38 +172,53 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
           icon: const Icon(Icons.arrow_back_ios_new_rounded),
           onPressed: () => Navigator.of(context).pop(),
         ),
-        title: Row(
-          children: [
-            Container(
-              width: 36,
-              height: 36,
-              decoration: const BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [AppColors.primary, Color(0xFF7B5FFF)],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-                shape: BoxShape.circle,
-              ),
-              child: Center(
-                child: Text(
-                  '#',
-                  style: GoogleFonts.inter(
-                    color: Colors.white,
-                    fontWeight: FontWeight.w700,
-                    fontSize: 16,
+        title: BlocBuilder<ThreadCubit, ThreadState>(
+          buildWhen: (a, b) => a.headerTitle != b.headerTitle,
+          builder: (context, state) {
+            final title = state.headerTitle?.trim();
+            final String titleText;
+            final String initial;
+            if (title != null && title.isNotEmpty) {
+              titleText = title;
+              initial = title[0].toUpperCase();
+            } else {
+              titleText = l10n.threadTitle(widget.conversationId);
+              initial = '#';
+            }
+            return Row(
+              children: [
+                Container(
+                  width: 36,
+                  height: 36,
+                  decoration: const BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [AppColors.primary, Color(0xFF7B5FFF)],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Center(
+                    child: Text(
+                      initial,
+                      style: GoogleFonts.inter(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 16,
+                      ),
+                    ),
                   ),
                 ),
-              ),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Text(
-                l10n.threadTitle(widget.conversationId),
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-          ],
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    titleText,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
+            );
+          },
         ),
         actions: [
           IconButton(

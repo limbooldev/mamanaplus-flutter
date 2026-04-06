@@ -1,5 +1,5 @@
 import 'dart:async';
-
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:equatable/equatable.dart';
@@ -17,6 +17,21 @@ int? _jsonInt(dynamic v) {
   return null;
 }
 
+String? _peerDisplayNameFromPeerJson(String? peerJson) {
+  if (peerJson == null) return null;
+  try {
+    final m = jsonDecode(peerJson) as Map<String, dynamic>;
+    return (m['display_name'] as String?)?.trim();
+  } catch (_) {
+    return null;
+  }
+}
+
+String? _peerDisplayNameFromPeerField(dynamic peer) {
+  if (peer is! Map) return null;
+  return (peer['display_name'] as String?)?.trim();
+}
+
 class ThreadState extends Equatable {
   const ThreadState({
     this.messages = const [],
@@ -26,6 +41,7 @@ class ThreadState extends Equatable {
     this.typingUserIds = const {},
     this.replyTo,
     this.readCursorByUserId = const {},
+    this.headerTitle,
   });
 
   final List<LocalMessage> messages;
@@ -38,6 +54,9 @@ class ThreadState extends Equatable {
   /// Other members' cumulative read cursor (`receipt_update.message_id`), by user id.
   final Map<int, int> readCursorByUserId;
 
+  /// App bar title for private (peer name) or group (title); null → fallback `Thread #id`.
+  final String? headerTitle;
+
   ThreadState copyWith({
     List<LocalMessage>? messages,
     bool? loading,
@@ -46,6 +65,7 @@ class ThreadState extends Equatable {
     Set<int>? typingUserIds,
     LocalMessage? replyTo,
     Map<int, int>? readCursorByUserId,
+    String? headerTitle,
   }) =>
       ThreadState(
         messages: messages ?? this.messages,
@@ -55,6 +75,7 @@ class ThreadState extends Equatable {
         typingUserIds: typingUserIds ?? this.typingUserIds,
         replyTo: replyTo,
         readCursorByUserId: readCursorByUserId ?? this.readCursorByUserId,
+        headerTitle: headerTitle ?? this.headerTitle,
       );
 
   /// Private DM: max peer read cursor from `receipt_update` — double-check when read up to [messageId].
@@ -69,7 +90,7 @@ class ThreadState extends Equatable {
 
   @override
   List<Object?> get props =>
-      [messages, loading, sending, error, typingUserIds, replyTo, readCursorByUserId];
+      [messages, loading, sending, error, typingUserIds, replyTo, readCursorByUserId, headerTitle];
 }
 
 class ThreadCubit extends Cubit<ThreadState> {
@@ -95,13 +116,15 @@ class ThreadCubit extends Cubit<ThreadState> {
   Future<void> init() async {
     _resolvedConversationType =
         conversationType ?? await _repo.conversationTypeLocal(conversationId);
+    Map<String, dynamic>? prefetchedConv;
     if (_resolvedConversationType == null) {
       try {
-        final raw = await _repo.fetchConversation(conversationId);
-        _resolvedConversationType = raw['type'] as String?;
+        prefetchedConv = await _repo.fetchConversation(conversationId);
+        _resolvedConversationType = prefetchedConv['type'] as String?;
       } catch (_) {}
     }
     emit(state.copyWith(loading: true));
+    unawaited(_hydrateHeader(prefetched: prefetchedConv));
     try {
       final data = await _repo.fetchMessages(conversationId);
       final items = (data['items'] as List<dynamic>? ?? [])
@@ -109,7 +132,7 @@ class ThreadCubit extends Cubit<ThreadState> {
           .toList();
       await _repo.cacheMessages(conversationId, items);
       final local = await _repo.loadMessagesLocal(conversationId);
-      emit(ThreadState(messages: local, loading: false));
+      emit(state.copyWith(messages: local, loading: false));
       if (local.isNotEmpty) {
         await _repo.markRead(conversationId, local.first.id);
       }
@@ -164,6 +187,40 @@ class ThreadCubit extends Cubit<ThreadState> {
         ));
       }
     });
+  }
+
+  /// Resolves app bar title from local cache or `GET /v1/conversations/{id}`.
+  Future<void> _hydrateHeader({Map<String, dynamic>? prefetched}) async {
+    final local = await _repo.loadConversationLocal(conversationId);
+    final type = _resolvedConversationType ?? local?.type;
+
+    if (type == 'group') {
+      final t = local?.title?.trim();
+      if (t != null && t.isNotEmpty) {
+        emit(state.copyWith(headerTitle: t));
+      }
+      return;
+    }
+
+    if (type != 'private') return;
+
+    var name = _peerDisplayNameFromPeerJson(local?.peerJson);
+    if ((name == null || name.isEmpty) && prefetched != null) {
+      name = _peerDisplayNameFromPeerField(prefetched['peer']);
+      if (name != null && name.isNotEmpty) {
+        await _repo.upsertLocalConversationFromDto(prefetched);
+      }
+    }
+    if (name == null || name.isEmpty) {
+      try {
+        final raw = prefetched ?? await _repo.fetchConversation(conversationId);
+        await _repo.upsertLocalConversationFromDto(raw);
+        name = _peerDisplayNameFromPeerField(raw['peer']);
+      } catch (_) {}
+    }
+    if (name != null && name.isNotEmpty) {
+      emit(state.copyWith(headerTitle: name));
+    }
   }
 
   Future<void> _reloadLocal() async {
