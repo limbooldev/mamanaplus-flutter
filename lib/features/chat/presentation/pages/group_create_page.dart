@@ -4,8 +4,11 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:mamana_plus/l10n/app_localizations.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../../core/jwt_util.dart';
+import '../../../../router/app_routes.dart';
 import '../../../../shared/ui/ui.dart';
 import '../../data/chat_repository.dart';
+import '../cubit/auth_cubit.dart';
 
 class GroupCreatePage extends StatefulWidget {
   const GroupCreatePage({super.key});
@@ -16,14 +19,21 @@ class GroupCreatePage extends StatefulWidget {
 
 class _GroupCreatePageState extends State<GroupCreatePage> {
   final _title = TextEditingController();
-  final _members = TextEditingController()..text = '';
+  final List<int> _memberIds = [];
   var _creating = false;
 
   @override
   void dispose() {
     _title.dispose();
-    _members.dispose();
     super.dispose();
+  }
+
+  Set<int> _excludeIds(BuildContext context) {
+    final auth = context.read<AuthCubit>().state;
+    if (auth is! AuthAuthenticated) return {};
+    final me = parseUserIdFromAccessToken(auth.accessToken);
+    if (me == null) return {};
+    return {me};
   }
 
   @override
@@ -58,25 +68,32 @@ class _GroupCreatePageState extends State<GroupCreatePage> {
               onChanged: (_) => setState(() {}),
             ),
             const SizedBox(height: 20),
-            _FieldLabel(text: l10n.labelMemberIds),
+            _FieldLabel(text: l10n.labelAddMembers),
             const SizedBox(height: 8),
-            TextField(
-              controller: _members,
-              decoration: InputDecoration(
-                hintText: l10n.labelMemberIds,
-                prefixIcon: const Icon(
-                  Icons.person_add_alt_outlined,
-                  color: AppColors.subtitleLight,
-                ),
-              ),
-              keyboardType: TextInputType.number,
-              textInputAction: TextInputAction.done,
+            OutlinedButton.icon(
+              onPressed: _creating
+                  ? null
+                  : () async {
+                      final picked = await context.pushPickUsersMulti(
+                        initialSelectedIds: _memberIds,
+                        excludeUserIds: _excludeIds(context).toList(),
+                      );
+                      if (picked != null && mounted) {
+                        setState(() {
+                          _memberIds
+                            ..clear()
+                            ..addAll(picked);
+                        });
+                      }
+                    },
+              icon: const Icon(Icons.person_add_alt_outlined),
+              label: Text(l10n.pickUsersTitleMulti),
             ),
             const SizedBox(height: 8),
             Text(
-              'Separate multiple IDs with commas (e.g. 2, 5, 12)',
+              l10n.membersSelectedCount(_memberIds.length),
               style: GoogleFonts.inter(
-                fontSize: 12,
+                fontSize: 13,
                 color: AppColors.subtitleLight,
               ),
             ),
@@ -106,12 +123,7 @@ class _GroupCreatePageState extends State<GroupCreatePage> {
 
     setState(() => _creating = true);
     try {
-      final ids = _members.text
-          .split(',')
-          .map((s) => int.tryParse(s.trim()))
-          .whereType<int>()
-          .toList();
-      await context.read<ChatRepository>().createGroup(name, ids);
+      await context.read<ChatRepository>().createGroup(name, _memberIds);
       if (context.mounted) context.pop();
     } catch (e) {
       if (context.mounted) {

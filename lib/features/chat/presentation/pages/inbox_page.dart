@@ -106,46 +106,26 @@ class _DmFab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return FloatingActionButton(
-      onPressed: () => _showDmDialog(context, l10n),
+      onPressed: () => _openPickUser(context, l10n),
       child: const Icon(Icons.edit_outlined),
     );
   }
 
-  Future<void> _showDmDialog(BuildContext context, AppLocalizations l10n) async {
-    final idCtrl = TextEditingController();
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(l10n.dmDialogTitle),
-        content: TextField(
-          controller: idCtrl,
-          keyboardType: TextInputType.number,
-          decoration: InputDecoration(hintText: l10n.dmPeerHint),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: Text(l10n.buttonCancel),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            style: FilledButton.styleFrom(
-              minimumSize: const Size(80, 40),
-            ),
-            child: Text(l10n.buttonOpen),
-          ),
-        ],
-      ),
-    );
-    if (ok == true && context.mounted) {
-      final id = int.tryParse(idCtrl.text.trim());
-      if (id != null) {
+  Future<void> _openPickUser(BuildContext context, AppLocalizations l10n) async {
+    final id = await context.pushPickUsersSingle();
+    if (id != null && context.mounted) {
+      try {
         await context.read<ChatRepository>().createDm(id);
         if (!context.mounted) return;
         await context.read<InboxCubit>().refresh();
+      } catch (e) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('$e')),
+          );
+        }
       }
     }
-    idCtrl.dispose();
   }
 }
 

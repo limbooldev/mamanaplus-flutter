@@ -369,6 +369,84 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Could not export video: {error}'**
   String videoEditorExportFailed(String error);
+
+  /// No description provided for @pickUsersTitleSingle.
+  ///
+  /// In en, this message translates to:
+  /// **'New message'**
+  String get pickUsersTitleSingle;
+
+  /// No description provided for @pickUsersTitleMulti.
+  ///
+  /// In en, this message translates to:
+  /// **'Add members'**
+  String get pickUsersTitleMulti;
+
+  /// No description provided for @pickUsersSearchHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Search by name'**
+  String get pickUsersSearchHint;
+
+  /// No description provided for @pickUsersSectionFromChats.
+  ///
+  /// In en, this message translates to:
+  /// **'From your chats'**
+  String get pickUsersSectionFromChats;
+
+  /// No description provided for @pickUsersSectionEveryone.
+  ///
+  /// In en, this message translates to:
+  /// **'Everyone'**
+  String get pickUsersSectionEveryone;
+
+  /// No description provided for @pickUsersEmptyRemote.
+  ///
+  /// In en, this message translates to:
+  /// **'No matching people on the server'**
+  String get pickUsersEmptyRemote;
+
+  /// No description provided for @pickUsersMinCharsForDirectory.
+  ///
+  /// In en, this message translates to:
+  /// **'Type at least 2 characters to search everyone'**
+  String get pickUsersMinCharsForDirectory;
+
+  /// No description provided for @pickUsersEmpty.
+  ///
+  /// In en, this message translates to:
+  /// **'No people match your search'**
+  String get pickUsersEmpty;
+
+  /// No description provided for @pickUsersNoDirectChats.
+  ///
+  /// In en, this message translates to:
+  /// **'No direct chats yet. Search below to find someone.'**
+  String get pickUsersNoDirectChats;
+
+  /// No description provided for @pickUsersSearchFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Search failed. Try again.'**
+  String get pickUsersSearchFailed;
+
+  /// No description provided for @pickUsersDone.
+  ///
+  /// In en, this message translates to:
+  /// **'Done'**
+  String get pickUsersDone;
+
+  /// No description provided for @labelAddMembers.
+  ///
+  /// In en, this message translates to:
+  /// **'Members'**
+  String get labelAddMembers;
+
+  /// No description provided for @membersSelectedCount.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =0{No members selected} =1{1 member selected} other{{count} members selected}}'**
+  String membersSelectedCount(int count);
 }
 
 class _AppLocalizationsDelegate

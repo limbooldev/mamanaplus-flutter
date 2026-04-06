@@ -89,5 +89,24 @@
     "placeholders": {
       "error": {"type": "String"}
     }
+  },
+
+  "pickUsersTitleSingle": "New message",
+  "pickUsersTitleMulti": "Add members",
+  "pickUsersSearchHint": "Search by name",
+  "pickUsersSectionFromChats": "From your chats",
+  "pickUsersSectionEveryone": "Everyone",
+  "pickUsersEmptyRemote": "No matching people on the server",
+  "pickUsersMinCharsForDirectory": "Type at least 2 characters to search everyone",
+  "pickUsersEmpty": "No people match your search",
+  "pickUsersNoDirectChats": "No direct chats yet. Search below to find someone.",
+  "pickUsersSearchFailed": "Search failed. Try again.",
+  "pickUsersDone": "Done",
+  "labelAddMembers": "Members",
+  "membersSelectedCount": "{count, plural, =0{No members selected} =1{1 member selected} other{{count} members selected}}",
+  "@membersSelectedCount": {
+    "placeholders": {
+      "count": {"type": "int"}
+    }
   }
 }

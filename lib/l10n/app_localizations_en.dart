@@ -159,4 +159,54 @@ class AppLocalizationsEn extends AppLocalizations {
   String videoEditorExportFailed(String error) {
     return 'Could not export video: $error';
   }
+
+  @override
+  String get pickUsersTitleSingle => 'New message';
+
+  @override
+  String get pickUsersTitleMulti => 'Add members';
+
+  @override
+  String get pickUsersSearchHint => 'Search by name';
+
+  @override
+  String get pickUsersSectionFromChats => 'From your chats';
+
+  @override
+  String get pickUsersSectionEveryone => 'Everyone';
+
+  @override
+  String get pickUsersEmptyRemote => 'No matching people on the server';
+
+  @override
+  String get pickUsersMinCharsForDirectory =>
+      'Type at least 2 characters to search everyone';
+
+  @override
+  String get pickUsersEmpty => 'No people match your search';
+
+  @override
+  String get pickUsersNoDirectChats =>
+      'No direct chats yet. Search below to find someone.';
+
+  @override
+  String get pickUsersSearchFailed => 'Search failed. Try again.';
+
+  @override
+  String get pickUsersDone => 'Done';
+
+  @override
+  String get labelAddMembers => 'Members';
+
+  @override
+  String membersSelectedCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count members selected',
+      one: '1 member selected',
+      zero: 'No members selected',
+    );
+    return '$_temp0';
+  }
 }

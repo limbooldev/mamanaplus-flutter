@@ -143,6 +143,18 @@ class ChatRemoteDataSource {
     await _dio.delete<void>('/v1/users/$userId/block');
   }
 
+  /// Directory search for pickers. Server requires [q] length ≥ 2 (after trim).
+  Future<Map<String, dynamic>> searchUsers({
+    required String q,
+    int limit = 20,
+  }) async {
+    final res = await _dio.get<Map<String, dynamic>>(
+      '/v1/users/search',
+      queryParameters: {'q': q, 'limit': limit},
+    );
+    return res.data!;
+  }
+
   Future<Map<String, dynamic>> createGroup({
     required String title,
     List<int> memberIds = const [],

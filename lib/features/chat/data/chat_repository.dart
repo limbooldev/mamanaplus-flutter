@@ -291,6 +291,16 @@ class ChatRepository {
 
   Future<void> unblockUser(int userId) => _remote.unblockUser(userId);
 
+  /// Returns users from `GET /v1/users/search` (id + display_name).
+  Future<List<Map<String, dynamic>>> searchUsersDirectory(
+    String q, {
+    int limit = 20,
+  }) async {
+    final data = await _remote.searchUsers(q: q, limit: limit);
+    final items = data['items'] as List<dynamic>? ?? [];
+    return items.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+  }
+
   // --- Public Groups ---
 
   Future<List<Map<String, dynamic>>> listPublicGroups({
