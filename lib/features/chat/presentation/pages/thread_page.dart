@@ -1,6 +1,8 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_chat_core/flutter_chat_core.dart';
 import 'package:flutter_chat_ui/flutter_chat_ui.dart';
@@ -15,6 +17,7 @@ import '../../../../core/api_config.dart';
 import '../../../../core/database/app_database.dart';
 import '../../../../core/jwt_util.dart';
 import '../../../../shared/ui/ui.dart';
+import '../../data/chat_mute_prefs.dart';
 import '../../data/chat_repository.dart';
 import '../cubit/thread_cubit.dart';
 import '../mappers/local_message_to_chat_message.dart';
@@ -50,6 +53,7 @@ class ThreadPage extends StatelessWidget {
         myUserId: myId,
         accessToken: accessToken,
         apiBaseUrl: apiBase,
+        conversationType: conversationType,
       ),
     );
   }
@@ -61,12 +65,14 @@ class _ThreadScaffold extends StatefulWidget {
     required this.myUserId,
     required this.accessToken,
     required this.apiBaseUrl,
+    this.conversationType,
   });
 
   final int conversationId;
   final int myUserId;
   final String accessToken;
   final String apiBaseUrl;
+  final String? conversationType;
 
   @override
   State<_ThreadScaffold> createState() => _ThreadScaffoldState();
@@ -77,12 +83,23 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
   late final InMemoryChatController _chatController;
   Timer? _typingIdleTimer;
   String _lastChatSyncSig = '';
+  var _muteLoaded = false;
+  var _muted = false;
 
   @override
   void initState() {
     super.initState();
     _chatController = InMemoryChatController();
     _composerController.addListener(_handleComposerTextChanged);
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (!_muteLoaded) {
+      _muteLoaded = true;
+      _muted = context.read<ChatMutePrefs>().isMuted(widget.conversationId);
+    }
   }
 
   @override
@@ -221,29 +238,43 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
           },
         ),
         actions: [
+          BlocBuilder<ThreadCubit, ThreadState>(
+            builder: (context, state) {
+              final t = context.read<ThreadCubit>().effectiveConversationType;
+              if (t != 'group') return const SizedBox.shrink();
+              return IconButton(
+                icon: const Icon(Icons.search_rounded),
+                tooltip: 'Search',
+                onPressed: () => _openGroupMessageSearch(context),
+              );
+            },
+          ),
           IconButton(
-            icon: const Icon(Icons.block_outlined),
-            onPressed: () => _blockPrompt(context),
+            icon: Icon(_muted ? Icons.notifications_off_outlined : Icons.notifications_outlined),
+            tooltip: _muted ? 'Unmute' : 'Mute',
+            onPressed: () async {
+              final p = context.read<ChatMutePrefs>();
+              final next = !_muted;
+              await p.setMuted(widget.conversationId, next);
+              if (mounted) setState(() => _muted = next);
+            },
+          ),
+          BlocBuilder<ThreadCubit, ThreadState>(
+            buildWhen: (a, b) => a.dmPeerUserId != b.dmPeerUserId,
+            builder: (context, state) {
+              final peerId = state.dmPeerUserId;
+              if (peerId == null) return const SizedBox.shrink();
+              return IconButton(
+                icon: const Icon(Icons.block_outlined),
+                tooltip: l10n.buttonBlock,
+                onPressed: () => _confirmBlockDmPeer(context, peerId),
+              );
+            },
           ),
         ],
       ),
       body: Column(
         children: [
-          BlocBuilder<ThreadCubit, ThreadState>(
-            buildWhen: (a, b) => a.replyTo != b.replyTo,
-            builder: (context, state) {
-              if (state.replyTo == null) return const SizedBox.shrink();
-              return MaterialBanner(
-                content: Text(l10n.replyingTo(state.replyTo!.body)),
-                actions: [
-                  TextButton(
-                    onPressed: () => context.read<ThreadCubit>().setReplyTo(null),
-                    child: Text(l10n.buttonCancel),
-                  ),
-                ],
-              );
-            },
-          ),
           Expanded(
             child: BlocConsumer<ThreadCubit, ThreadState>(
               listenWhen: (p, c) => p.error != c.error,
@@ -274,6 +305,7 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
                 final typing = state.typingUserIds.isNotEmpty;
                 final isDark = theme.brightness == Brightness.dark;
                 final chatTheme = _buildChatTheme(theme, isDark);
+                final maxBubbleW = math.min(340.0, MediaQuery.sizeOf(context).width * 0.78);
                 return Chat(
                   currentUserId: '${widget.myUserId}',
                   resolveUser: (id) async => User(
@@ -298,10 +330,71 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
                     if (local.senderId == widget.myUserId) {
                       unawaited(_ownMessageActions(context, local));
                     } else {
-                      cubit.setReplyTo(local);
+                      unawaited(_peerMessageActions(context, local));
                     }
                   },
                   builders: Builders(
+                    customMessageBuilder:
+                        (context, CustomMessage message, int index, {required isSentByMe, groupStatus}) {
+                      final emoji = message.metadata?['mamanaStickerEmoji'] as String?;
+                      if (emoji == null) {
+                        return const SizedBox.shrink();
+                      }
+                      final theme = context.read<ChatTheme>();
+                      final bubble = isSentByMe
+                          ? theme.colors.primary
+                          : theme.colors.surfaceContainerHigh;
+                      return Align(
+                        alignment:
+                            isSentByMe ? Alignment.centerRight : Alignment.centerLeft,
+                        child: ConstrainedBox(
+                          constraints: BoxConstraints(maxWidth: maxBubbleW),
+                          child: Container(
+                          margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                          decoration: BoxDecoration(
+                            color: bubble,
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Text(emoji, style: const TextStyle(fontSize: 56)),
+                        ),
+                        ),
+                      );
+                    },
+                    chatMessageBuilder:
+                        (context, message, index, animation, child, {isRemoved, required isSentByMe, groupStatus}) {
+                      // Custom builders replace [ChatMessage], which owns the long-press /
+                      // tap [GestureDetector] wired to [onMessageLongPress]. Re-wrap so
+                      // actions (copy, reply, etc.) still fire.
+                      return ChatMessage(
+                        message: message,
+                        index: index,
+                        animation: animation,
+                        isRemoved: isRemoved,
+                        groupStatus: groupStatus,
+                        child: Align(
+                          alignment: isSentByMe
+                              ? Alignment.centerRight
+                              : Alignment.centerLeft,
+                          child: ConstrainedBox(
+                            constraints: BoxConstraints(maxWidth: maxBubbleW),
+                            child: _SwipeReplyDetector(
+                              isSentByMe: isSentByMe,
+                              onSwipeReply: () {
+                                final id = int.tryParse(message.id);
+                                if (id == null) return;
+                                final cubit = context.read<ThreadCubit>();
+                                final local = _localById(cubit.state.messages, id);
+                                if (local == null) return;
+                                HapticFeedback.selectionClick();
+                                cubit.setReplyTo(local);
+                              },
+                              child: child,
+                            ),
+                          ),
+                        ),
+                      );
+                    },
                     imageMessageBuilder:
                         (context, message, index, {required isSentByMe, groupStatus}) {
                       final theme = context.read<ChatTheme>();
@@ -311,7 +404,9 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
                       return Align(
                         alignment:
                             isSentByMe ? Alignment.centerRight : Alignment.centerLeft,
-                        child: Container(
+                        child: ConstrainedBox(
+                          constraints: BoxConstraints(maxWidth: maxBubbleW),
+                          child: Container(
                           margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
                           padding: const EdgeInsets.all(6),
                           decoration: BoxDecoration(
@@ -369,6 +464,7 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
                             ],
                           ),
                         ),
+                        ),
                       );
                     },
                     videoMessageBuilder:
@@ -377,12 +473,19 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
                       final bubble =
                           isSentByMe ? theme.colors.primary : theme.colors.surfaceContainerHigh;
                       final fg = isSentByMe ? theme.colors.onPrimary : theme.colors.onSurface;
-                      return ThreadVideoBubble(
-                        message: message,
-                        accessToken: widget.accessToken,
-                        bubble: bubble,
-                        foreground: fg,
-                        isSentByMe: isSentByMe,
+                      return Align(
+                        alignment:
+                            isSentByMe ? Alignment.centerRight : Alignment.centerLeft,
+                        child: ConstrainedBox(
+                          constraints: BoxConstraints(maxWidth: maxBubbleW),
+                          child: ThreadVideoBubble(
+                            message: message,
+                            accessToken: widget.accessToken,
+                            bubble: bubble,
+                            foreground: fg,
+                            isSentByMe: isSentByMe,
+                          ),
+                        ),
                       );
                     },
                     audioMessageBuilder:
@@ -391,12 +494,19 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
                       final bubble =
                           isSentByMe ? theme.colors.primary : theme.colors.surfaceContainerHigh;
                       final fg = isSentByMe ? theme.colors.onPrimary : theme.colors.onSurface;
-                      return ThreadAudioBubble(
-                        message: message,
-                        accessToken: widget.accessToken,
-                        bubble: bubble,
-                        foreground: fg,
-                        isSentByMe: isSentByMe,
+                      return Align(
+                        alignment:
+                            isSentByMe ? Alignment.centerRight : Alignment.centerLeft,
+                        child: ConstrainedBox(
+                          constraints: BoxConstraints(maxWidth: maxBubbleW),
+                          child: ThreadAudioBubble(
+                            message: message,
+                            accessToken: widget.accessToken,
+                            bubble: bubble,
+                            foreground: fg,
+                            isSentByMe: isSentByMe,
+                          ),
+                        ),
                       );
                     },
                     chatAnimatedListBuilder: (ctx, itemBuilder) {
@@ -427,11 +537,82 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
                             : null,
                       );
                     },
+                    // Chat overlays the composer on a Stack; [Composer] uses
+                    // Positioned(bottom: 0). A raw Column here pins to the top — use
+                    // [Composer.topWidget] so reply/search sits above the field but
+                    // the bar stays at the bottom.
                     composerBuilder: (ctx) => Composer(
                       textEditingController: _composerController,
                       hintText: l10n.composerHint,
                       sendButtonDisabled: state.sending,
                       handleSafeArea: true,
+                      topWidget: BlocBuilder<ThreadCubit, ThreadState>(
+                        buildWhen: (a, b) =>
+                            a.replyTo != b.replyTo || a.messageSearchQuery != b.messageSearchQuery,
+                        builder: (context, st) {
+                          final hasReply = st.replyTo != null;
+                          final hasSearch = st.messageSearchQuery != null;
+                          if (!hasReply && !hasSearch) {
+                            return const SizedBox.shrink();
+                          }
+                          final borderCol = isDark ? AppColors.dividerDark : AppColors.dividerLight;
+                          return Material(
+                            color: isDark ? AppColors.surfaceDark : AppColors.surfaceLight,
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                if (hasSearch)
+                                  _ComposerMetaStrip(
+                                    borderColor: borderCol,
+                                    child: Row(
+                                      children: [
+                                        Icon(Icons.search, size: 18, color: AppColors.primary),
+                                        const SizedBox(width: 8),
+                                        Expanded(
+                                          child: Text(
+                                            'Search: "${st.messageSearchQuery}"',
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: GoogleFonts.inter(fontSize: 13),
+                                          ),
+                                        ),
+                                        TextButton(
+                                          onPressed: () =>
+                                              context.read<ThreadCubit>().setMessageSearchQuery(null),
+                                          child: Text(l10n.buttonCancel),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                if (hasReply)
+                                  _ComposerMetaStrip(
+                                    borderColor: borderCol,
+                                    child: Row(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Icon(Icons.reply_rounded, size: 18, color: AppColors.primary),
+                                        const SizedBox(width: 8),
+                                        Expanded(
+                                          child: Text(
+                                            l10n.replyingTo(st.replyTo!.body),
+                                            maxLines: 2,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: GoogleFonts.inter(fontSize: 13),
+                                          ),
+                                        ),
+                                        IconButton(
+                                          visualDensity: VisualDensity.compact,
+                                          icon: const Icon(Icons.close, size: 20),
+                                          onPressed: () => context.read<ThreadCubit>().setReplyTo(null),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                              ],
+                            ),
+                          );
+                        },
+                      ),
                     ),
                   ),
                 );
@@ -443,6 +624,73 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
     );
   }
 
+  Future<void> _openGroupMessageSearch(BuildContext context) async {
+    final l10n = AppLocalizations.of(context)!;
+    final ctrl = TextEditingController();
+    final q = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Search messages'),
+        content: TextField(
+          controller: ctrl,
+          autofocus: true,
+          decoration: const InputDecoration(hintText: 'At least 2 characters'),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: Text(l10n.buttonCancel)),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, ctrl.text.trim()),
+            child: const Text('Search'),
+          ),
+        ],
+      ),
+    );
+    ctrl.dispose();
+    if (!context.mounted || q == null) return;
+    await context.read<ThreadCubit>().setMessageSearchQuery(q);
+  }
+
+  Future<void> _openStickerPicker(BuildContext context) async {
+    List<Map<String, dynamic>> items = [];
+    try {
+      items = await context.read<ChatRepository>().listStickers();
+    } catch (_) {
+      items = [
+        {'id': 'wave', 'emoji': '👋'},
+        {'id': 'heart', 'emoji': '❤️'},
+      ];
+    }
+    if (!context.mounted) return;
+    await showModalBottomSheet<void>(
+      context: context,
+      builder: (ctx) {
+        return SafeArea(
+          child: GridView.builder(
+            padding: const EdgeInsets.all(12),
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 5,
+              mainAxisSpacing: 8,
+              crossAxisSpacing: 8,
+            ),
+            itemCount: items.length,
+            itemBuilder: (ctx, i) {
+              final row = items[i];
+              final emoji = row['emoji'] as String? ?? '💬';
+              final id = row['id'] as String? ?? '$i';
+              return InkWell(
+                onTap: () {
+                  Navigator.pop(ctx);
+                  context.read<ThreadCubit>().sendSticker(stickerId: id, emoji: emoji);
+                },
+                child: Center(child: Text(emoji, style: const TextStyle(fontSize: 36))),
+              );
+            },
+          ),
+        );
+      },
+    );
+  }
+
   Future<void> _openAttachmentSheet(BuildContext context) async {
     final picked = await showModalBottomSheet<String>(
       context: context,
@@ -450,6 +698,16 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
+            ListTile(
+              leading: const Icon(Icons.emoji_emotions_outlined),
+              title: const Text('Stickers'),
+              onTap: () => Navigator.pop(ctx, 'stickers'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.insert_emoticon_outlined),
+              title: const Text('Sticker from photo'),
+              onTap: () => Navigator.pop(ctx, 'sticker_image'),
+            ),
             ListTile(
               leading: const Icon(Icons.photo_library_outlined),
               title: const Text('Photo library'),
@@ -478,6 +736,18 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
     final cubit = context.read<ThreadCubit>();
     final picker = ImagePicker();
     switch (picked) {
+      case 'stickers':
+        await _openStickerPicker(context);
+        break;
+      case 'sticker_image':
+        final x = await picker.pickImage(source: ImageSource.gallery);
+        if (x != null && context.mounted) {
+          final edited = await openChatImageEditor(context, x.path);
+          if (edited != null && context.mounted) {
+            await cubit.sendMediaFile(path: edited, kind: 'sticker');
+          }
+        }
+        break;
       case 'gallery':
         final x = await picker.pickImage(source: ImageSource.gallery);
         if (x == null) break;
@@ -584,12 +854,21 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
   Future<void> _ownMessageActions(BuildContext context, LocalMessage m) async {
     final l10n = AppLocalizations.of(context)!;
     final cubit = context.read<ThreadCubit>();
+    final ct = m.contentType.toLowerCase().trim();
+    final canCopy = (ct == 'text/plain' || ct.startsWith('text/plain;')) &&
+        m.body.trim().isNotEmpty;
     final action = await showModalBottomSheet<String>(
       context: context,
       builder: (ctx) => SafeArea(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
+            if (canCopy)
+              ListTile(
+                leading: const Icon(Icons.copy_rounded),
+                title: Text(l10n.actionCopy),
+                onTap: () => Navigator.pop(ctx, 'copy'),
+              ),
             ListTile(
               leading: const Icon(Icons.edit),
               title: Text(l10n.actionEdit),
@@ -610,7 +889,14 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
       ),
     );
     if (!context.mounted) return;
-    if (action == 'edit') {
+    if (action == 'copy') {
+      await Clipboard.setData(ClipboardData(text: m.body));
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(l10n.snackCopiedMessage)),
+        );
+      }
+    } else if (action == 'edit') {
       final ctrl = TextEditingController(text: m.body);
       final ok = await showDialog<bool>(
         context: context,
@@ -640,23 +926,20 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
     }
   }
 
-  Future<void> _blockPrompt(BuildContext context) async {
+  Future<void> _confirmBlockDmPeer(BuildContext context, int peerUserId) async {
     final l10n = AppLocalizations.of(context)!;
-    final idCtrl = TextEditingController();
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text(l10n.blockDialogTitle),
-        content: TextField(
-          controller: idCtrl,
-          keyboardType: TextInputType.number,
-        ),
+        title: Text(l10n.blockPeerConfirmTitle),
+        content: Text(l10n.blockPeerConfirmMessage),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
             child: Text(l10n.buttonCancel),
           ),
           FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: AppColors.error),
             onPressed: () => Navigator.pop(ctx, true),
             child: Text(l10n.buttonBlock),
           ),
@@ -664,16 +947,149 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
       ),
     );
     if (ok == true && context.mounted) {
-      final id = int.tryParse(idCtrl.text.trim());
-      if (id != null) {
-        await context.read<ChatRepository>().blockUser(id);
-        if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(l10n.snackBlocked)),
-          );
-        }
+      await context.read<ChatRepository>().blockUser(peerUserId);
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(l10n.snackBlocked)),
+        );
       }
     }
-    idCtrl.dispose();
+  }
+
+  Future<void> _peerMessageActions(BuildContext context, LocalMessage m) async {
+    final l10n = AppLocalizations.of(context)!;
+    final cubit = context.read<ThreadCubit>();
+    final ct = m.contentType.toLowerCase().trim();
+    final canCopy = (ct == 'text/plain' || ct.startsWith('text/plain;')) &&
+        m.body.trim().isNotEmpty;
+    final action = await showModalBottomSheet<String>(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.reply_rounded),
+              title: Text(l10n.actionReply),
+              onTap: () => Navigator.pop(ctx, 'reply'),
+            ),
+            if (canCopy)
+              ListTile(
+                leading: const Icon(Icons.copy_rounded),
+                title: Text(l10n.actionCopy),
+                onTap: () => Navigator.pop(ctx, 'copy'),
+              ),
+            ListTile(
+              leading: const Icon(Icons.flag_outlined),
+              title: Text(l10n.actionReport),
+              onTap: () => Navigator.pop(ctx, 'report'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (!context.mounted) return;
+    if (action == 'reply') {
+      cubit.setReplyTo(m);
+    } else if (action == 'copy') {
+      await Clipboard.setData(ClipboardData(text: m.body));
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(l10n.snackCopiedMessage)),
+        );
+      }
+    } else if (action == 'report' && context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(l10n.snackReportSubmitted)),
+      );
+    }
+  }
+}
+
+/// Thin divider + padding row used above the composer for reply / search context.
+class _ComposerMetaStrip extends StatelessWidget {
+  const _ComposerMetaStrip({
+    required this.borderColor,
+    required this.child,
+  });
+
+  final Color borderColor;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        border: Border(top: BorderSide(color: borderColor)),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+        child: child,
+      ),
+    );
+  }
+}
+
+/// Horizontal swipe toward the list center starts a reply (received: right; sent: left).
+/// Dragging translates the bubble slightly (Telegram-style visual feedback).
+class _SwipeReplyDetector extends StatefulWidget {
+  const _SwipeReplyDetector({
+    required this.isSentByMe,
+    required this.onSwipeReply,
+    required this.child,
+  });
+
+  final bool isSentByMe;
+  final VoidCallback onSwipeReply;
+  final Widget child;
+
+  @override
+  State<_SwipeReplyDetector> createState() => _SwipeReplyDetectorState();
+}
+
+class _SwipeReplyDetectorState extends State<_SwipeReplyDetector> {
+  /// Accumulated horizontal drag for threshold detection.
+  double _dragDx = 0;
+
+  /// Clamped offset applied to [Transform.translate] while dragging.
+  double _visualDx = 0;
+
+  static const _threshold = 56.0;
+  static const _maxVisual = 72.0;
+
+  void _onUpdate(DragUpdateDetails d) {
+    _dragDx += d.delta.dx;
+    if (widget.isSentByMe) {
+      _visualDx = _dragDx.clamp(-_maxVisual, _maxVisual * 0.2);
+    } else {
+      _visualDx = _dragDx.clamp(-_maxVisual * 0.2, _maxVisual);
+    }
+    setState(() {});
+  }
+
+  void _onEnd() {
+    final ok = widget.isSentByMe ? _dragDx < -_threshold : _dragDx > _threshold;
+    _dragDx = 0;
+    if (ok) widget.onSwipeReply();
+    setState(() => _visualDx = 0);
+  }
+
+  void _onCancel() {
+    _dragDx = 0;
+    setState(() => _visualDx = 0);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      behavior: HitTestBehavior.translucent,
+      onHorizontalDragUpdate: _onUpdate,
+      onHorizontalDragEnd: (_) => _onEnd(),
+      onHorizontalDragCancel: _onCancel,
+      child: Transform.translate(
+        offset: Offset(_visualDx, 0),
+        child: widget.child,
+      ),
+    );
   }
 }

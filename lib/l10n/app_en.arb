@@ -30,6 +30,39 @@
   "buttonCreate": "Create",
 
   "groupAppBarTitle": "Group",
+  "buttonLeaveGroup": "Leave group",
+  "leaveGroupConfirmTitle": "Leave this group?",
+  "leaveGroupConfirmMessage": "You will stop receiving messages from this group. You can be added again by a member.",
+  "buttonLeave": "Leave",
+  "snackLeftGroup": "You left the group",
+  "leaveGroupFailed": "Could not leave the group",
+
+  "groupBannedSectionTitle": "Banned from group",
+  "groupActionRemoveMember": "Remove from group",
+  "groupActionBanMember": "Ban from group",
+  "groupActionUnban": "Unban",
+  "groupRemoveMemberTitle": "Remove this member?",
+  "groupRemoveMemberBody": "{name} will be removed from the group.",
+  "@groupRemoveMemberBody": {
+    "placeholders": {
+      "name": {"type": "String"}
+    }
+  },
+  "groupBanMemberTitle": "Ban this member?",
+  "groupBanMemberBody": "{name} will be removed and cannot return until an admin unbans them.",
+  "@groupBanMemberBody": {
+    "placeholders": {
+      "name": {"type": "String"}
+    }
+  },
+  "groupModerationFailed": "Could not complete that action",
+  "buttonRemove": "Remove",
+  "groupOnlineNow": "{count} online now",
+  "@groupOnlineNow": {
+    "placeholders": {
+      "count": {"type": "int"}
+    }
+  },
   "groupFallbackTitle": "Group #{id}",
   "@groupFallbackTitle": {
     "placeholders": {
@@ -58,12 +91,19 @@
   "userNameYou": "You",
   "typingIndicator": "Someone is typing\u2026",
   "composerHint": "Message",
+  "actionReply": "Reply",
+  "actionCopy": "Copy",
+  "actionReport": "Report",
+  "snackCopiedMessage": "Copied to clipboard",
+  "snackReportSubmitted": "Report received. Thank you for helping keep the community safe.",
   "actionEdit": "Edit",
   "actionDeleteForMe": "Delete for me",
   "actionDeleteForEveryone": "Delete for everyone",
   "editMessageTitle": "Edit message",
   "buttonSave": "Save",
   "blockDialogTitle": "Block user id",
+  "blockPeerConfirmTitle": "Block this person?",
+  "blockPeerConfirmMessage": "They will not be able to message you. You can unblock later from settings when that is available.",
   "buttonBlock": "Block",
   "snackBlocked": "Blocked",
 

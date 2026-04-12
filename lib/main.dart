@@ -11,6 +11,7 @@ import 'package:provider/provider.dart';
 import 'core/api_config.dart';
 import 'core/database/app_database.dart';
 import 'core/token_storage.dart';
+import 'features/chat/data/chat_mute_prefs.dart';
 import 'features/chat/data/chat_remote_datasource.dart';
 import 'features/chat/data/chat_repository.dart';
 import 'features/chat/data/chat_socket.dart';
@@ -35,21 +36,25 @@ Future<void> main() async {
 
   final prefs = await SharedPreferences.getInstance();
   final themeCubit = ThemeCubit(prefs);
+  final mutePrefs = ChatMutePrefs(prefs);
 
   runApp(
     Provider<ApiConfig>.value(
       value: config,
-      child: RepositoryProvider<ChatRepository>.value(
-        value: repo,
-        child: MultiBlocProvider(
-          providers: [
-            BlocProvider<AuthCubit>.value(value: auth),
-            BlocProvider<ThemeCubit>.value(value: themeCubit),
-          ],
-          child: MamanaApp(
-            authCubit: auth,
-            config: config,
-            chatRepository: repo,
+      child: Provider<ChatMutePrefs>.value(
+        value: mutePrefs,
+        child: RepositoryProvider<ChatRepository>.value(
+          value: repo,
+          child: MultiBlocProvider(
+            providers: [
+              BlocProvider<AuthCubit>.value(value: auth),
+              BlocProvider<ThemeCubit>.value(value: themeCubit),
+            ],
+            child: MamanaApp(
+              authCubit: auth,
+              config: config,
+              chatRepository: repo,
+            ),
           ),
         ),
       ),

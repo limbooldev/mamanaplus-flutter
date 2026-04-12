@@ -71,6 +71,64 @@ class AppLocalizationsEn extends AppLocalizations {
   String get groupAppBarTitle => 'Group';
 
   @override
+  String get buttonLeaveGroup => 'Leave group';
+
+  @override
+  String get leaveGroupConfirmTitle => 'Leave this group?';
+
+  @override
+  String get leaveGroupConfirmMessage =>
+      'You will stop receiving messages from this group. You can be added again by a member.';
+
+  @override
+  String get buttonLeave => 'Leave';
+
+  @override
+  String get snackLeftGroup => 'You left the group';
+
+  @override
+  String get leaveGroupFailed => 'Could not leave the group';
+
+  @override
+  String get groupBannedSectionTitle => 'Banned from group';
+
+  @override
+  String get groupActionRemoveMember => 'Remove from group';
+
+  @override
+  String get groupActionBanMember => 'Ban from group';
+
+  @override
+  String get groupActionUnban => 'Unban';
+
+  @override
+  String get groupRemoveMemberTitle => 'Remove this member?';
+
+  @override
+  String groupRemoveMemberBody(String name) {
+    return '$name will be removed from the group.';
+  }
+
+  @override
+  String get groupBanMemberTitle => 'Ban this member?';
+
+  @override
+  String groupBanMemberBody(String name) {
+    return '$name will be removed and cannot return until an admin unbans them.';
+  }
+
+  @override
+  String get groupModerationFailed => 'Could not complete that action';
+
+  @override
+  String get buttonRemove => 'Remove';
+
+  @override
+  String groupOnlineNow(int count) {
+    return '$count online now';
+  }
+
+  @override
   String groupFallbackTitle(int id) {
     return 'Group #$id';
   }
@@ -100,6 +158,22 @@ class AppLocalizationsEn extends AppLocalizations {
   String get composerHint => 'Message';
 
   @override
+  String get actionReply => 'Reply';
+
+  @override
+  String get actionCopy => 'Copy';
+
+  @override
+  String get actionReport => 'Report';
+
+  @override
+  String get snackCopiedMessage => 'Copied to clipboard';
+
+  @override
+  String get snackReportSubmitted =>
+      'Report received. Thank you for helping keep the community safe.';
+
+  @override
   String get actionEdit => 'Edit';
 
   @override
@@ -116,6 +190,13 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get blockDialogTitle => 'Block user id';
+
+  @override
+  String get blockPeerConfirmTitle => 'Block this person?';
+
+  @override
+  String get blockPeerConfirmMessage =>
+      'They will not be able to message you. You can unblock later from settings when that is available.';
 
   @override
   String get buttonBlock => 'Block';

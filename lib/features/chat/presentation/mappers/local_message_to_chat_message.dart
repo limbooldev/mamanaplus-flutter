@@ -46,6 +46,27 @@ List<Message> mapLocalMessagesToChatMessages(
       status = null;
     }
 
+    if (m.contentType == kMamanaStickerContentType) {
+      var emoji = '💬';
+      String? sid;
+      try {
+        final map = jsonDecode(m.body) as Map<String, dynamic>;
+        emoji = map['emoji'] as String? ?? emoji;
+        sid = map['sticker_id'] as String?;
+      } catch (_) {}
+      return Message.custom(
+        id: id,
+        authorId: authorId,
+        createdAt: m.createdAt,
+        replyToMessageId: replyTo,
+        status: status,
+        metadata: <String, dynamic>{
+          'mamanaStickerEmoji': emoji,
+          if (sid != null) 'mamanaStickerId': sid,
+        },
+      );
+    }
+
     if (m.contentType == kMamanaMediaContentType) {
       try {
         final map = jsonDecode(m.body) as Map<String, dynamic>;
@@ -73,6 +94,7 @@ List<Message> mapLocalMessagesToChatMessages(
               replyToMessageId: replyTo,
               status: status,
             );
+          case 'sticker':
           case 'image':
           default:
             return Message.image(

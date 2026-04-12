@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:mamana_plus/l10n/app_localizations.dart';
@@ -171,7 +172,7 @@ class _ChatsTab extends StatelessWidget {
               final isGroup = c.type == 'group';
               return _ConversationTile(
                 title: title,
-                subtitle: isGroup ? 'Group' : 'Direct message',
+                subtitle: _subtitleForRow(c, isGroup),
                 isGroup: isGroup,
                 conversationId: c.id,
                 onTap: () => context.pushThread(c.id, conversationType: c.type),
@@ -182,6 +183,20 @@ class _ChatsTab extends StatelessWidget {
         );
       },
     );
+  }
+
+  String _subtitleForRow(LocalConversation c, bool isGroup) {
+    final preview = c.lastMessagePreview?.trim();
+    final at = c.lastMessageAt;
+    String? timeStr;
+    if (at != null) {
+      timeStr = DateFormat.MMMd().add_jm().format(at.toLocal());
+    }
+    if (preview != null && preview.isNotEmpty) {
+      if (timeStr != null) return '$preview · $timeStr';
+      return preview;
+    }
+    return isGroup ? 'Group' : 'Direct message';
   }
 
   String _titleFor(LocalConversation c, AppLocalizations l10n) {

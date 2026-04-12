@@ -65,14 +65,21 @@ class ChatRemoteDataSource {
     int conversationId, {
     String? cursor,
     int limit = 50,
+    String? q,
   }) async {
     final res = await _dio.get<Map<String, dynamic>>(
       '/v1/conversations/$conversationId/messages',
       queryParameters: {
         if (cursor != null) 'cursor': cursor,
         'limit': limit,
+        if (q != null && q.trim().length >= 2) 'q': q.trim(),
       },
     );
+    return res.data!;
+  }
+
+  Future<Map<String, dynamic>> listStickers() async {
+    final res = await _dio.get<Map<String, dynamic>>('/v1/stickers');
     return res.data!;
   }
 
@@ -118,6 +125,31 @@ class ChatRemoteDataSource {
 
   Future<Map<String, dynamic>> getGroup(int conversationId) async {
     final res = await _dio.get<Map<String, dynamic>>('/v1/groups/$conversationId');
+    return res.data!;
+  }
+
+  /// `DELETE /v1/groups/{id}` — leave a group conversation.
+  Future<void> leaveGroup(int conversationId) async {
+    await _dio.delete<void>('/v1/groups/$conversationId');
+  }
+
+  Future<void> removeGroupMember(int groupId, int userId) async {
+    await _dio.delete<void>(
+      '/v1/groups/$groupId/members',
+      queryParameters: {'user_id': userId},
+    );
+  }
+
+  Future<void> banGroupMember(int groupId, int userId) async {
+    await _dio.post<void>('/v1/groups/$groupId/members/$userId/ban');
+  }
+
+  Future<void> unbanGroupMember(int groupId, int userId) async {
+    await _dio.delete<void>('/v1/groups/$groupId/members/$userId/ban');
+  }
+
+  Future<Map<String, dynamic>> listGroupBans(int groupId) async {
+    final res = await _dio.get<Map<String, dynamic>>('/v1/groups/$groupId/bans');
     return res.data!;
   }
 

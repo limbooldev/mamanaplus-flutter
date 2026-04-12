@@ -101,6 +101,9 @@ class ChatRepository {
         if (m['peer'] != null) {
           peerJson = jsonEncode(m['peer']);
         }
+        final preview = m['last_message_preview'] as String?;
+        final lastAtRaw = m['last_message_at'] as String?;
+        final lastAt = DateTime.tryParse(lastAtRaw ?? '');
         b.insert(
           _db.localConversations,
           LocalConversationsCompanion.insert(
@@ -108,6 +111,8 @@ class ChatRepository {
             type: type,
             title: Value(title),
             peerJson: Value(peerJson),
+            lastMessagePreview: Value(preview),
+            lastMessageAt: Value(lastAt),
             updatedAt: DateTime.now(),
           ),
           mode: InsertMode.insertOrReplace,
@@ -180,12 +185,17 @@ class ChatRepository {
     if (m['peer'] != null) {
       peerJson = jsonEncode(m['peer']);
     }
+    final preview = m['last_message_preview'] as String?;
+    final lastAtRaw = m['last_message_at'] as String?;
+    final lastAt = DateTime.tryParse(lastAtRaw ?? '');
     await _db.into(_db.localConversations).insert(
           LocalConversationsCompanion.insert(
             id: Value(id),
             type: type,
             title: Value(title),
             peerJson: Value(peerJson),
+            lastMessagePreview: Value(preview),
+            lastMessageAt: Value(lastAt),
             updatedAt: DateTime.now(),
           ),
           mode: InsertMode.insertOrReplace,
@@ -200,8 +210,18 @@ class ChatRepository {
     return row?.type;
   }
 
-  Future<Map<String, dynamic>> fetchMessages(int conversationId, {String? cursor}) =>
-      _remote.listMessages(conversationId, cursor: cursor);
+  Future<Map<String, dynamic>> fetchMessages(
+    int conversationId, {
+    String? cursor,
+    String? q,
+  }) =>
+      _remote.listMessages(conversationId, cursor: cursor, q: q);
+
+  Future<List<Map<String, dynamic>>> listStickers() async {
+    final data = await _remote.listStickers();
+    final items = data['items'] as List<dynamic>? ?? [];
+    return items.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+  }
 
   Future<Map<String, dynamic>> fetchConversation(int conversationId) =>
       _remote.getConversation(conversationId);
@@ -240,6 +260,35 @@ class ChatRepository {
 
   Future<Map<String, dynamic>> getGroup(int conversationId) =>
       _remote.getGroup(conversationId);
+
+  /// Leaves the group on the server and clears local cache for [conversationId].
+  Future<void> leaveGroup(int conversationId) async {
+    await _remote.leaveGroup(conversationId);
+    await (_db.delete(_db.localMessages)
+          ..where((t) => t.conversationId.equals(conversationId)))
+        .go();
+    await (_db.delete(_db.messageOutbox)
+          ..where((t) => t.conversationId.equals(conversationId)))
+        .go();
+    await (_db.delete(_db.localConversations)
+          ..where((t) => t.id.equals(conversationId)))
+        .go();
+  }
+
+  Future<void> removeGroupMember(int groupId, int userId) =>
+      _remote.removeGroupMember(groupId, userId);
+
+  Future<void> banGroupMember(int groupId, int userId) =>
+      _remote.banGroupMember(groupId, userId);
+
+  Future<void> unbanGroupMember(int groupId, int userId) =>
+      _remote.unbanGroupMember(groupId, userId);
+
+  Future<List<Map<String, dynamic>>> listGroupBans(int groupId) async {
+    final data = await _remote.listGroupBans(groupId);
+    final items = data['items'] as List<dynamic>? ?? [];
+    return items.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+  }
 
   /// Presign → upload → optional complete (S3/GCS) → send `application/vnd.mamana.media+json` message.
   Future<Map<String, dynamic>> uploadAndSendMediaMessage({

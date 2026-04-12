@@ -214,6 +214,108 @@ abstract class AppLocalizations {
   /// **'Group'**
   String get groupAppBarTitle;
 
+  /// No description provided for @buttonLeaveGroup.
+  ///
+  /// In en, this message translates to:
+  /// **'Leave group'**
+  String get buttonLeaveGroup;
+
+  /// No description provided for @leaveGroupConfirmTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Leave this group?'**
+  String get leaveGroupConfirmTitle;
+
+  /// No description provided for @leaveGroupConfirmMessage.
+  ///
+  /// In en, this message translates to:
+  /// **'You will stop receiving messages from this group. You can be added again by a member.'**
+  String get leaveGroupConfirmMessage;
+
+  /// No description provided for @buttonLeave.
+  ///
+  /// In en, this message translates to:
+  /// **'Leave'**
+  String get buttonLeave;
+
+  /// No description provided for @snackLeftGroup.
+  ///
+  /// In en, this message translates to:
+  /// **'You left the group'**
+  String get snackLeftGroup;
+
+  /// No description provided for @leaveGroupFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not leave the group'**
+  String get leaveGroupFailed;
+
+  /// No description provided for @groupBannedSectionTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Banned from group'**
+  String get groupBannedSectionTitle;
+
+  /// No description provided for @groupActionRemoveMember.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove from group'**
+  String get groupActionRemoveMember;
+
+  /// No description provided for @groupActionBanMember.
+  ///
+  /// In en, this message translates to:
+  /// **'Ban from group'**
+  String get groupActionBanMember;
+
+  /// No description provided for @groupActionUnban.
+  ///
+  /// In en, this message translates to:
+  /// **'Unban'**
+  String get groupActionUnban;
+
+  /// No description provided for @groupRemoveMemberTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove this member?'**
+  String get groupRemoveMemberTitle;
+
+  /// No description provided for @groupRemoveMemberBody.
+  ///
+  /// In en, this message translates to:
+  /// **'{name} will be removed from the group.'**
+  String groupRemoveMemberBody(String name);
+
+  /// No description provided for @groupBanMemberTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Ban this member?'**
+  String get groupBanMemberTitle;
+
+  /// No description provided for @groupBanMemberBody.
+  ///
+  /// In en, this message translates to:
+  /// **'{name} will be removed and cannot return until an admin unbans them.'**
+  String groupBanMemberBody(String name);
+
+  /// No description provided for @groupModerationFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not complete that action'**
+  String get groupModerationFailed;
+
+  /// No description provided for @buttonRemove.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove'**
+  String get buttonRemove;
+
+  /// No description provided for @groupOnlineNow.
+  ///
+  /// In en, this message translates to:
+  /// **'{count} online now'**
+  String groupOnlineNow(int count);
+
   /// No description provided for @groupFallbackTitle.
   ///
   /// In en, this message translates to:
@@ -256,6 +358,36 @@ abstract class AppLocalizations {
   /// **'Message'**
   String get composerHint;
 
+  /// No description provided for @actionReply.
+  ///
+  /// In en, this message translates to:
+  /// **'Reply'**
+  String get actionReply;
+
+  /// No description provided for @actionCopy.
+  ///
+  /// In en, this message translates to:
+  /// **'Copy'**
+  String get actionCopy;
+
+  /// No description provided for @actionReport.
+  ///
+  /// In en, this message translates to:
+  /// **'Report'**
+  String get actionReport;
+
+  /// No description provided for @snackCopiedMessage.
+  ///
+  /// In en, this message translates to:
+  /// **'Copied to clipboard'**
+  String get snackCopiedMessage;
+
+  /// No description provided for @snackReportSubmitted.
+  ///
+  /// In en, this message translates to:
+  /// **'Report received. Thank you for helping keep the community safe.'**
+  String get snackReportSubmitted;
+
   /// No description provided for @actionEdit.
   ///
   /// In en, this message translates to:
@@ -291,6 +423,18 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Block user id'**
   String get blockDialogTitle;
+
+  /// No description provided for @blockPeerConfirmTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Block this person?'**
+  String get blockPeerConfirmTitle;
+
+  /// No description provided for @blockPeerConfirmMessage.
+  ///
+  /// In en, this message translates to:
+  /// **'They will not be able to message you. You can unblock later from settings when that is available.'**
+  String get blockPeerConfirmMessage;
 
   /// No description provided for @buttonBlock.
   ///

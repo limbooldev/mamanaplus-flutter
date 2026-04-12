@@ -47,6 +47,29 @@ class $LocalConversationsTable extends LocalConversations
     type: DriftSqlType.string,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _lastMessagePreviewMeta =
+      const VerificationMeta('lastMessagePreview');
+  @override
+  late final GeneratedColumn<String> lastMessagePreview =
+      GeneratedColumn<String>(
+        'last_message_preview',
+        aliasedName,
+        true,
+        type: DriftSqlType.string,
+        requiredDuringInsert: false,
+      );
+  static const VerificationMeta _lastMessageAtMeta = const VerificationMeta(
+    'lastMessageAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> lastMessageAt =
+      GeneratedColumn<DateTime>(
+        'last_message_at',
+        aliasedName,
+        true,
+        type: DriftSqlType.dateTime,
+        requiredDuringInsert: false,
+      );
   static const VerificationMeta _updatedAtMeta = const VerificationMeta(
     'updatedAt',
   );
@@ -59,7 +82,15 @@ class $LocalConversationsTable extends LocalConversations
     requiredDuringInsert: true,
   );
   @override
-  List<GeneratedColumn> get $columns => [id, type, title, peerJson, updatedAt];
+  List<GeneratedColumn> get $columns => [
+    id,
+    type,
+    title,
+    peerJson,
+    lastMessagePreview,
+    lastMessageAt,
+    updatedAt,
+  ];
   @override
   String get aliasedName => _alias ?? actualTableName;
   @override
@@ -95,6 +126,24 @@ class $LocalConversationsTable extends LocalConversations
         peerJson.isAcceptableOrUnknown(data['peer_json']!, _peerJsonMeta),
       );
     }
+    if (data.containsKey('last_message_preview')) {
+      context.handle(
+        _lastMessagePreviewMeta,
+        lastMessagePreview.isAcceptableOrUnknown(
+          data['last_message_preview']!,
+          _lastMessagePreviewMeta,
+        ),
+      );
+    }
+    if (data.containsKey('last_message_at')) {
+      context.handle(
+        _lastMessageAtMeta,
+        lastMessageAt.isAcceptableOrUnknown(
+          data['last_message_at']!,
+          _lastMessageAtMeta,
+        ),
+      );
+    }
     if (data.containsKey('updated_at')) {
       context.handle(
         _updatedAtMeta,
@@ -128,6 +177,14 @@ class $LocalConversationsTable extends LocalConversations
         DriftSqlType.string,
         data['${effectivePrefix}peer_json'],
       ),
+      lastMessagePreview: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}last_message_preview'],
+      ),
+      lastMessageAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}last_message_at'],
+      ),
       updatedAt: attachedDatabase.typeMapping.read(
         DriftSqlType.dateTime,
         data['${effectivePrefix}updated_at'],
@@ -147,12 +204,16 @@ class LocalConversation extends DataClass
   final String type;
   final String? title;
   final String? peerJson;
+  final String? lastMessagePreview;
+  final DateTime? lastMessageAt;
   final DateTime updatedAt;
   const LocalConversation({
     required this.id,
     required this.type,
     this.title,
     this.peerJson,
+    this.lastMessagePreview,
+    this.lastMessageAt,
     required this.updatedAt,
   });
   @override
@@ -165,6 +226,12 @@ class LocalConversation extends DataClass
     }
     if (!nullToAbsent || peerJson != null) {
       map['peer_json'] = Variable<String>(peerJson);
+    }
+    if (!nullToAbsent || lastMessagePreview != null) {
+      map['last_message_preview'] = Variable<String>(lastMessagePreview);
+    }
+    if (!nullToAbsent || lastMessageAt != null) {
+      map['last_message_at'] = Variable<DateTime>(lastMessageAt);
     }
     map['updated_at'] = Variable<DateTime>(updatedAt);
     return map;
@@ -180,6 +247,12 @@ class LocalConversation extends DataClass
       peerJson: peerJson == null && nullToAbsent
           ? const Value.absent()
           : Value(peerJson),
+      lastMessagePreview: lastMessagePreview == null && nullToAbsent
+          ? const Value.absent()
+          : Value(lastMessagePreview),
+      lastMessageAt: lastMessageAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(lastMessageAt),
       updatedAt: Value(updatedAt),
     );
   }
@@ -194,6 +267,10 @@ class LocalConversation extends DataClass
       type: serializer.fromJson<String>(json['type']),
       title: serializer.fromJson<String?>(json['title']),
       peerJson: serializer.fromJson<String?>(json['peerJson']),
+      lastMessagePreview: serializer.fromJson<String?>(
+        json['lastMessagePreview'],
+      ),
+      lastMessageAt: serializer.fromJson<DateTime?>(json['lastMessageAt']),
       updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
     );
   }
@@ -205,6 +282,8 @@ class LocalConversation extends DataClass
       'type': serializer.toJson<String>(type),
       'title': serializer.toJson<String?>(title),
       'peerJson': serializer.toJson<String?>(peerJson),
+      'lastMessagePreview': serializer.toJson<String?>(lastMessagePreview),
+      'lastMessageAt': serializer.toJson<DateTime?>(lastMessageAt),
       'updatedAt': serializer.toJson<DateTime>(updatedAt),
     };
   }
@@ -214,12 +293,20 @@ class LocalConversation extends DataClass
     String? type,
     Value<String?> title = const Value.absent(),
     Value<String?> peerJson = const Value.absent(),
+    Value<String?> lastMessagePreview = const Value.absent(),
+    Value<DateTime?> lastMessageAt = const Value.absent(),
     DateTime? updatedAt,
   }) => LocalConversation(
     id: id ?? this.id,
     type: type ?? this.type,
     title: title.present ? title.value : this.title,
     peerJson: peerJson.present ? peerJson.value : this.peerJson,
+    lastMessagePreview: lastMessagePreview.present
+        ? lastMessagePreview.value
+        : this.lastMessagePreview,
+    lastMessageAt: lastMessageAt.present
+        ? lastMessageAt.value
+        : this.lastMessageAt,
     updatedAt: updatedAt ?? this.updatedAt,
   );
   LocalConversation copyWithCompanion(LocalConversationsCompanion data) {
@@ -228,6 +315,12 @@ class LocalConversation extends DataClass
       type: data.type.present ? data.type.value : this.type,
       title: data.title.present ? data.title.value : this.title,
       peerJson: data.peerJson.present ? data.peerJson.value : this.peerJson,
+      lastMessagePreview: data.lastMessagePreview.present
+          ? data.lastMessagePreview.value
+          : this.lastMessagePreview,
+      lastMessageAt: data.lastMessageAt.present
+          ? data.lastMessageAt.value
+          : this.lastMessageAt,
       updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
     );
   }
@@ -239,13 +332,23 @@ class LocalConversation extends DataClass
           ..write('type: $type, ')
           ..write('title: $title, ')
           ..write('peerJson: $peerJson, ')
+          ..write('lastMessagePreview: $lastMessagePreview, ')
+          ..write('lastMessageAt: $lastMessageAt, ')
           ..write('updatedAt: $updatedAt')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode => Object.hash(id, type, title, peerJson, updatedAt);
+  int get hashCode => Object.hash(
+    id,
+    type,
+    title,
+    peerJson,
+    lastMessagePreview,
+    lastMessageAt,
+    updatedAt,
+  );
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -254,6 +357,8 @@ class LocalConversation extends DataClass
           other.type == this.type &&
           other.title == this.title &&
           other.peerJson == this.peerJson &&
+          other.lastMessagePreview == this.lastMessagePreview &&
+          other.lastMessageAt == this.lastMessageAt &&
           other.updatedAt == this.updatedAt);
 }
 
@@ -262,12 +367,16 @@ class LocalConversationsCompanion extends UpdateCompanion<LocalConversation> {
   final Value<String> type;
   final Value<String?> title;
   final Value<String?> peerJson;
+  final Value<String?> lastMessagePreview;
+  final Value<DateTime?> lastMessageAt;
   final Value<DateTime> updatedAt;
   const LocalConversationsCompanion({
     this.id = const Value.absent(),
     this.type = const Value.absent(),
     this.title = const Value.absent(),
     this.peerJson = const Value.absent(),
+    this.lastMessagePreview = const Value.absent(),
+    this.lastMessageAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
   });
   LocalConversationsCompanion.insert({
@@ -275,6 +384,8 @@ class LocalConversationsCompanion extends UpdateCompanion<LocalConversation> {
     required String type,
     this.title = const Value.absent(),
     this.peerJson = const Value.absent(),
+    this.lastMessagePreview = const Value.absent(),
+    this.lastMessageAt = const Value.absent(),
     required DateTime updatedAt,
   }) : type = Value(type),
        updatedAt = Value(updatedAt);
@@ -283,6 +394,8 @@ class LocalConversationsCompanion extends UpdateCompanion<LocalConversation> {
     Expression<String>? type,
     Expression<String>? title,
     Expression<String>? peerJson,
+    Expression<String>? lastMessagePreview,
+    Expression<DateTime>? lastMessageAt,
     Expression<DateTime>? updatedAt,
   }) {
     return RawValuesInsertable({
@@ -290,6 +403,9 @@ class LocalConversationsCompanion extends UpdateCompanion<LocalConversation> {
       if (type != null) 'type': type,
       if (title != null) 'title': title,
       if (peerJson != null) 'peer_json': peerJson,
+      if (lastMessagePreview != null)
+        'last_message_preview': lastMessagePreview,
+      if (lastMessageAt != null) 'last_message_at': lastMessageAt,
       if (updatedAt != null) 'updated_at': updatedAt,
     });
   }
@@ -299,6 +415,8 @@ class LocalConversationsCompanion extends UpdateCompanion<LocalConversation> {
     Value<String>? type,
     Value<String?>? title,
     Value<String?>? peerJson,
+    Value<String?>? lastMessagePreview,
+    Value<DateTime?>? lastMessageAt,
     Value<DateTime>? updatedAt,
   }) {
     return LocalConversationsCompanion(
@@ -306,6 +424,8 @@ class LocalConversationsCompanion extends UpdateCompanion<LocalConversation> {
       type: type ?? this.type,
       title: title ?? this.title,
       peerJson: peerJson ?? this.peerJson,
+      lastMessagePreview: lastMessagePreview ?? this.lastMessagePreview,
+      lastMessageAt: lastMessageAt ?? this.lastMessageAt,
       updatedAt: updatedAt ?? this.updatedAt,
     );
   }
@@ -325,6 +445,12 @@ class LocalConversationsCompanion extends UpdateCompanion<LocalConversation> {
     if (peerJson.present) {
       map['peer_json'] = Variable<String>(peerJson.value);
     }
+    if (lastMessagePreview.present) {
+      map['last_message_preview'] = Variable<String>(lastMessagePreview.value);
+    }
+    if (lastMessageAt.present) {
+      map['last_message_at'] = Variable<DateTime>(lastMessageAt.value);
+    }
     if (updatedAt.present) {
       map['updated_at'] = Variable<DateTime>(updatedAt.value);
     }
@@ -338,6 +464,8 @@ class LocalConversationsCompanion extends UpdateCompanion<LocalConversation> {
           ..write('type: $type, ')
           ..write('title: $title, ')
           ..write('peerJson: $peerJson, ')
+          ..write('lastMessagePreview: $lastMessagePreview, ')
+          ..write('lastMessageAt: $lastMessageAt, ')
           ..write('updatedAt: $updatedAt')
           ..write(')'))
         .toString();
@@ -1332,6 +1460,8 @@ typedef $$LocalConversationsTableCreateCompanionBuilder =
       required String type,
       Value<String?> title,
       Value<String?> peerJson,
+      Value<String?> lastMessagePreview,
+      Value<DateTime?> lastMessageAt,
       required DateTime updatedAt,
     });
 typedef $$LocalConversationsTableUpdateCompanionBuilder =
@@ -1340,6 +1470,8 @@ typedef $$LocalConversationsTableUpdateCompanionBuilder =
       Value<String> type,
       Value<String?> title,
       Value<String?> peerJson,
+      Value<String?> lastMessagePreview,
+      Value<DateTime?> lastMessageAt,
       Value<DateTime> updatedAt,
     });
 
@@ -1369,6 +1501,16 @@ class $$LocalConversationsTableFilterComposer
 
   ColumnFilters<String> get peerJson => $composableBuilder(
     column: $table.peerJson,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get lastMessagePreview => $composableBuilder(
+    column: $table.lastMessagePreview,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get lastMessageAt => $composableBuilder(
+    column: $table.lastMessageAt,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -1407,6 +1549,16 @@ class $$LocalConversationsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get lastMessagePreview => $composableBuilder(
+    column: $table.lastMessagePreview,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get lastMessageAt => $composableBuilder(
+    column: $table.lastMessageAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<DateTime> get updatedAt => $composableBuilder(
     column: $table.updatedAt,
     builder: (column) => ColumnOrderings(column),
@@ -1433,6 +1585,16 @@ class $$LocalConversationsTableAnnotationComposer
 
   GeneratedColumn<String> get peerJson =>
       $composableBuilder(column: $table.peerJson, builder: (column) => column);
+
+  GeneratedColumn<String> get lastMessagePreview => $composableBuilder(
+    column: $table.lastMessagePreview,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get lastMessageAt => $composableBuilder(
+    column: $table.lastMessageAt,
+    builder: (column) => column,
+  );
 
   GeneratedColumn<DateTime> get updatedAt =>
       $composableBuilder(column: $table.updatedAt, builder: (column) => column);
@@ -1482,12 +1644,16 @@ class $$LocalConversationsTableTableManager
                 Value<String> type = const Value.absent(),
                 Value<String?> title = const Value.absent(),
                 Value<String?> peerJson = const Value.absent(),
+                Value<String?> lastMessagePreview = const Value.absent(),
+                Value<DateTime?> lastMessageAt = const Value.absent(),
                 Value<DateTime> updatedAt = const Value.absent(),
               }) => LocalConversationsCompanion(
                 id: id,
                 type: type,
                 title: title,
                 peerJson: peerJson,
+                lastMessagePreview: lastMessagePreview,
+                lastMessageAt: lastMessageAt,
                 updatedAt: updatedAt,
               ),
           createCompanionCallback:
@@ -1496,12 +1662,16 @@ class $$LocalConversationsTableTableManager
                 required String type,
                 Value<String?> title = const Value.absent(),
                 Value<String?> peerJson = const Value.absent(),
+                Value<String?> lastMessagePreview = const Value.absent(),
+                Value<DateTime?> lastMessageAt = const Value.absent(),
                 required DateTime updatedAt,
               }) => LocalConversationsCompanion.insert(
                 id: id,
                 type: type,
                 title: title,
                 peerJson: peerJson,
+                lastMessagePreview: lastMessagePreview,
+                lastMessageAt: lastMessageAt,
                 updatedAt: updatedAt,
               ),
           withReferenceMapper: (p0) => p0

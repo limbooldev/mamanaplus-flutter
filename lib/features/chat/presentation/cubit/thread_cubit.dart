@@ -8,6 +8,7 @@ import 'package:mime/mime.dart';
 
 import '../../../../core/database/app_database.dart';
 import '../../data/chat_repository.dart';
+import '../../media_constants.dart';
 
 int? _jsonInt(dynamic v) {
   if (v == null) return null;
@@ -32,6 +33,27 @@ String? _peerDisplayNameFromPeerField(dynamic peer) {
   return (peer['display_name'] as String?)?.trim();
 }
 
+int? _peerUserIdFromPeerField(dynamic peer) {
+  if (peer is! Map) return null;
+  final id = peer['id'];
+  if (id is int) return id;
+  if (id is num) return id.toInt();
+  return null;
+}
+
+int? _peerUserIdFromPeerJson(String? peerJson) {
+  if (peerJson == null) return null;
+  try {
+    final m = jsonDecode(peerJson) as Map<String, dynamic>;
+    final id = m['id'];
+    if (id is int) return id;
+    if (id is num) return id.toInt();
+    return null;
+  } catch (_) {
+    return null;
+  }
+}
+
 class ThreadState extends Equatable {
   const ThreadState({
     this.messages = const [],
@@ -42,6 +64,8 @@ class ThreadState extends Equatable {
     this.replyTo,
     this.readCursorByUserId = const {},
     this.headerTitle,
+    this.dmPeerUserId,
+    this.messageSearchQuery,
   });
 
   final List<LocalMessage> messages;
@@ -57,6 +81,12 @@ class ThreadState extends Equatable {
   /// App bar title for private (peer name) or group (title); null → fallback `Thread #id`.
   final String? headerTitle;
 
+  /// Private DM: other participant's user id (for block-from-thread, etc.).
+  final int? dmPeerUserId;
+
+  /// Group in-thread search (server `q`); null when inactive.
+  final String? messageSearchQuery;
+
   ThreadState copyWith({
     List<LocalMessage>? messages,
     bool? loading,
@@ -66,6 +96,9 @@ class ThreadState extends Equatable {
     LocalMessage? replyTo,
     Map<int, int>? readCursorByUserId,
     String? headerTitle,
+    int? dmPeerUserId,
+    String? messageSearchQuery,
+    bool clearMessageSearch = false,
   }) =>
       ThreadState(
         messages: messages ?? this.messages,
@@ -76,6 +109,9 @@ class ThreadState extends Equatable {
         replyTo: replyTo,
         readCursorByUserId: readCursorByUserId ?? this.readCursorByUserId,
         headerTitle: headerTitle ?? this.headerTitle,
+        dmPeerUserId: dmPeerUserId ?? this.dmPeerUserId,
+        messageSearchQuery:
+            clearMessageSearch ? null : (messageSearchQuery ?? this.messageSearchQuery),
       );
 
   /// Private DM: max peer read cursor from `receipt_update` — double-check when read up to [messageId].
@@ -89,8 +125,18 @@ class ThreadState extends Equatable {
   }
 
   @override
-  List<Object?> get props =>
-      [messages, loading, sending, error, typingUserIds, replyTo, readCursorByUserId, headerTitle];
+  List<Object?> get props => [
+        messages,
+        loading,
+        sending,
+        error,
+        typingUserIds,
+        replyTo,
+        readCursorByUserId,
+        headerTitle,
+        dmPeerUserId,
+        messageSearchQuery,
+      ];
 }
 
 class ThreadCubit extends Cubit<ThreadState> {
@@ -125,20 +171,8 @@ class ThreadCubit extends Cubit<ThreadState> {
     }
     emit(state.copyWith(loading: true));
     unawaited(_hydrateHeader(prefetched: prefetchedConv));
-    try {
-      final data = await _repo.fetchMessages(conversationId);
-      final items = (data['items'] as List<dynamic>? ?? [])
-          .map((e) => e as Map<String, dynamic>)
-          .toList();
-      await _repo.cacheMessages(conversationId, items);
-      final local = await _repo.loadMessagesLocal(conversationId);
-      emit(state.copyWith(messages: local, loading: false));
-      if (local.isNotEmpty) {
-        await _repo.markRead(conversationId, local.first.id);
-      }
-    } catch (e) {
-      emit(state.copyWith(loading: false, error: e.toString()));
-    }
+    unawaited(_resolveDmPeerUserId(prefetched: prefetchedConv));
+    await _reloadMessagesFromRemote();
 
     _sub = _repo.socket.events.listen((event) async {
       final type = event['type'] as String?;
@@ -148,9 +182,13 @@ class ThreadCubit extends Cubit<ThreadState> {
         if (cid != conversationId) return;
         final msg = payload['message'] as Map<String, dynamic>?;
         if (msg == null) return;
-        // Write first, then read — avoids race between async cache and reload.
-        await _repo.cacheMessages(conversationId, [msg]);
-        await _reloadLocal();
+        if (state.messageSearchQuery != null) {
+          await _reloadMessagesFromRemote();
+        } else {
+          // Write first, then read — avoids race between async cache and reload.
+          await _repo.cacheMessages(conversationId, [msg]);
+          await _reloadLocal();
+        }
         // Mark new message as read immediately (user is in the thread).
         final msgId = _jsonInt(msg['id']);
         if (msgId != null) {
@@ -187,6 +225,32 @@ class ThreadCubit extends Cubit<ThreadState> {
         ));
       }
     });
+  }
+
+  Future<void> _resolveDmPeerUserId({Map<String, dynamic>? prefetched}) async {
+    if (effectiveConversationType != 'private') return;
+    if (state.dmPeerUserId != null) return;
+    final fromPrefetch = prefetched != null
+        ? _peerUserIdFromPeerField(prefetched['peer'])
+        : null;
+    if (fromPrefetch != null) {
+      emit(state.copyWith(dmPeerUserId: fromPrefetch));
+      return;
+    }
+    final local = await _repo.loadConversationLocal(conversationId);
+    final fromJson = _peerUserIdFromPeerJson(local?.peerJson);
+    if (fromJson != null) {
+      emit(state.copyWith(dmPeerUserId: fromJson));
+      return;
+    }
+    try {
+      final raw = prefetched ?? await _repo.fetchConversation(conversationId);
+      final id = _peerUserIdFromPeerField(raw['peer']);
+      if (id != null) {
+        await _repo.upsertLocalConversationFromDto(raw);
+        emit(state.copyWith(dmPeerUserId: id));
+      }
+    } catch (_) {}
   }
 
   /// Resolves app bar title from local cache or `GET /v1/conversations/{id}`.
@@ -228,6 +292,34 @@ class ThreadCubit extends Cubit<ThreadState> {
     emit(state.copyWith(messages: local));
   }
 
+  Future<void> _reloadMessagesFromRemote() async {
+    try {
+      final data = await _repo.fetchMessages(
+        conversationId,
+        q: state.messageSearchQuery,
+      );
+      final items = (data['items'] as List<dynamic>? ?? [])
+          .map((e) => e as Map<String, dynamic>)
+          .toList();
+      await _repo.cacheMessages(conversationId, items);
+      final local = await _repo.loadMessagesLocal(conversationId);
+      emit(state.copyWith(messages: local, loading: false));
+      if (local.isNotEmpty) {
+        await _repo.markRead(conversationId, local.first.id);
+      }
+    } catch (e) {
+      emit(state.copyWith(loading: false, error: e.toString()));
+    }
+  }
+
+  /// Server-side substring search (text/plain only); pass null or short string to clear.
+  Future<void> setMessageSearchQuery(String? raw) async {
+    final q = raw?.trim();
+    final norm = (q == null || q.length < 2) ? null : q;
+    emit(state.copyWith(loading: true, error: null, clearMessageSearch: norm == null, messageSearchQuery: norm));
+    await _reloadMessagesFromRemote();
+  }
+
   void setReplyTo(LocalMessage? m) => emit(state.copyWith(replyTo: m));
 
   Future<void> send(String text) async {
@@ -240,7 +332,7 @@ class ThreadCubit extends Cubit<ThreadState> {
         replyToMessageId: state.replyTo?.id,
       );
       emit(state.copyWith(sending: false, replyTo: null));
-      final data = await _repo.fetchMessages(conversationId);
+      final data = await _repo.fetchMessages(conversationId, q: state.messageSearchQuery);
       final items = (data['items'] as List<dynamic>? ?? [])
           .map((e) => e as Map<String, dynamic>)
           .toList();
@@ -279,7 +371,29 @@ class ThreadCubit extends Cubit<ThreadState> {
         replyToMessageId: state.replyTo?.id,
       );
       emit(state.copyWith(sending: false, replyTo: null));
-      final data = await _repo.fetchMessages(conversationId);
+      final data = await _repo.fetchMessages(conversationId, q: state.messageSearchQuery);
+      final items = (data['items'] as List<dynamic>? ?? [])
+          .map((e) => e as Map<String, dynamic>)
+          .toList();
+      await _repo.cacheMessages(conversationId, items);
+      await _reloadLocal();
+    } catch (e) {
+      emit(state.copyWith(sending: false, error: e.toString()));
+    }
+  }
+
+  Future<void> sendSticker({required String stickerId, required String emoji}) async {
+    emit(state.copyWith(sending: true, error: null));
+    try {
+      final body = jsonEncode({'sticker_id': stickerId, 'emoji': emoji});
+      await _repo.sendMessage(
+        conversationId,
+        body: body,
+        contentType: kMamanaStickerContentType,
+        replyToMessageId: state.replyTo?.id,
+      );
+      emit(state.copyWith(sending: false, replyTo: null));
+      final data = await _repo.fetchMessages(conversationId, q: state.messageSearchQuery);
       final items = (data['items'] as List<dynamic>? ?? [])
           .map((e) => e as Map<String, dynamic>)
           .toList();

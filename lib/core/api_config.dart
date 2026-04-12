@@ -1,12 +1,18 @@
 /// Backend base URL and derived WebSocket URL.
 ///
 /// Override with `--dart-define=API_BASE_URL=https://api.example.com`
+///
+/// **Release discipline:** bump [expectedBackendContractTag] when adopting a
+/// backend OpenAPI / behavior release the app was verified against.
 class ApiConfig {
   const ApiConfig({
     required this.baseUrl,
   });
 
   final String baseUrl;
+
+  /// Human-readable contract pin (align with backend tag or release notes).
+  static const String expectedBackendContractTag = 'messaging-parity-2026-04';
 
   /// Android emulator → host machine (default). iOS simulator: `http://127.0.0.1:8080`.
   static ApiConfig fromEnvironment() {
