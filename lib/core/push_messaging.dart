@@ -50,9 +50,8 @@ Future<void> setupPushForAuthenticatedUser({
   }
   final messaging = FirebaseMessaging.instance;
   await messaging.setAutoInitEnabled(true);
-  if (Platform.isIOS) {
-    await messaging.requestPermission(alert: true, badge: true, sound: true);
-  }
+  // iOS: required for alerts. Android 13+: maps to POST_NOTIFICATIONS runtime prompt.
+  await messaging.requestPermission(alert: true, badge: true, sound: true);
   final token = await messaging.getToken();
   if (token != null && token.isNotEmpty) {
     await chatRepository.registerPush(token: token);
