@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CLIENT_ID</key>
+	<string>1032889903903-qoj49epftip8dm7bjdo07egeiu1a09nl.apps.googleusercontent.com</string>
+	<key>REVERSED_CLIENT_ID</key>
+	<string>com.googleusercontent.apps.1032889903903-qoj49epftip8dm7bjdo07egeiu1a09nl</string>
+	<key>ANDROID_CLIENT_ID</key>
+	<string>1032889903903-34jfjrht7im89lotfon237evuftcokb6.apps.googleusercontent.com</string>
+	<key>API_KEY</key>
+	<string>AIzaSyAWdB1bQTdHJkeVy-J8frtFJOyn7qUyiWI</string>
+	<key>GCM_SENDER_ID</key>
+	<string>1032889903903</string>
+	<key>PLIST_VERSION</key>
+	<string>1</string>
+	<key>BUNDLE_ID</key>
+	<string>com.mamanaplus.ios</string>
+	<key>PROJECT_ID</key>
+	<string>mamana-plus</string>
+	<key>STORAGE_BUCKET</key>
+	<string>mamana-plus.firebasestorage.app</string>
+	<key>IS_ADS_ENABLED</key>
+	<false></false>
+	<key>IS_ANALYTICS_ENABLED</key>
+	<false></false>
+	<key>IS_APPINVITE_ENABLED</key>
+	<true></true>
+	<key>IS_GCM_ENABLED</key>
+	<true></true>
+	<key>IS_SIGNIN_ENABLED</key>
+	<true></true>
+	<key>GOOGLE_APP_ID</key>
+	<string>1:1032889903903:ios:c7b684fa2701b7cde01e2a</string>
+	<key>ADMOB_APP_ID</key>
+	<string>ca-app-pub-4092726536584931~5425579543</string>
+</dict>
+</plist>

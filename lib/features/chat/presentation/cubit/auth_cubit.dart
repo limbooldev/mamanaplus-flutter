@@ -45,27 +45,28 @@ class AuthFailure extends AuthState {
 }
 
 class AuthCubit extends Cubit<AuthState> {
-  AuthCubit({
-    required ApiConfig config,
-    required TokenStorage tokens,
-  })  : _config = config,
-        _tokens = tokens,
-        super(AuthInitial()) {
+  AuthCubit({required ApiConfig config, required TokenStorage tokens})
+    : _config = config,
+      _tokens = tokens,
+      super(AuthInitial()) {
     notifier = ValueNotifier<AuthState>(state);
   }
 
   final ApiConfig _config;
   final TokenStorage _tokens;
 
+  /// Optional hook (e.g. unregister FCM on server) while the session is still valid.
+  Future<void> Function()? beforeLogout;
+
   Dio? _apiDio;
 
   /// Shared HTTP client (refresh + auth callbacks). Lazily created so callbacks close over this cubit.
   Dio get apiDio => _apiDio ??= createDio(
-        config: _config,
-        tokens: _tokens,
-        onAccessTokenRefreshed: applyRefreshedAccessToken,
-        onSessionExpired: sessionExpiredFromApi,
-      );
+    config: _config,
+    tokens: _tokens,
+    onAccessTokenRefreshed: applyRefreshedAccessToken,
+    onSessionExpired: sessionExpiredFromApi,
+  );
 
   /// Drives [GoRouter] redirect refresh.
   late final ValueNotifier<AuthState> notifier;
@@ -103,6 +104,12 @@ class AuthCubit extends Cubit<AuthState> {
   }
 
   Future<void> forceLogout() async {
+    final hook = beforeLogout;
+    if (hook != null) {
+      try {
+        await hook();
+      } catch (_) {}
+    }
     await _tokens.clear();
     emit(AuthUnauthenticated());
   }
@@ -121,11 +128,19 @@ class AuthCubit extends Cubit<AuthState> {
     }
   }
 
-  Future<void> register(String email, String password, String displayName) async {
+  Future<void> register(
+    String email,
+    String password,
+    String displayName,
+  ) async {
     emit(AuthLoading());
     try {
       final ds = ChatRemoteDataSource(apiDio);
-      final data = await ds.register(email: email, password: password, displayName: displayName);
+      final data = await ds.register(
+        email: email,
+        password: password,
+        displayName: displayName,
+      );
       final access = data['access_token'] as String;
       final refresh = data['refresh_token'] as String;
       await _tokens.saveTokens(access: access, refresh: refresh);

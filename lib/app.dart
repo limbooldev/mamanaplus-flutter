@@ -1,8 +1,8 @@
+import 'dart:io' show Platform;
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:mamana_plus/l10n/app_localizations.dart';
 import 'package:go_router/go_router.dart';
-
 import 'core/api_config.dart';
 import 'shared/ui/ui.dart';
 import 'router/app_routes.dart';
@@ -15,6 +15,7 @@ import 'features/chat/presentation/pages/login_page.dart';
 import 'features/chat/presentation/pages/main_shell.dart';
 import 'features/chat/presentation/pages/pick_users_page.dart';
 import 'features/chat/presentation/pages/thread_page.dart';
+import 'core/push_messaging.dart';
 
 String _initialLocationFor(AuthState s) {
   if (s is AuthAuthenticated) return AppRoutes.inbox;
@@ -68,7 +69,8 @@ class _MamanaAppState extends State<MamanaApp> {
           return AppRoutes.login;
         }
         if (s is AuthAuthenticated) {
-          if (loc == AppRoutes.login || loc == AppRoutes.splash) return AppRoutes.inbox;
+          if (loc == AppRoutes.login || loc == AppRoutes.splash)
+            return AppRoutes.inbox;
           return null;
         }
         return null;
@@ -76,18 +78,11 @@ class _MamanaAppState extends State<MamanaApp> {
       routes: [
         GoRoute(
           path: AppRoutes.splash,
-          builder: (_, __) => const Scaffold(
-            body: Center(child: CircularProgressIndicator()),
-          ),
+          builder: (_, __) =>
+              const Scaffold(body: Center(child: CircularProgressIndicator())),
         ),
-        GoRoute(
-          path: AppRoutes.login,
-          builder: (_, __) => const LoginPage(),
-        ),
-        GoRoute(
-          path: AppRoutes.inbox,
-          builder: (_, __) => const MainShell(),
-        ),
+        GoRoute(path: AppRoutes.login, builder: (_, __) => const LoginPage()),
+        GoRoute(path: AppRoutes.inbox, builder: (_, __) => const MainShell()),
         GoRoute(
           path: AppRoutes.threadPattern,
           builder: (context, state) {
@@ -95,7 +90,9 @@ class _MamanaAppState extends State<MamanaApp> {
             if (authed is! AuthAuthenticated) {
               return const SizedBox.shrink();
             }
-            final id = int.parse(state.pathParameters[AppRoutes.threadParamId]!);
+            final id = int.parse(
+              state.pathParameters[AppRoutes.threadParamId]!,
+            );
             final extra = state.extra as ThreadRouteExtra?;
             return ThreadPage(
               conversationId: id,
@@ -111,7 +108,9 @@ class _MamanaAppState extends State<MamanaApp> {
             if (authed is! AuthAuthenticated) {
               return const SizedBox.shrink();
             }
-            final id = int.parse(state.pathParameters[AppRoutes.groupDetailParamId]!);
+            final id = int.parse(
+              state.pathParameters[AppRoutes.groupDetailParamId]!,
+            );
             return GroupDetailPage(conversationId: id);
           },
         ),
@@ -124,7 +123,9 @@ class _MamanaAppState extends State<MamanaApp> {
           builder: (context, state) {
             final extra = state.extra as PickUsersRouteExtra?;
             return PickUsersPage(
-              extra: extra ?? const PickUsersRouteExtra(mode: PickUsersMode.single),
+              extra:
+                  extra ??
+                  const PickUsersRouteExtra(mode: PickUsersMode.single),
             );
           },
         ),
@@ -134,10 +135,21 @@ class _MamanaAppState extends State<MamanaApp> {
       if (!mounted) return;
       final s = widget.authCubit.state;
       if (s is AuthAuthenticated) {
-        widget.chatRepository.connectRealtime(widget.config.wsUrl);
-        widget.chatRepository.registerPush(token: 'stub-device-token');
+        _attachSessionRealtimeAndPush();
       }
     });
+  }
+
+  Future<void> _attachSessionRealtimeAndPush() async {
+    if (!mounted) return;
+    widget.chatRepository.connectRealtime(widget.config.wsUrl);
+    if (Platform.isAndroid || Platform.isIOS) {
+      await setupPushForAuthenticatedUser(
+        chatRepository: widget.chatRepository,
+        authCubit: widget.authCubit,
+        router: _router,
+      );
+    }
   }
 
   @override
@@ -170,8 +182,7 @@ class _MamanaAppState extends State<MamanaApp> {
     return BlocListener<AuthCubit, AuthState>(
       listener: (context, state) {
         if (state is AuthAuthenticated) {
-          widget.chatRepository.connectRealtime(widget.config.wsUrl);
-          widget.chatRepository.registerPush(token: 'stub-device-token');
+          _attachSessionRealtimeAndPush();
         }
         if (state is AuthUnauthenticated) {
           widget.chatRepository.socket.disconnect();

@@ -17,11 +17,13 @@ import 'features/chat/data/chat_repository.dart';
 import 'features/chat/data/chat_socket.dart';
 import 'features/chat/presentation/cubit/auth_cubit.dart';
 import 'features/chat/presentation/cubit/theme_cubit.dart';
+import 'core/push_messaging.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   if (Platform.isAndroid || Platform.isIOS) {
     await applyWorkaroundToOpenSqlite3OnOldAndroidVersions();
+    await initializeFirebaseCore();
   }
 
   final config = ApiConfig.fromEnvironment();
@@ -31,7 +33,15 @@ Future<void> main() async {
   final dio = auth.apiDio;
   final remote = ChatRemoteDataSource(dio);
   final socket = ChatSocket();
-  final repo = ChatRepository(remote: remote, db: db, socket: socket, tokens: tokens);
+  final repo = ChatRepository(
+    remote: remote,
+    db: db,
+    socket: socket,
+    tokens: tokens,
+  );
+  auth.beforeLogout = () async {
+    await repo.unregisterPush();
+  };
   await auth.restore();
 
   final prefs = await SharedPreferences.getInstance();

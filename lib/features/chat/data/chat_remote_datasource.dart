@@ -15,11 +15,7 @@ class ChatRemoteDataSource {
   }) async {
     final res = await _dio.post<Map<String, dynamic>>(
       '/v1/auth/register',
-      data: {
-        'email': email,
-        'password': password,
-        'display_name': displayName,
-      },
+      data: {'email': email, 'password': password, 'display_name': displayName},
     );
     return res.data!;
   }
@@ -124,7 +120,9 @@ class ChatRemoteDataSource {
   }
 
   Future<Map<String, dynamic>> getGroup(int conversationId) async {
-    final res = await _dio.get<Map<String, dynamic>>('/v1/groups/$conversationId');
+    final res = await _dio.get<Map<String, dynamic>>(
+      '/v1/groups/$conversationId',
+    );
     return res.data!;
   }
 
@@ -149,7 +147,9 @@ class ChatRemoteDataSource {
   }
 
   Future<Map<String, dynamic>> listGroupBans(int groupId) async {
-    final res = await _dio.get<Map<String, dynamic>>('/v1/groups/$groupId/bans');
+    final res = await _dio.get<Map<String, dynamic>>(
+      '/v1/groups/$groupId/bans',
+    );
     return res.data!;
   }
 
@@ -210,6 +210,14 @@ class ChatRemoteDataSource {
         'token': token,
         if (deviceId != null) 'device_id': deviceId,
       },
+    );
+  }
+
+  Future<void> deletePushDevice({String? deviceId}) async {
+    await _dio.delete<void>(
+      '/v1/push/devices',
+      data: <String, dynamic>{if (deviceId != null) 'device_id': deviceId},
+      options: Options(contentType: Headers.jsonContentType),
     );
   }
 
@@ -275,10 +283,7 @@ class ChatRemoteDataSource {
     await dio.put<dynamic>(
       uploadUrl,
       data: Uint8List.fromList(bytes),
-      options: Options(
-        headers: h,
-        contentType: ct,
-      ),
+      options: Options(headers: h, contentType: ct),
     );
   }
 
