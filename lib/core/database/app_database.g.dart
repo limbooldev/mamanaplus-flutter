@@ -70,6 +70,18 @@ class $LocalConversationsTable extends LocalConversations
         type: DriftSqlType.dateTime,
         requiredDuringInsert: false,
       );
+  static const VerificationMeta _unreadCountMeta = const VerificationMeta(
+    'unreadCount',
+  );
+  @override
+  late final GeneratedColumn<int> unreadCount = GeneratedColumn<int>(
+    'unread_count',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
   static const VerificationMeta _updatedAtMeta = const VerificationMeta(
     'updatedAt',
   );
@@ -89,6 +101,7 @@ class $LocalConversationsTable extends LocalConversations
     peerJson,
     lastMessagePreview,
     lastMessageAt,
+    unreadCount,
     updatedAt,
   ];
   @override
@@ -144,6 +157,15 @@ class $LocalConversationsTable extends LocalConversations
         ),
       );
     }
+    if (data.containsKey('unread_count')) {
+      context.handle(
+        _unreadCountMeta,
+        unreadCount.isAcceptableOrUnknown(
+          data['unread_count']!,
+          _unreadCountMeta,
+        ),
+      );
+    }
     if (data.containsKey('updated_at')) {
       context.handle(
         _updatedAtMeta,
@@ -185,6 +207,10 @@ class $LocalConversationsTable extends LocalConversations
         DriftSqlType.dateTime,
         data['${effectivePrefix}last_message_at'],
       ),
+      unreadCount: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}unread_count'],
+      )!,
       updatedAt: attachedDatabase.typeMapping.read(
         DriftSqlType.dateTime,
         data['${effectivePrefix}updated_at'],
@@ -206,6 +232,9 @@ class LocalConversation extends DataClass
   final String? peerJson;
   final String? lastMessagePreview;
   final DateTime? lastMessageAt;
+
+  /// Server `unread_count` from list / GET conversation.
+  final int unreadCount;
   final DateTime updatedAt;
   const LocalConversation({
     required this.id,
@@ -214,6 +243,7 @@ class LocalConversation extends DataClass
     this.peerJson,
     this.lastMessagePreview,
     this.lastMessageAt,
+    required this.unreadCount,
     required this.updatedAt,
   });
   @override
@@ -233,6 +263,7 @@ class LocalConversation extends DataClass
     if (!nullToAbsent || lastMessageAt != null) {
       map['last_message_at'] = Variable<DateTime>(lastMessageAt);
     }
+    map['unread_count'] = Variable<int>(unreadCount);
     map['updated_at'] = Variable<DateTime>(updatedAt);
     return map;
   }
@@ -253,6 +284,7 @@ class LocalConversation extends DataClass
       lastMessageAt: lastMessageAt == null && nullToAbsent
           ? const Value.absent()
           : Value(lastMessageAt),
+      unreadCount: Value(unreadCount),
       updatedAt: Value(updatedAt),
     );
   }
@@ -271,6 +303,7 @@ class LocalConversation extends DataClass
         json['lastMessagePreview'],
       ),
       lastMessageAt: serializer.fromJson<DateTime?>(json['lastMessageAt']),
+      unreadCount: serializer.fromJson<int>(json['unreadCount']),
       updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
     );
   }
@@ -284,6 +317,7 @@ class LocalConversation extends DataClass
       'peerJson': serializer.toJson<String?>(peerJson),
       'lastMessagePreview': serializer.toJson<String?>(lastMessagePreview),
       'lastMessageAt': serializer.toJson<DateTime?>(lastMessageAt),
+      'unreadCount': serializer.toJson<int>(unreadCount),
       'updatedAt': serializer.toJson<DateTime>(updatedAt),
     };
   }
@@ -295,6 +329,7 @@ class LocalConversation extends DataClass
     Value<String?> peerJson = const Value.absent(),
     Value<String?> lastMessagePreview = const Value.absent(),
     Value<DateTime?> lastMessageAt = const Value.absent(),
+    int? unreadCount,
     DateTime? updatedAt,
   }) => LocalConversation(
     id: id ?? this.id,
@@ -307,6 +342,7 @@ class LocalConversation extends DataClass
     lastMessageAt: lastMessageAt.present
         ? lastMessageAt.value
         : this.lastMessageAt,
+    unreadCount: unreadCount ?? this.unreadCount,
     updatedAt: updatedAt ?? this.updatedAt,
   );
   LocalConversation copyWithCompanion(LocalConversationsCompanion data) {
@@ -321,6 +357,9 @@ class LocalConversation extends DataClass
       lastMessageAt: data.lastMessageAt.present
           ? data.lastMessageAt.value
           : this.lastMessageAt,
+      unreadCount: data.unreadCount.present
+          ? data.unreadCount.value
+          : this.unreadCount,
       updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
     );
   }
@@ -334,6 +373,7 @@ class LocalConversation extends DataClass
           ..write('peerJson: $peerJson, ')
           ..write('lastMessagePreview: $lastMessagePreview, ')
           ..write('lastMessageAt: $lastMessageAt, ')
+          ..write('unreadCount: $unreadCount, ')
           ..write('updatedAt: $updatedAt')
           ..write(')'))
         .toString();
@@ -347,6 +387,7 @@ class LocalConversation extends DataClass
     peerJson,
     lastMessagePreview,
     lastMessageAt,
+    unreadCount,
     updatedAt,
   );
   @override
@@ -359,6 +400,7 @@ class LocalConversation extends DataClass
           other.peerJson == this.peerJson &&
           other.lastMessagePreview == this.lastMessagePreview &&
           other.lastMessageAt == this.lastMessageAt &&
+          other.unreadCount == this.unreadCount &&
           other.updatedAt == this.updatedAt);
 }
 
@@ -369,6 +411,7 @@ class LocalConversationsCompanion extends UpdateCompanion<LocalConversation> {
   final Value<String?> peerJson;
   final Value<String?> lastMessagePreview;
   final Value<DateTime?> lastMessageAt;
+  final Value<int> unreadCount;
   final Value<DateTime> updatedAt;
   const LocalConversationsCompanion({
     this.id = const Value.absent(),
@@ -377,6 +420,7 @@ class LocalConversationsCompanion extends UpdateCompanion<LocalConversation> {
     this.peerJson = const Value.absent(),
     this.lastMessagePreview = const Value.absent(),
     this.lastMessageAt = const Value.absent(),
+    this.unreadCount = const Value.absent(),
     this.updatedAt = const Value.absent(),
   });
   LocalConversationsCompanion.insert({
@@ -386,6 +430,7 @@ class LocalConversationsCompanion extends UpdateCompanion<LocalConversation> {
     this.peerJson = const Value.absent(),
     this.lastMessagePreview = const Value.absent(),
     this.lastMessageAt = const Value.absent(),
+    this.unreadCount = const Value.absent(),
     required DateTime updatedAt,
   }) : type = Value(type),
        updatedAt = Value(updatedAt);
@@ -396,6 +441,7 @@ class LocalConversationsCompanion extends UpdateCompanion<LocalConversation> {
     Expression<String>? peerJson,
     Expression<String>? lastMessagePreview,
     Expression<DateTime>? lastMessageAt,
+    Expression<int>? unreadCount,
     Expression<DateTime>? updatedAt,
   }) {
     return RawValuesInsertable({
@@ -406,6 +452,7 @@ class LocalConversationsCompanion extends UpdateCompanion<LocalConversation> {
       if (lastMessagePreview != null)
         'last_message_preview': lastMessagePreview,
       if (lastMessageAt != null) 'last_message_at': lastMessageAt,
+      if (unreadCount != null) 'unread_count': unreadCount,
       if (updatedAt != null) 'updated_at': updatedAt,
     });
   }
@@ -417,6 +464,7 @@ class LocalConversationsCompanion extends UpdateCompanion<LocalConversation> {
     Value<String?>? peerJson,
     Value<String?>? lastMessagePreview,
     Value<DateTime?>? lastMessageAt,
+    Value<int>? unreadCount,
     Value<DateTime>? updatedAt,
   }) {
     return LocalConversationsCompanion(
@@ -426,6 +474,7 @@ class LocalConversationsCompanion extends UpdateCompanion<LocalConversation> {
       peerJson: peerJson ?? this.peerJson,
       lastMessagePreview: lastMessagePreview ?? this.lastMessagePreview,
       lastMessageAt: lastMessageAt ?? this.lastMessageAt,
+      unreadCount: unreadCount ?? this.unreadCount,
       updatedAt: updatedAt ?? this.updatedAt,
     );
   }
@@ -451,6 +500,9 @@ class LocalConversationsCompanion extends UpdateCompanion<LocalConversation> {
     if (lastMessageAt.present) {
       map['last_message_at'] = Variable<DateTime>(lastMessageAt.value);
     }
+    if (unreadCount.present) {
+      map['unread_count'] = Variable<int>(unreadCount.value);
+    }
     if (updatedAt.present) {
       map['updated_at'] = Variable<DateTime>(updatedAt.value);
     }
@@ -466,6 +518,7 @@ class LocalConversationsCompanion extends UpdateCompanion<LocalConversation> {
           ..write('peerJson: $peerJson, ')
           ..write('lastMessagePreview: $lastMessagePreview, ')
           ..write('lastMessageAt: $lastMessageAt, ')
+          ..write('unreadCount: $unreadCount, ')
           ..write('updatedAt: $updatedAt')
           ..write(')'))
         .toString();
@@ -1462,6 +1515,7 @@ typedef $$LocalConversationsTableCreateCompanionBuilder =
       Value<String?> peerJson,
       Value<String?> lastMessagePreview,
       Value<DateTime?> lastMessageAt,
+      Value<int> unreadCount,
       required DateTime updatedAt,
     });
 typedef $$LocalConversationsTableUpdateCompanionBuilder =
@@ -1472,6 +1526,7 @@ typedef $$LocalConversationsTableUpdateCompanionBuilder =
       Value<String?> peerJson,
       Value<String?> lastMessagePreview,
       Value<DateTime?> lastMessageAt,
+      Value<int> unreadCount,
       Value<DateTime> updatedAt,
     });
 
@@ -1511,6 +1566,11 @@ class $$LocalConversationsTableFilterComposer
 
   ColumnFilters<DateTime> get lastMessageAt => $composableBuilder(
     column: $table.lastMessageAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get unreadCount => $composableBuilder(
+    column: $table.unreadCount,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -1559,6 +1619,11 @@ class $$LocalConversationsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<int> get unreadCount => $composableBuilder(
+    column: $table.unreadCount,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<DateTime> get updatedAt => $composableBuilder(
     column: $table.updatedAt,
     builder: (column) => ColumnOrderings(column),
@@ -1593,6 +1658,11 @@ class $$LocalConversationsTableAnnotationComposer
 
   GeneratedColumn<DateTime> get lastMessageAt => $composableBuilder(
     column: $table.lastMessageAt,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get unreadCount => $composableBuilder(
+    column: $table.unreadCount,
     builder: (column) => column,
   );
 
@@ -1646,6 +1716,7 @@ class $$LocalConversationsTableTableManager
                 Value<String?> peerJson = const Value.absent(),
                 Value<String?> lastMessagePreview = const Value.absent(),
                 Value<DateTime?> lastMessageAt = const Value.absent(),
+                Value<int> unreadCount = const Value.absent(),
                 Value<DateTime> updatedAt = const Value.absent(),
               }) => LocalConversationsCompanion(
                 id: id,
@@ -1654,6 +1725,7 @@ class $$LocalConversationsTableTableManager
                 peerJson: peerJson,
                 lastMessagePreview: lastMessagePreview,
                 lastMessageAt: lastMessageAt,
+                unreadCount: unreadCount,
                 updatedAt: updatedAt,
               ),
           createCompanionCallback:
@@ -1664,6 +1736,7 @@ class $$LocalConversationsTableTableManager
                 Value<String?> peerJson = const Value.absent(),
                 Value<String?> lastMessagePreview = const Value.absent(),
                 Value<DateTime?> lastMessageAt = const Value.absent(),
+                Value<int> unreadCount = const Value.absent(),
                 required DateTime updatedAt,
               }) => LocalConversationsCompanion.insert(
                 id: id,
@@ -1672,6 +1745,7 @@ class $$LocalConversationsTableTableManager
                 peerJson: peerJson,
                 lastMessagePreview: lastMessagePreview,
                 lastMessageAt: lastMessageAt,
+                unreadCount: unreadCount,
                 updatedAt: updatedAt,
               ),
           withReferenceMapper: (p0) => p0

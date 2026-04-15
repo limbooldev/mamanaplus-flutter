@@ -1,12 +1,12 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:mamana_plus/l10n/app_localizations.dart';
 
 import '../../../../router/app_routes.dart';
+import '../../../../core/formatting/relative_message_time.dart';
 import '../../../../core/database/app_database.dart';
 import '../../../../shared/ui/ui.dart';
 import '../../data/chat_repository.dart';
@@ -172,10 +172,20 @@ class _ChatsTab extends StatelessWidget {
               final isGroup = c.type == 'group';
               return _ConversationTile(
                 title: title,
-                subtitle: _subtitleForRow(c, isGroup),
+                previewLine: _previewLine(c, isGroup),
+                timeLabel: _timeLabel(context, c),
                 isGroup: isGroup,
                 conversationId: c.id,
-                onTap: () => context.pushThread(c.id, conversationType: c.type),
+                unreadCount: c.unreadCount,
+                onTap: () async {
+                  await context.pushThread(
+                    c.id,
+                    conversationType: c.type,
+                  );
+                  if (context.mounted) {
+                    await context.read<InboxCubit>().refreshQuiet();
+                  }
+                },
                 onInfoTap: isGroup ? () => context.pushGroupDetail(c.id) : null,
               );
             },
@@ -185,18 +195,19 @@ class _ChatsTab extends StatelessWidget {
     );
   }
 
-  String _subtitleForRow(LocalConversation c, bool isGroup) {
+  String _previewLine(LocalConversation c, bool isGroup) {
     final preview = c.lastMessagePreview?.trim();
-    final at = c.lastMessageAt;
-    String? timeStr;
-    if (at != null) {
-      timeStr = DateFormat.MMMd().add_jm().format(at.toLocal());
-    }
-    if (preview != null && preview.isNotEmpty) {
-      if (timeStr != null) return '$preview · $timeStr';
-      return preview;
-    }
+    if (preview != null && preview.isNotEmpty) return preview;
     return isGroup ? 'Group' : 'Direct message';
+  }
+
+  String? _timeLabel(BuildContext context, LocalConversation c) {
+    final at = c.lastMessageAt;
+    if (at == null) return null;
+    return formatRelativeMessageTime(
+      at,
+      locale: Localizations.localeOf(context).toString(),
+    );
   }
 
   String _titleFor(LocalConversation c, AppLocalizations l10n) {
@@ -216,17 +227,22 @@ class _ChatsTab extends StatelessWidget {
 class _ConversationTile extends StatelessWidget {
   const _ConversationTile({
     required this.title,
-    required this.subtitle,
+    required this.previewLine,
+    required this.timeLabel,
     required this.isGroup,
     required this.conversationId,
+    required this.unreadCount,
     required this.onTap,
     this.onInfoTap,
   });
 
   final String title;
-  final String subtitle;
+  /// Last message preview or placeholder (no timestamp).
+  final String previewLine;
+  final String? timeLabel;
   final bool isGroup;
   final int conversationId;
+  final int unreadCount;
   final VoidCallback onTap;
   final VoidCallback? onInfoTap;
 
@@ -234,12 +250,16 @@ class _ConversationTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final initials = title.isNotEmpty ? title[0].toUpperCase() : '?';
+    final titleColor = isDark
+        ? AppColors.onBackgroundDark
+        : AppColors.onBackgroundLight;
 
     return InkWell(
       onTap: onTap,
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             _Avatar(initials: initials, isGroup: isGroup),
             const SizedBox(width: 12),
@@ -247,41 +267,100 @@ class _ConversationTile extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    title,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: GoogleFonts.inter(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w600,
-                      color: isDark
-                          ? AppColors.onBackgroundDark
-                          : AppColors.onBackgroundLight,
-                    ),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        child: Text(
+                          title,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: GoogleFonts.inter(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w600,
+                            color: titleColor,
+                          ),
+                        ),
+                      ),
+                      if (timeLabel != null) ...[
+                        const SizedBox(width: 8),
+                        Text(
+                          timeLabel!,
+                          maxLines: 1,
+                          overflow: TextOverflow.fade,
+                          softWrap: false,
+                          style: GoogleFonts.inter(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w500,
+                            color: AppColors.subtitleLight,
+                          ),
+                        ),
+                      ],
+                    ],
                   ),
-                  const SizedBox(height: 2),
-                  Text(
-                    subtitle,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: GoogleFonts.inter(
-                      fontSize: 13,
-                      color: AppColors.subtitleLight,
-                    ),
+                  const SizedBox(height: 4),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      Expanded(
+                        child: Text(
+                          previewLine,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: GoogleFonts.inter(
+                            fontSize: 13,
+                            color: AppColors.subtitleLight,
+                          ),
+                        ),
+                      ),
+                      if (unreadCount > 0) ...[
+                        const SizedBox(width: 8),
+                        _UnreadBadge(count: unreadCount),
+                      ],
+                    ],
                   ),
                 ],
               ),
             ),
             if (onInfoTap != null) ...[
-              const SizedBox(width: 8),
+              const SizedBox(width: 4),
               IconButton(
                 icon: const Icon(Icons.info_outline, size: 20),
                 color: AppColors.subtitleLight,
                 onPressed: onInfoTap,
                 visualDensity: VisualDensity.compact,
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
               ),
             ],
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class _UnreadBadge extends StatelessWidget {
+  const _UnreadBadge({required this.count});
+  final int count;
+
+  @override
+  Widget build(BuildContext context) {
+    final label = count > 99 ? '99+' : '$count';
+    return Container(
+      constraints: const BoxConstraints(minWidth: 22),
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+      decoration: BoxDecoration(
+        color: AppColors.primary,
+        borderRadius: BorderRadius.circular(11),
+      ),
+      child: Text(
+        label,
+        textAlign: TextAlign.center,
+        style: GoogleFonts.inter(
+          fontSize: 12,
+          fontWeight: FontWeight.w700,
+          color: Colors.white,
         ),
       ),
     );

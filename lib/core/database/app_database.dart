@@ -14,6 +14,8 @@ class LocalConversations extends Table {
   TextColumn get peerJson => text().nullable()();
   TextColumn get lastMessagePreview => text().nullable()();
   DateTimeColumn get lastMessageAt => dateTime().nullable()();
+  /// Server `unread_count` from list / GET conversation.
+  IntColumn get unreadCount => integer().withDefault(const Constant(0))();
   DateTimeColumn get updatedAt => dateTime()();
   @override
   Set<Column> get primaryKey => {id};
@@ -50,7 +52,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(_openConnection());
 
   @override
-  int get schemaVersion => 3;
+  int get schemaVersion => 4;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -65,6 +67,9 @@ class AppDatabase extends _$AppDatabase {
           if (from < 3) {
             await m.addColumn(localConversations, localConversations.lastMessagePreview);
             await m.addColumn(localConversations, localConversations.lastMessageAt);
+          }
+          if (from < 4) {
+            await m.addColumn(localConversations, localConversations.unreadCount);
           }
         },
       );

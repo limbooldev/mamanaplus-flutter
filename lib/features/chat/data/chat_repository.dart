@@ -110,6 +110,7 @@ class ChatRepository {
         final preview = m['last_message_preview'] as String?;
         final lastAtRaw = m['last_message_at'] as String?;
         final lastAt = DateTime.tryParse(lastAtRaw ?? '');
+        final unread = _parseUnreadCount(m);
         b.insert(
           _db.localConversations,
           LocalConversationsCompanion.insert(
@@ -119,6 +120,7 @@ class ChatRepository {
             peerJson: Value(peerJson),
             lastMessagePreview: Value(preview),
             lastMessageAt: Value(lastAt),
+            unreadCount: Value(unread),
             updatedAt: DateTime.now(),
           ),
           mode: InsertMode.insertOrReplace,
@@ -201,6 +203,7 @@ class ChatRepository {
     final preview = m['last_message_preview'] as String?;
     final lastAtRaw = m['last_message_at'] as String?;
     final lastAt = DateTime.tryParse(lastAtRaw ?? '');
+    final unread = _parseUnreadCount(m);
     await _db
         .into(_db.localConversations)
         .insert(
@@ -211,6 +214,7 @@ class ChatRepository {
             peerJson: Value(peerJson),
             lastMessagePreview: Value(preview),
             lastMessageAt: Value(lastAt),
+            unreadCount: Value(unread),
             updatedAt: DateTime.now(),
           ),
           mode: InsertMode.insertOrReplace,
@@ -422,4 +426,11 @@ class ChatRepository {
 
   Future<void> leavePublicGroup(int groupId) =>
       _remote.leavePublicGroup(groupId);
+}
+
+int _parseUnreadCount(Map<String, dynamic> m) {
+  final v = m['unread_count'];
+  if (v is int) return v;
+  if (v is num) return v.toInt();
+  return 0;
 }

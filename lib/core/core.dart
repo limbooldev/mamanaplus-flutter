@@ -2,6 +2,7 @@
 library;
 
 export 'api_config.dart';
+export 'formatting/relative_message_time.dart';
 export 'database/app_database.dart';
 export 'dio_client.dart';
 export 'jwt_util.dart';
