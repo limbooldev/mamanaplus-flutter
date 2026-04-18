@@ -16,6 +16,7 @@ import 'package:record/record.dart';
 import '../../../../core/api_config.dart';
 import '../../../../core/database/app_database.dart';
 import '../../../../core/jwt_util.dart';
+import '../../../../router/app_routes.dart';
 import '../../../../shared/ui/ui.dart';
 import '../../data/chat_mute_prefs.dart';
 import '../../data/chat_repository.dart';
@@ -190,8 +191,11 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
           onPressed: () => Navigator.of(context).pop(),
         ),
         title: BlocBuilder<ThreadCubit, ThreadState>(
-          buildWhen: (a, b) => a.headerTitle != b.headerTitle,
+          buildWhen: (a, b) =>
+              a.headerTitle != b.headerTitle || a.loading != b.loading,
           builder: (context, state) {
+            final isGroup =
+                context.read<ThreadCubit>().effectiveConversationType == 'group';
             final title = state.headerTitle?.trim();
             final String titleText;
             final String initial;
@@ -202,7 +206,7 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
               titleText = l10n.threadTitle(widget.conversationId);
               initial = '#';
             }
-            return Row(
+            final titleRow = Row(
               children: [
                 Container(
                   width: 36,
@@ -234,6 +238,18 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
                   ),
                 ),
               ],
+            );
+            if (!isGroup) return titleRow;
+            return Tooltip(
+              message: l10n.threadMenuGroupInfo,
+              child: MouseRegion(
+                cursor: SystemMouseCursors.click,
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () => _openGroupDetailScreen(context),
+                  child: titleRow,
+                ),
+              ),
             );
           },
         ),
@@ -268,6 +284,26 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
                 icon: const Icon(Icons.block_outlined),
                 tooltip: l10n.buttonBlock,
                 onPressed: () => _confirmBlockDmPeer(context, peerId),
+              );
+            },
+          ),
+          BlocBuilder<ThreadCubit, ThreadState>(
+            builder: (context, state) {
+              final t = context.read<ThreadCubit>().effectiveConversationType;
+              if (t != 'group') return const SizedBox.shrink();
+              return PopupMenuButton<String>(
+                icon: const Icon(Icons.more_vert_rounded),
+                onSelected: (value) {
+                  if (value == 'groupInfo') {
+                    _openGroupDetailScreen(context);
+                  }
+                },
+                itemBuilder: (ctx) => [
+                  PopupMenuItem<String>(
+                    value: 'groupInfo',
+                    child: Text(l10n.threadMenuGroupInfo),
+                  ),
+                ],
               );
             },
           ),
@@ -622,6 +658,10 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
         ],
       ),
     );
+  }
+
+  void _openGroupDetailScreen(BuildContext context) {
+    context.pushGroupDetail(widget.conversationId);
   }
 
   Future<void> _openGroupMessageSearch(BuildContext context) async {

@@ -334,6 +334,12 @@ abstract class AppLocalizations {
   /// **'Thread #{id}'**
   String threadTitle(int id);
 
+  /// No description provided for @threadMenuGroupInfo.
+  ///
+  /// In en, this message translates to:
+  /// **'Group info'**
+  String get threadMenuGroupInfo;
+
   /// No description provided for @replyingTo.
   ///
   /// In en, this message translates to:

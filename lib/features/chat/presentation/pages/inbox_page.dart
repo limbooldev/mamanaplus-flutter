@@ -186,7 +186,6 @@ class _ChatsTab extends StatelessWidget {
                     await context.read<InboxCubit>().refreshQuiet();
                   }
                 },
-                onInfoTap: isGroup ? () => context.pushGroupDetail(c.id) : null,
               );
             },
           ),
@@ -233,7 +232,6 @@ class _ConversationTile extends StatelessWidget {
     required this.conversationId,
     required this.unreadCount,
     required this.onTap,
-    this.onInfoTap,
   });
 
   final String title;
@@ -244,7 +242,6 @@ class _ConversationTile extends StatelessWidget {
   final int conversationId;
   final int unreadCount;
   final VoidCallback onTap;
-  final VoidCallback? onInfoTap;
 
   @override
   Widget build(BuildContext context) {
@@ -322,17 +319,6 @@ class _ConversationTile extends StatelessWidget {
                 ],
               ),
             ),
-            if (onInfoTap != null) ...[
-              const SizedBox(width: 4),
-              IconButton(
-                icon: const Icon(Icons.info_outline, size: 20),
-                color: AppColors.subtitleLight,
-                onPressed: onInfoTap,
-                visualDensity: VisualDensity.compact,
-                padding: EdgeInsets.zero,
-                constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
-              ),
-            ],
           ],
         ),
       ),

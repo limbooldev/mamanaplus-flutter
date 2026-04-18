@@ -144,6 +144,9 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String get threadMenuGroupInfo => 'Group info';
+
+  @override
   String replyingTo(String message) {
     return 'Replying to: $message';
   }

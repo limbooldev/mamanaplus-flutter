@@ -82,6 +82,7 @@
       "id": {"type": "int"}
     }
   },
+  "threadMenuGroupInfo": "Group info",
   "replyingTo": "Replying to: {message}",
   "@replyingTo": {
     "placeholders": {
