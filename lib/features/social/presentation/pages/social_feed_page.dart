@@ -6,6 +6,7 @@ import '../../../../shared/ui/ui.dart';
 import '../../data/social_repository.dart';
 import '../../domain/social_models.dart';
 import '../cubit/social_feed_cubit.dart';
+import '../widgets/social_media_widgets.dart';
 import 'social_composer_page.dart';
 import 'social_post_page.dart';
 import 'story_viewer_page.dart';
@@ -250,7 +251,33 @@ class _PostTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final thumb = post.thumbnailUrl ?? post.mediaUrl;
+    final Widget preview;
+    if (post.postType == 'video') {
+      final t = post.thumbnailUrl;
+      if (t != null && t.isNotEmpty) {
+        preview = SocialPostImage(mediaRef: t, fit: BoxFit.cover);
+      } else {
+        preview = ColoredBox(
+          color: Colors.grey.shade800,
+          child: const Center(
+            child: Icon(
+              Icons.play_circle_outline,
+              color: Colors.white70,
+              size: 48,
+            ),
+          ),
+        );
+      }
+    } else {
+      final ref = post.thumbnailUrl ?? post.mediaUrl;
+      preview = ref != null && ref.isNotEmpty
+          ? SocialPostImage(mediaRef: ref, fit: BoxFit.cover)
+          : Container(
+              color: Colors.grey.shade200,
+              alignment: Alignment.center,
+              child: const Icon(Icons.image_outlined, size: 40),
+            );
+    }
     return Material(
       borderRadius: BorderRadius.circular(12),
       clipBehavior: Clip.antiAlias,
@@ -259,34 +286,14 @@ class _PostTile extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Expanded(
-              child: thumb != null && thumb.isNotEmpty
-                  ? Image.network(
-                      thumb,
-                      fit: BoxFit.cover,
-                      errorBuilder: (_, __, ___) => Container(
-                        color: Colors.grey.shade300,
-                        child: const Icon(Icons.broken_image_outlined),
-                      ),
-                    )
-                  : Container(
-                      color: Colors.grey.shade200,
-                      alignment: Alignment.center,
-                      child: Icon(
-                        post.postType == 'video'
-                            ? Icons.play_circle_outline
-                            : Icons.image_outlined,
-                        size: 40,
-                      ),
-                    ),
-            ),
+            Expanded(child: preview),
             Padding(
               padding: const EdgeInsets.fromLTRB(8, 6, 8, 8),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    post.title.isNotEmpty ? post.title : post.content,
+                    post.content.isNotEmpty ? post.content : 'Post',
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                     style: GoogleFonts.inter(

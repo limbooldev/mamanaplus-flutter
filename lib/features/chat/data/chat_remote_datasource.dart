@@ -245,15 +245,22 @@ class ChatRemoteDataSource {
   Future<Map<String, dynamic>> presignMedia({
     required String contentType,
     required int byteSize,
-    required int conversationId,
+    int? conversationId,
+    String? purpose,
   }) async {
+    final data = <String, dynamic>{
+      'content_type': contentType,
+      'byte_size': byteSize,
+    };
+    if (conversationId != null) {
+      data['conversation_id'] = conversationId;
+    }
+    if (purpose != null && purpose.isNotEmpty) {
+      data['purpose'] = purpose;
+    }
     final res = await _dio.post<Map<String, dynamic>>(
       '/v1/media/presign',
-      data: {
-        'content_type': contentType,
-        'byte_size': byteSize,
-        'conversation_id': conversationId,
-      },
+      data: data,
     );
     return res.data!;
   }
@@ -275,15 +282,17 @@ class ChatRemoteDataSource {
         receiveTimeout: const Duration(minutes: 5),
       ),
     );
+    // Keep Content-Type exactly as the server / cloud signer provided.
+    // Using Options.contentType can normalize or add parameters (e.g. charset)
+    // and break GCS/S3 presigned PUT signatures (often HTTP 403).
     final h = Map<String, String>.from(headers);
-    final ct = h.remove('Content-Type') ?? h.remove('content-type');
     if (bearerToken != null && bearerToken.isNotEmpty) {
       h['Authorization'] = 'Bearer $bearerToken';
     }
     await dio.put<dynamic>(
       uploadUrl,
       data: Uint8List.fromList(bytes),
-      options: Options(headers: h, contentType: ct),
+      options: Options(headers: h),
     );
   }
 

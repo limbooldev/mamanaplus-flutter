@@ -62,7 +62,11 @@ Future<void> main() async {
               BlocProvider<ThemeCubit>.value(value: themeCubit),
             ],
             child: RepositoryProvider<SocialRepository>(
-              create: (ctx) => SocialRepository(ctx.read<AuthCubit>().apiDio),
+              create: (ctx) => SocialRepository(
+                ctx.read<AuthCubit>().apiDio,
+                mediaApi: remote,
+                tokens: tokens,
+              ),
               child: MamanaApp(
                 authCubit: auth,
                 config: config,

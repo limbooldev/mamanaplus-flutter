@@ -8,6 +8,7 @@ import '../../../chat/presentation/cubit/auth_cubit.dart';
 import '../../data/social_repository.dart';
 import '../../domain/social_models.dart';
 import '../cubit/social_post_cubit.dart';
+import '../widgets/social_media_widgets.dart';
 import 'social_user_list_page.dart';
 
 class SocialPostPage extends StatelessWidget {
@@ -100,35 +101,29 @@ class _PostScaffold extends StatelessWidget {
             return const SizedBox.shrink();
           }
           final p = state.post;
-          final thumb = p.thumbnailUrl ?? p.mediaUrl;
+          final hasVideo =
+              p.postType == 'video' && (p.mediaUrl != null && p.mediaUrl!.isNotEmpty);
+          final imageRef = hasVideo ? p.thumbnailUrl : (p.thumbnailUrl ?? p.mediaUrl);
           return ListView(
             padding: const EdgeInsets.all(16),
             children: [
-              if (thumb != null && thumb.isNotEmpty)
+              if (hasVideo)
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(12),
+                  child: SocialPostVideo(mediaRef: p.mediaUrl),
+                )
+              else if (imageRef != null && imageRef.isNotEmpty)
                 ClipRRect(
                   borderRadius: BorderRadius.circular(12),
                   child: AspectRatio(
                     aspectRatio: 16 / 10,
-                    child: Image.network(
-                      thumb,
-                      fit: BoxFit.cover,
-                      errorBuilder: (_, __, ___) => Container(
-                        color: Colors.grey.shade300,
-                        alignment: Alignment.center,
-                        child: const Icon(Icons.broken_image_outlined),
-                      ),
+                    child: SocialPostImage(
+                      mediaRef: imageRef,
+                      borderRadius: BorderRadius.zero,
                     ),
                   ),
                 ),
               const SizedBox(height: 12),
-              Text(
-                p.title.isNotEmpty ? p.title : 'Post',
-                style: GoogleFonts.inter(
-                  fontSize: 20,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-              const SizedBox(height: 4),
               Text(
                 p.authorName,
                 style: GoogleFonts.inter(
@@ -136,8 +131,14 @@ class _PostScaffold extends StatelessWidget {
                   color: AppColors.subtitleLight,
                 ),
               ),
-              const SizedBox(height: 12),
-              Text(p.content, style: GoogleFonts.inter(fontSize: 15)),
+              const SizedBox(height: 8),
+              Text(
+                p.content.isNotEmpty ? p.content : 'Post',
+                style: GoogleFonts.inter(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
               const SizedBox(height: 16),
               Wrap(
                 spacing: 8,

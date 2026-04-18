@@ -1,12 +1,55 @@
 import 'package:dio/dio.dart';
 
+import '../../chat/data/chat_remote_datasource.dart';
+import '../../../core/token_storage.dart';
 import '../domain/social_models.dart';
 
 /// v1 social REST ([mamanaplus-backend] `/v1/social/*`, `/v1/users/*` social actions).
 class SocialRepository {
-  SocialRepository(this._dio);
+  SocialRepository(
+    this._dio, {
+    required ChatRemoteDataSource mediaApi,
+    required TokenStorage tokens,
+  })  : _mediaApi = mediaApi,
+        _tokens = tokens;
 
   final Dio _dio;
+  final ChatRemoteDataSource _mediaApi;
+  final TokenStorage _tokens;
+
+  /// Same pipeline as chat: presign → PUT (local needs Bearer) → complete for S3/GCS.
+  /// Returns [object_key] to store as `media_url` on the post.
+  Future<String> uploadSocialMediaBytes(
+    List<int> bytes,
+    String contentType,
+  ) async {
+    final presign = await _mediaApi.presignMedia(
+      contentType: contentType,
+      byteSize: bytes.length,
+      purpose: 'social',
+    );
+    final uploadUrl = presign['upload_url'] as String;
+    final headers = Map<String, String>.from(
+      (presign['headers'] as Map?)?.map((k, v) => MapEntry('$k', '$v')) ??
+          const <String, String>{},
+    );
+    final objectKey = presign['object_key'] as String;
+    final isLocal = presign.containsKey('upload_token');
+    final access = isLocal ? await _tokens.getAccessToken() : null;
+    if (isLocal && (access == null || access.isEmpty)) {
+      throw StateError('Not authenticated: cannot upload media');
+    }
+    await _mediaApi.uploadMediaPut(
+      uploadUrl: uploadUrl,
+      headers: headers,
+      bytes: bytes,
+      bearerToken: access,
+    );
+    if (!isLocal) {
+      await _mediaApi.completeMediaUpload(objectKey: objectKey);
+    }
+    return objectKey;
+  }
 
   List<T> _items<T>(Map<String, dynamic> data, T Function(Map<String, dynamic>) f) {
     final raw = data['items'];
@@ -141,7 +184,7 @@ class SocialRepository {
       _dio.post<void>('/v1/users/$userId/approve-profile');
 
   Future<int> createPost({
-    required String title,
+    String title = '',
     required String content,
     required String postType,
     String? mediaUrl,
@@ -163,7 +206,7 @@ class SocialRepository {
 
   Future<void> updatePost(
     int id, {
-    required String title,
+    String title = '',
     required String content,
     required String postType,
     String? mediaUrl,
