@@ -5,6 +5,8 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../../../../shared/ui/ui.dart';
+import '../../../social/data/social_repository.dart';
+import '../../../social/presentation/pages/social_user_list_page.dart';
 import '../../data/chat_repository.dart';
 import '../cubit/auth_cubit.dart';
 import '../cubit/theme_cubit.dart';
@@ -82,6 +84,160 @@ class _ProfilePageState extends State<ProfilePage> {
           // ── Appearance ──────────────────────────────────────────────────
           _SectionHeader(title: 'Appearance'),
           const _ThemeSelector(),
+          const Divider(height: 1),
+          // ── Social ───────────────────────────────────────────────────────
+          _SectionHeader(title: 'Community'),
+          ListTile(
+            leading: const Icon(Icons.visibility_off_outlined),
+            title: const Text('Hidden profiles'),
+            subtitle: const Text('Users hidden from your feed'),
+            onTap: () {
+              Navigator.of(context).push<void>(
+                MaterialPageRoute<void>(
+                  builder: (_) => RepositoryProvider.value(
+                    value: context.read<SocialRepository>(),
+                    child: SocialUserListPage(
+                      title: 'Hidden profiles',
+                      load: (r, p) => r.hiddenUsers(page: p),
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.trending_up_outlined),
+            title: const Text('Top members'),
+            onTap: () {
+              Navigator.of(context).push<void>(
+                MaterialPageRoute<void>(
+                  builder: (_) => RepositoryProvider.value(
+                    value: context.read<SocialRepository>(),
+                    child: SocialUserListPage(
+                      title: 'Top members',
+                      load: (r, p) => r.discoveryTop(page: p),
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.person_add_alt_1_outlined),
+            title: const Text('Newest members'),
+            onTap: () {
+              Navigator.of(context).push<void>(
+                MaterialPageRoute<void>(
+                  builder: (_) => RepositoryProvider.value(
+                    value: context.read<SocialRepository>(),
+                    child: SocialUserListPage(
+                      title: 'Newest members',
+                      load: (r, p) => r.discoveryLatest(page: p),
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.auto_stories_outlined),
+            title: const Text('Add story media'),
+            subtitle: const Text('Paste image URL after upload'),
+            onTap: () async {
+              final ctrl = TextEditingController();
+              final url = await showDialog<String>(
+                context: context,
+                builder: (ctx) => AlertDialog(
+                  title: const Text('Story image URL'),
+                  content: TextField(
+                    controller: ctrl,
+                    decoration: const InputDecoration(
+                      hintText: 'https://…',
+                    ),
+                  ),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.pop(ctx),
+                      child: const Text('Cancel'),
+                    ),
+                    FilledButton(
+                      onPressed: () =>
+                          Navigator.pop(ctx, ctrl.text.trim()),
+                      child: const Text('Add'),
+                    ),
+                  ],
+                ),
+              );
+              if (url != null &&
+                  url.isNotEmpty &&
+                  context.mounted) {
+                try {
+                  await context.read<SocialRepository>().addStoryMedia(url);
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Story media added')),
+                    );
+                  }
+                } catch (e) {
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text(e.toString())),
+                    );
+                  }
+                }
+              }
+            },
+          ),
+          if (source['is_super_admin'] == true) ...[
+            ListTile(
+              leading: const Icon(Icons.verified_user_outlined),
+              title: const Text('Approve user profile'),
+              subtitle: const Text('Admin — enter user id'),
+              onTap: () async {
+                final ctrl = TextEditingController();
+                final idStr = await showDialog<String>(
+                  context: context,
+                  builder: (ctx) => AlertDialog(
+                    title: const Text('User id to approve'),
+                    content: TextField(
+                      controller: ctrl,
+                      keyboardType: TextInputType.number,
+                    ),
+                    actions: [
+                      TextButton(
+                        onPressed: () => Navigator.pop(ctx),
+                        child: const Text('Cancel'),
+                      ),
+                      FilledButton(
+                        onPressed: () =>
+                            Navigator.pop(ctx, ctrl.text.trim()),
+                        child: const Text('Approve'),
+                      ),
+                    ],
+                  ),
+                );
+                final uid = int.tryParse(idStr ?? '');
+                if (uid != null && context.mounted) {
+                  try {
+                    await context
+                        .read<SocialRepository>()
+                        .approveUserProfile(uid);
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('User approved')),
+                      );
+                    }
+                  } catch (e) {
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text(e.toString())),
+                      );
+                    }
+                  }
+                }
+              },
+            ),
+          ],
           const Divider(height: 1),
           // ── Account ─────────────────────────────────────────────────────
           _SectionHeader(title: 'Account'),

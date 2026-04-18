@@ -15,7 +15,7 @@ class ApiConfig {
   final String baseUrl;
 
   /// Human-readable contract pin (align with backend tag or release notes).
-  static const String expectedBackendContractTag = 'messaging-parity-2026-04';
+  static const String expectedBackendContractTag = 'social-v1-2026-04';
 
   /// Default dev URL when [API_BASE_URL] is unset:
   /// - **Android emulator:** `http://10.0.2.2:8080` (host loopback).

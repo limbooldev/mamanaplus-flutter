@@ -17,6 +17,7 @@ import 'features/chat/data/chat_repository.dart';
 import 'features/chat/data/chat_socket.dart';
 import 'features/chat/presentation/cubit/auth_cubit.dart';
 import 'features/chat/presentation/cubit/theme_cubit.dart';
+import 'features/social/data/social_repository.dart';
 import 'core/push_messaging.dart';
 
 Future<void> main() async {
@@ -60,10 +61,13 @@ Future<void> main() async {
               BlocProvider<AuthCubit>.value(value: auth),
               BlocProvider<ThemeCubit>.value(value: themeCubit),
             ],
-            child: MamanaApp(
-              authCubit: auth,
-              config: config,
-              chatRepository: repo,
+            child: RepositoryProvider<SocialRepository>(
+              create: (ctx) => SocialRepository(ctx.read<AuthCubit>().apiDio),
+              child: MamanaApp(
+                authCubit: auth,
+                config: config,
+                chatRepository: repo,
+              ),
             ),
           ),
         ),
