@@ -29,6 +29,38 @@ class SocialPost {
   final bool bookmarked;
   final DateTime createdAt;
 
+  SocialPost copyWith({
+    int? id,
+    int? authorId,
+    String? authorName,
+    String? title,
+    String? content,
+    String? postType,
+    String? mediaUrl,
+    String? thumbnailUrl,
+    int? likeCount,
+    int? commentCount,
+    bool? likedByViewer,
+    bool? bookmarked,
+    DateTime? createdAt,
+  }) {
+    return SocialPost(
+      id: id ?? this.id,
+      authorId: authorId ?? this.authorId,
+      authorName: authorName ?? this.authorName,
+      title: title ?? this.title,
+      content: content ?? this.content,
+      postType: postType ?? this.postType,
+      mediaUrl: mediaUrl ?? this.mediaUrl,
+      thumbnailUrl: thumbnailUrl ?? this.thumbnailUrl,
+      likeCount: likeCount ?? this.likeCount,
+      commentCount: commentCount ?? this.commentCount,
+      likedByViewer: likedByViewer ?? this.likedByViewer,
+      bookmarked: bookmarked ?? this.bookmarked,
+      createdAt: createdAt ?? this.createdAt,
+    );
+  }
+
   factory SocialPost.fromJson(Map<String, dynamic> j) {
     return SocialPost(
       id: (j['id'] as num).toInt(),

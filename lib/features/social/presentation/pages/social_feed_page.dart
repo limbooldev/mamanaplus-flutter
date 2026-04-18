@@ -4,9 +4,9 @@ import 'package:google_fonts/google_fonts.dart';
 
 import '../../../../shared/ui/ui.dart';
 import '../../data/social_repository.dart';
-import '../../domain/social_models.dart';
+import '../../domain/social_models.dart' show StoryRing;
 import '../cubit/social_feed_cubit.dart';
-import '../widgets/social_media_widgets.dart';
+import '../widgets/social_feed_post_card.dart';
 import 'social_composer_page.dart';
 import 'social_post_page.dart';
 import 'story_viewer_page.dart';
@@ -28,8 +28,17 @@ class _SocialFeedView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Scaffold(
-      appBar: AppBar(title: const Text('Community')),
+      backgroundColor: isDark ? Colors.black : null,
+      appBar: AppBar(
+        backgroundColor: isDark ? Colors.black : null,
+        surfaceTintColor: Colors.transparent,
+        title: Text(
+          'Community',
+          style: GoogleFonts.inter(fontWeight: FontWeight.w600),
+        ),
+      ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () async {
           await Navigator.of(context).push<void>(
@@ -111,44 +120,60 @@ class _SocialFeedView extends StatelessWidget {
                     onNotification: (n) {
                       if (n is ScrollEndNotification) {
                         final m = n.metrics;
-                        if (m.pixels >= m.maxScrollExtent - 80) {
+                        if (m.pixels >= m.maxScrollExtent - 120) {
                           context.read<SocialFeedCubit>().loadMore();
                         }
                       }
                       return false;
                     },
-                    child: GridView.builder(
-                      padding: const EdgeInsets.all(8),
-                      gridDelegate:
-                          const SliverGridDelegateWithFixedCrossAxisCount(
-                        crossAxisCount: 2,
-                        mainAxisSpacing: 8,
-                        crossAxisSpacing: 8,
-                        childAspectRatio: 0.82,
-                      ),
+                    child: ListView.builder(
+                      padding: EdgeInsets.zero,
                       itemCount: state.posts.length +
                           ((state.hasMore || state.loadingMore) ? 1 : 0),
                       itemBuilder: (ctx, i) {
                         if (i >= state.posts.length) {
-                          return const Center(
-                            child: Padding(
-                              padding: EdgeInsets.all(16),
+                          return const Padding(
+                            padding: EdgeInsets.symmetric(vertical: 24),
+                            child: Center(
                               child: CircularProgressIndicator(strokeWidth: 2),
                             ),
                           );
                         }
                         final p = state.posts[i];
-                        return _PostTile(
+                        final repo = context.read<SocialRepository>();
+                        final cubit = context.read<SocialFeedCubit>();
+                        return SocialFeedPostCard(
                           post: p,
-                          onTap: () {
-                            Navigator.of(context).push<void>(
+                          onOpenPost: () async {
+                            await Navigator.of(context).push<void>(
                               MaterialPageRoute<void>(
                                 builder: (_) => RepositoryProvider.value(
-                                  value: context.read<SocialRepository>(),
+                                  value: repo,
                                   child: SocialPostPage(postId: p.id),
                                 ),
                               ),
                             );
+                            if (context.mounted) {
+                              cubit.refresh();
+                            }
+                          },
+                          onToggleLike: () => cubit.toggleLike(p.id),
+                          onToggleBookmark: () => cubit.toggleBookmark(p.id),
+                          onReport: () async {
+                            try {
+                              await repo.reportPost(p.id);
+                              if (context.mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(content: Text('Reported')),
+                                );
+                              }
+                            } catch (e) {
+                              if (context.mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(content: Text(e.toString())),
+                                );
+                              }
+                            }
                           },
                         );
                       },
@@ -172,149 +197,77 @@ class _StoryStrip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      height: 108,
-      child: ListView.separated(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        scrollDirection: Axis.horizontal,
-        itemCount: stories.length,
-        separatorBuilder: (_, __) => const SizedBox(width: 8),
-        itemBuilder: (context, i) {
-          final s = stories[i];
-          return InkWell(
-            onTap: () => onOpen(s),
-            borderRadius: BorderRadius.circular(40),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Stack(
-                  clipBehavior: Clip.none,
-                  children: [
-                    CircleAvatar(
-                      radius: 32,
-                      backgroundColor: AppColors.primary.withValues(alpha: 0.2),
-                      backgroundImage: (s.coverUrl != null && s.coverUrl!.isNotEmpty)
-                          ? NetworkImage(s.coverUrl!)
-                          : null,
-                      child: (s.coverUrl == null || s.coverUrl!.isEmpty)
-                          ? Text(
-                              s.displayName.isNotEmpty
-                                  ? s.displayName[0].toUpperCase()
-                                  : '?',
-                              style: GoogleFonts.inter(
-                                fontSize: 20,
-                                fontWeight: FontWeight.w700,
-                              ),
-                            )
-                          : null,
-                    ),
-                    if (s.hasUnseen)
-                      Positioned(
-                        right: 0,
-                        top: 0,
-                        child: Container(
-                          width: 12,
-                          height: 12,
-                          decoration: const BoxDecoration(
-                            color: AppColors.primary,
-                            shape: BoxShape.circle,
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return ColoredBox(
+      color: isDark ? Colors.black : Theme.of(context).colorScheme.surface,
+      child: SizedBox(
+        height: 108,
+        child: ListView.separated(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          scrollDirection: Axis.horizontal,
+          itemCount: stories.length,
+          separatorBuilder: (_, __) => const SizedBox(width: 8),
+          itemBuilder: (context, i) {
+            final s = stories[i];
+            return InkWell(
+              onTap: () => onOpen(s),
+              borderRadius: BorderRadius.circular(40),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Stack(
+                    clipBehavior: Clip.none,
+                    children: [
+                      CircleAvatar(
+                        radius: 32,
+                        backgroundColor:
+                            AppColors.primary.withValues(alpha: 0.2),
+                        backgroundImage: (s.coverUrl != null &&
+                                s.coverUrl!.isNotEmpty)
+                            ? NetworkImage(s.coverUrl!)
+                            : null,
+                        child: (s.coverUrl == null || s.coverUrl!.isEmpty)
+                            ? Text(
+                                s.displayName.isNotEmpty
+                                    ? s.displayName[0].toUpperCase()
+                                    : '?',
+                                style: GoogleFonts.inter(
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              )
+                            : null,
+                      ),
+                      if (s.hasUnseen)
+                        Positioned(
+                          right: 0,
+                          top: 0,
+                          child: Container(
+                            width: 12,
+                            height: 12,
+                            decoration: const BoxDecoration(
+                              color: AppColors.primary,
+                              shape: BoxShape.circle,
+                            ),
                           ),
                         ),
-                      ),
-                  ],
-                ),
-                const SizedBox(height: 4),
-                SizedBox(
-                  width: 72,
-                  child: Text(
-                    s.displayName,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    textAlign: TextAlign.center,
-                    style: GoogleFonts.inter(fontSize: 11),
+                    ],
                   ),
-                ),
-              ],
-            ),
-          );
-        },
-      ),
-    );
-  }
-}
-
-class _PostTile extends StatelessWidget {
-  const _PostTile({required this.post, required this.onTap});
-
-  final SocialPost post;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final Widget preview;
-    if (post.postType == 'video') {
-      final t = post.thumbnailUrl;
-      if (t != null && t.isNotEmpty) {
-        preview = SocialPostImage(mediaRef: t, fit: BoxFit.cover);
-      } else {
-        preview = ColoredBox(
-          color: Colors.grey.shade800,
-          child: const Center(
-            child: Icon(
-              Icons.play_circle_outline,
-              color: Colors.white70,
-              size: 48,
-            ),
-          ),
-        );
-      }
-    } else {
-      final ref = post.thumbnailUrl ?? post.mediaUrl;
-      preview = ref != null && ref.isNotEmpty
-          ? SocialPostImage(mediaRef: ref, fit: BoxFit.cover)
-          : Container(
-              color: Colors.grey.shade200,
-              alignment: Alignment.center,
-              child: const Icon(Icons.image_outlined, size: 40),
-            );
-    }
-    return Material(
-      borderRadius: BorderRadius.circular(12),
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: onTap,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Expanded(child: preview),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(8, 6, 8, 8),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    post.content.isNotEmpty ? post.content : 'Post',
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: GoogleFonts.inter(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    post.authorName,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: GoogleFonts.inter(
-                      fontSize: 11,
-                      color: AppColors.subtitleLight,
+                  const SizedBox(height: 4),
+                  SizedBox(
+                    width: 72,
+                    child: Text(
+                      s.displayName,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      textAlign: TextAlign.center,
+                      style: GoogleFonts.inter(fontSize: 11),
                     ),
                   ),
                 ],
               ),
-            ),
-          ],
+            );
+          },
         ),
       ),
     );

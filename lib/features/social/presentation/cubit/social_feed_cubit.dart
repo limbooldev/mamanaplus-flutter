@@ -99,4 +99,61 @@ class SocialFeedCubit extends Cubit<SocialFeedState> {
       ));
     }
   }
+
+  /// Optimistic like toggle; reverts post in list on API failure.
+  Future<void> toggleLike(int postId) async {
+    final s = state;
+    if (s is! SocialFeedLoaded) return;
+    final i = s.posts.indexWhere((p) => p.id == postId);
+    if (i < 0) return;
+    final p = s.posts[i];
+    final nextLiked = !p.likedByViewer;
+    final nextCount = p.likeCount + (nextLiked ? 1 : -1);
+    final optimistic = p.copyWith(
+      likedByViewer: nextLiked,
+      likeCount: nextCount < 0 ? 0 : nextCount,
+    );
+    _replacePostAt(s, i, optimistic);
+    try {
+      if (nextLiked) {
+        await _repo.likePost(postId);
+      } else {
+        await _repo.unlikePost(postId);
+      }
+    } catch (_) {
+      _replacePostAt(s, i, p);
+    }
+  }
+
+  /// Optimistic bookmark toggle; reverts on failure.
+  Future<void> toggleBookmark(int postId) async {
+    final s = state;
+    if (s is! SocialFeedLoaded) return;
+    final i = s.posts.indexWhere((p) => p.id == postId);
+    if (i < 0) return;
+    final p = s.posts[i];
+    final nextBm = !p.bookmarked;
+    _replacePostAt(s, i, p.copyWith(bookmarked: nextBm));
+    try {
+      if (nextBm) {
+        await _repo.bookmarkPost(postId);
+      } else {
+        await _repo.unbookmarkPost(postId);
+      }
+    } catch (_) {
+      _replacePostAt(s, i, p);
+    }
+  }
+
+  void _replacePostAt(SocialFeedLoaded s, int index, SocialPost post) {
+    final next = List<SocialPost>.from(s.posts);
+    next[index] = post;
+    emit(SocialFeedLoaded(
+      posts: next,
+      stories: s.stories,
+      page: s.page,
+      loadingMore: s.loadingMore,
+      hasMore: s.hasMore,
+    ));
+  }
 }
