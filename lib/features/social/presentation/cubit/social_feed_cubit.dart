@@ -156,4 +156,32 @@ class SocialFeedCubit extends Cubit<SocialFeedState> {
       hasMore: s.hasMore,
     ));
   }
+
+  /// After a new comment is posted from the bottom sheet.
+  void bumpCommentCount(int postId, {int delta = 1}) {
+    final s = state;
+    if (s is! SocialFeedLoaded) return;
+    final i = s.posts.indexWhere((p) => p.id == postId);
+    if (i < 0) return;
+    final p = s.posts[i];
+    _replacePostAt(
+      s,
+      i,
+      p.copyWith(
+        commentCount: (p.commentCount + delta).clamp(0, 1 << 30),
+      ),
+    );
+  }
+
+  void removePost(int postId) {
+    final s = state;
+    if (s is! SocialFeedLoaded) return;
+    emit(SocialFeedLoaded(
+      posts: s.posts.where((p) => p.id != postId).toList(),
+      stories: s.stories,
+      page: s.page,
+      loadingMore: s.loadingMore,
+      hasMore: s.hasMore,
+    ));
+  }
 }

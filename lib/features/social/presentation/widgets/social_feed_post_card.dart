@@ -1,11 +1,16 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:provider/provider.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../../../../core/api_config.dart';
+import '../../../../core/jwt_util.dart';
 import '../../../../shared/ui/ui.dart';
+import '../../../chat/presentation/cubit/auth_cubit.dart';
+import '../../data/social_repository.dart';
 import '../../domain/social_models.dart';
+import '../pages/social_user_list_page.dart';
+import 'social_comments_bottom_sheet.dart';
 import 'social_media_widgets.dart';
 
 String socialFeedRelativeTime(BuildContext context, DateTime t) {
@@ -20,22 +25,309 @@ String socialFeedRelativeTime(BuildContext context, DateTime t) {
   return '${(d.inDays / 365).floor()}y ago';
 }
 
-/// Single-column feed post: header, 1:1 media, actions, caption, time.
-class SocialFeedPostCard extends StatelessWidget {
+/// Single-column feed post: header, 1:1 media (video plays inline), actions, caption, time.
+/// Post-page actions live in the ⋮ menu; comments open in a bottom sheet.
+class SocialFeedPostCard extends StatefulWidget {
   const SocialFeedPostCard({
     super.key,
     required this.post,
-    required this.onOpenPost,
     required this.onToggleLike,
     required this.onToggleBookmark,
-    required this.onReport,
+    required this.onCommentCountBump,
+    required this.onPostDeleted,
+    required this.onFeedRefresh,
   });
 
   final SocialPost post;
-  final VoidCallback onOpenPost;
   final VoidCallback onToggleLike;
   final VoidCallback onToggleBookmark;
-  final Future<void> Function() onReport;
+  final VoidCallback onCommentCountBump;
+  final VoidCallback onPostDeleted;
+  final VoidCallback onFeedRefresh;
+
+  @override
+  State<SocialFeedPostCard> createState() => _SocialFeedPostCardState();
+}
+
+class _SocialFeedPostCardState extends State<SocialFeedPostCard> {
+  bool? _following;
+  bool _followChecked = false;
+  bool _followBusy = false;
+
+  SocialPost get post => widget.post;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_followChecked) return;
+    _followChecked = true;
+    final auth = context.read<AuthCubit>().state;
+    final me = auth is AuthAuthenticated
+        ? parseUserIdFromAccessToken(auth.accessToken)
+        : null;
+    if (me != null && me != post.authorId) {
+      _loadFollow();
+    }
+  }
+
+  int? _meId(BuildContext context) {
+    final auth = context.watch<AuthCubit>().state;
+    if (auth is! AuthAuthenticated) return null;
+    return parseUserIdFromAccessToken(auth.accessToken);
+  }
+
+  Future<void> _loadFollow() async {
+    final r = context.read<SocialRepository>();
+    try {
+      final v = await r.followStatus(post.authorId);
+      if (mounted) setState(() => _following = v);
+    } catch (_) {
+      if (mounted) setState(() => _following = false);
+    }
+  }
+
+  Future<void> _openComments() async {
+    await showSocialCommentsBottomSheet(
+      context,
+      postId: post.id,
+      onCommentAdded: widget.onCommentCountBump,
+    );
+  }
+
+  Future<void> _showLikers() async {
+    final repo = context.read<SocialRepository>();
+    try {
+      final likers = await repo.postLikers(post.id, page: 1);
+      if (!mounted) return;
+      await showModalBottomSheet<void>(
+        context: context,
+        showDragHandle: true,
+        builder: (ctx) => ListView(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          children: [
+            const ListTile(title: Text('Liked by')),
+            ...likers.map(
+              (u) => ListTile(
+                title: Text(u.displayName),
+                subtitle: Text('id ${u.id}'),
+              ),
+            ),
+          ],
+        ),
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(e.toString())),
+        );
+      }
+    }
+  }
+
+  Future<void> _onMenuSelected(String value) async {
+    final repo = context.read<SocialRepository>();
+    final messenger = ScaffoldMessenger.of(context);
+    final nav = Navigator.of(context);
+
+    switch (value) {
+      case 'delete':
+        final ok = await showDialog<bool>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Text('Delete this post?'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('Cancel'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                child: const Text('Delete'),
+              ),
+            ],
+          ),
+        );
+        if (ok == true && mounted) {
+          try {
+            await repo.deletePost(post.id);
+            widget.onPostDeleted();
+            messenger.showSnackBar(const SnackBar(content: Text('Post deleted')));
+          } catch (e) {
+            messenger.showSnackBar(SnackBar(content: Text(e.toString())));
+          }
+        }
+        return;
+      case 'follow':
+        setState(() => _followBusy = true);
+        try {
+          await repo.followUser(post.authorId);
+          if (mounted) setState(() => _following = true);
+        } catch (e) {
+          messenger.showSnackBar(SnackBar(content: Text(e.toString())));
+        } finally {
+          if (mounted) setState(() => _followBusy = false);
+        }
+        return;
+      case 'unfollow':
+        setState(() => _followBusy = true);
+        try {
+          await repo.unfollowUser(post.authorId);
+          if (mounted) setState(() => _following = false);
+        } catch (e) {
+          messenger.showSnackBar(SnackBar(content: Text(e.toString())));
+        } finally {
+          if (mounted) setState(() => _followBusy = false);
+        }
+        return;
+      case 'likes':
+        await _showLikers();
+        return;
+      case 'report':
+        final ok = await showDialog<bool>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Text('Report post?'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('Cancel'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                child: const Text('Report'),
+              ),
+            ],
+          ),
+        );
+        if (ok == true && mounted) {
+          try {
+            await repo.reportPost(post.id);
+            messenger.showSnackBar(const SnackBar(content: Text('Reported')));
+          } catch (e) {
+            messenger.showSnackBar(SnackBar(content: Text(e.toString())));
+          }
+        }
+        return;
+      case 'hide':
+        final ok = await showDialog<bool>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Text('Hide this author from your feed?'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('Cancel'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                child: const Text('Hide'),
+              ),
+            ],
+          ),
+        );
+        if (ok == true && mounted) {
+          try {
+            await repo.hideUserContent(post.authorId);
+            widget.onFeedRefresh();
+            messenger.showSnackBar(
+              const SnackBar(content: Text('Author hidden from your feed')),
+            );
+          } catch (e) {
+            messenger.showSnackBar(SnackBar(content: Text(e.toString())));
+          }
+        }
+        return;
+      case 'followers':
+        await nav.push<void>(
+          MaterialPageRoute<void>(
+            builder: (_) => RepositoryProvider.value(
+              value: repo,
+              child: SocialUserListPage(
+                title: 'Followers',
+                load: (r, page) => r.followers(post.authorId, page: page),
+              ),
+            ),
+          ),
+        );
+        return;
+      case 'following':
+        await nav.push<void>(
+          MaterialPageRoute<void>(
+            builder: (_) => RepositoryProvider.value(
+              value: repo,
+              child: SocialUserListPage(
+                title: 'Following',
+                load: (r, page) => r.following(post.authorId, page: page),
+              ),
+            ),
+          ),
+        );
+        return;
+      default:
+        return;
+    }
+  }
+
+  List<PopupMenuEntry<String>> _menuEntries(BuildContext context, int? me) {
+    final owner = me != null && me == post.authorId;
+    final out = <PopupMenuEntry<String>>[];
+
+    if (owner) {
+      out.add(const PopupMenuItem(value: 'delete', child: Text('Delete')));
+    } else if (me != null) {
+      if (_followBusy) {
+        out.add(
+          PopupMenuItem(
+            enabled: false,
+            child: SizedBox(
+              height: 24,
+              child: Center(
+                child: SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: Theme.of(context).colorScheme.primary,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+      } else if (_following == true) {
+        out.add(
+          const PopupMenuItem(value: 'unfollow', child: Text('Unfollow')),
+        );
+      } else {
+        out.add(const PopupMenuItem(value: 'follow', child: Text('Follow')));
+      }
+    }
+
+    out.add(const PopupMenuItem(value: 'likes', child: Text('View likes')));
+
+    if (!owner && me != null) {
+      out.add(const PopupMenuItem(value: 'report', child: Text('Report')));
+      out.add(const PopupMenuItem(value: 'hide', child: Text('Hide author')));
+    }
+
+    out.add(const PopupMenuItem(value: 'followers', child: Text('Followers')));
+    out.add(const PopupMenuItem(value: 'following', child: Text('Following')));
+
+    return out;
+  }
+
+  Future<void> _sharePost() async {
+    final config = context.read<ApiConfig>();
+    final link = 'mamana://social/post/${post.id}';
+    final apiRef = '${config.baseUrl}/v1/social/posts/${post.id}';
+    final body = StringBuffer()
+      ..writeln(post.authorName)
+      ..writeln(post.content)
+      ..writeln()
+      ..writeln(link)
+      ..writeln(apiRef);
+    await Share.share(body.toString());
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -43,6 +335,7 @@ class SocialFeedPostCard extends StatelessWidget {
     final isDark = theme.brightness == Brightness.dark;
     final onSurface = theme.colorScheme.onSurface;
     final muted = isDark ? AppColors.subtitleDark : AppColors.subtitleLight;
+    final me = _meId(context);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -67,38 +360,28 @@ class SocialFeedPostCard extends StatelessWidget {
               ),
               const SizedBox(width: 10),
               Expanded(
-                child: InkWell(
-                  onTap: onOpenPost,
-                  child: Text(
-                    post.authorName,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: GoogleFonts.inter(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w500,
-                      color: onSurface,
-                    ),
+                child: Text(
+                  post.authorName,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: GoogleFonts.inter(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                    color: onSurface,
                   ),
                 ),
               ),
               PopupMenuButton<String>(
                 icon: Icon(Icons.more_horiz, color: onSurface),
-                onSelected: (v) async {
-                  if (v == 'report') await onReport();
-                },
-                itemBuilder: (ctx) => [
-                  const PopupMenuItem(value: 'report', child: Text('Report')),
-                ],
+                onSelected: _onMenuSelected,
+                itemBuilder: (ctx) => _menuEntries(ctx, me),
               ),
             ],
           ),
         ),
         AspectRatio(
           aspectRatio: 1,
-          child: GestureDetector(
-            onTap: onOpenPost,
-            child: _FeedMediaPreview(post: post),
-          ),
+          child: _FeedMediaPreview(post: post),
         ),
         Padding(
           padding: const EdgeInsets.fromLTRB(4, 4, 8, 0),
@@ -106,7 +389,7 @@ class SocialFeedPostCard extends StatelessWidget {
             children: [
               IconButton(
                 visualDensity: VisualDensity.compact,
-                onPressed: onToggleLike,
+                onPressed: widget.onToggleLike,
                 icon: Icon(
                   post.likedByViewer ? Icons.favorite : Icons.favorite_border,
                   color: post.likedByViewer ? Colors.redAccent : onSurface,
@@ -124,7 +407,7 @@ class SocialFeedPostCard extends StatelessWidget {
               const SizedBox(width: 4),
               IconButton(
                 visualDensity: VisualDensity.compact,
-                onPressed: onOpenPost,
+                onPressed: _openComments,
                 icon: Icon(Icons.chat_bubble_outline, color: onSurface, size: 24),
               ),
               Text(
@@ -138,13 +421,13 @@ class SocialFeedPostCard extends StatelessWidget {
               const SizedBox(width: 4),
               IconButton(
                 visualDensity: VisualDensity.compact,
-                onPressed: () => _sharePost(context, post),
+                onPressed: _sharePost,
                 icon: Icon(Icons.send_outlined, color: onSurface, size: 24),
               ),
               const Spacer(),
               IconButton(
                 visualDensity: VisualDensity.compact,
-                onPressed: onToggleBookmark,
+                onPressed: widget.onToggleBookmark,
                 icon: Icon(
                   post.bookmarked ? Icons.bookmark : Icons.bookmark_border,
                   color: onSurface,
@@ -180,19 +463,6 @@ class SocialFeedPostCard extends StatelessWidget {
       ],
     );
   }
-
-  Future<void> _sharePost(BuildContext context, SocialPost post) async {
-    final config = context.read<ApiConfig>();
-    final link = 'mamana://social/post/${post.id}';
-    final apiRef = '${config.baseUrl}/v1/social/posts/${post.id}';
-    final body = StringBuffer()
-      ..writeln(post.authorName)
-      ..writeln(post.content)
-      ..writeln()
-      ..writeln(link)
-      ..writeln(apiRef);
-    await Share.share(body.toString());
-  }
 }
 
 class _FeedMediaPreview extends StatelessWidget {
@@ -203,6 +473,10 @@ class _FeedMediaPreview extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (post.postType == 'video') {
+      final url = post.mediaUrl;
+      if (url != null && url.isNotEmpty) {
+        return SocialPostVideo(mediaRef: url);
+      }
       final t = post.thumbnailUrl;
       if (t != null && t.isNotEmpty) {
         return SocialPostImage(mediaRef: t, fit: BoxFit.cover);

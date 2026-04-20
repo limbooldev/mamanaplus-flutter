@@ -8,7 +8,6 @@ import '../../domain/social_models.dart' show StoryRing;
 import '../cubit/social_feed_cubit.dart';
 import '../widgets/social_feed_post_card.dart';
 import 'social_composer_page.dart';
-import 'social_post_page.dart';
 import 'story_viewer_page.dart';
 
 class SocialFeedPage extends StatelessWidget {
@@ -39,7 +38,8 @@ class _SocialFeedView extends StatelessWidget {
           style: GoogleFonts.inter(fontWeight: FontWeight.w600),
         ),
       ),
-      floatingActionButton: FloatingActionButton.extended(
+      floatingActionButton: FloatingActionButton(
+        heroTag: 'fab_social_feed_new_post',
         onPressed: () async {
           await Navigator.of(context).push<void>(
             MaterialPageRoute<void>(
@@ -53,8 +53,8 @@ class _SocialFeedView extends StatelessWidget {
             context.read<SocialFeedCubit>().refresh();
           }
         },
-        icon: const Icon(Icons.add_photo_alternate_outlined),
-        label: const Text('New post'),
+        tooltip: 'New post',
+        child: const Icon(Icons.add),
       ),
       body: BlocBuilder<SocialFeedCubit, SocialFeedState>(
         builder: (context, state) {
@@ -140,41 +140,14 @@ class _SocialFeedView extends StatelessWidget {
                           );
                         }
                         final p = state.posts[i];
-                        final repo = context.read<SocialRepository>();
                         final cubit = context.read<SocialFeedCubit>();
                         return SocialFeedPostCard(
                           post: p,
-                          onOpenPost: () async {
-                            await Navigator.of(context).push<void>(
-                              MaterialPageRoute<void>(
-                                builder: (_) => RepositoryProvider.value(
-                                  value: repo,
-                                  child: SocialPostPage(postId: p.id),
-                                ),
-                              ),
-                            );
-                            if (context.mounted) {
-                              cubit.refresh();
-                            }
-                          },
                           onToggleLike: () => cubit.toggleLike(p.id),
                           onToggleBookmark: () => cubit.toggleBookmark(p.id),
-                          onReport: () async {
-                            try {
-                              await repo.reportPost(p.id);
-                              if (context.mounted) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(content: Text('Reported')),
-                                );
-                              }
-                            } catch (e) {
-                              if (context.mounted) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(content: Text(e.toString())),
-                                );
-                              }
-                            }
-                          },
+                          onCommentCountBump: () => cubit.bumpCommentCount(p.id),
+                          onPostDeleted: () => cubit.removePost(p.id),
+                          onFeedRefresh: () => cubit.refresh(),
                         );
                       },
                     ),

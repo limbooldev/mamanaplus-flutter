@@ -6,9 +6,9 @@ import '../../../../core/jwt_util.dart';
 import '../../../../shared/ui/ui.dart';
 import '../../../chat/presentation/cubit/auth_cubit.dart';
 import '../../data/social_repository.dart';
-import '../../domain/social_models.dart';
 import '../cubit/social_post_cubit.dart';
 import '../widgets/social_media_widgets.dart';
+import '../widgets/social_post_comment_widgets.dart';
 import 'social_user_list_page.dart';
 
 class SocialPostPage extends StatelessWidget {
@@ -301,8 +301,17 @@ class _PostScaffold extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 8),
-              _CommentComposer(postId: p.id),
-              ...state.comments.map((c) => _CommentTile(comment: c)),
+              SocialPostCommentComposer(
+                onSubmit: (t) =>
+                    context.read<SocialPostCubit>().submitComment(t),
+              ),
+              ...state.comments.map(
+                (c) => SocialPostCommentTile(
+                  comment: c,
+                  onReport: (id) =>
+                      context.read<SocialPostCubit>().reportComment(id),
+                ),
+              ),
               if (!state.commentsDone)
                 TextButton(
                   onPressed: () =>
@@ -313,105 +322,6 @@ class _PostScaffold extends StatelessWidget {
           );
         },
       ),
-    );
-  }
-}
-
-class _CommentTile extends StatelessWidget {
-  const _CommentTile({required this.comment});
-
-  final SocialComment comment;
-
-  @override
-  Widget build(BuildContext context) {
-    return ListTile(
-      contentPadding: EdgeInsets.zero,
-      title: Text(
-        comment.userName,
-        style: GoogleFonts.inter(fontWeight: FontWeight.w600, fontSize: 13),
-      ),
-      subtitle: Text(comment.body),
-      trailing: IconButton(
-        icon: const Icon(Icons.flag_outlined, size: 20),
-        onPressed: () async {
-          final ok = await showDialog<bool>(
-            context: context,
-            builder: (ctx) => AlertDialog(
-              title: const Text('Report comment?'),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(ctx, false),
-                  child: const Text('Cancel'),
-                ),
-                FilledButton(
-                  onPressed: () => Navigator.pop(ctx, true),
-                  child: const Text('Report'),
-                ),
-              ],
-            ),
-          );
-          if (ok == true && context.mounted) {
-            await context
-                .read<SocialPostCubit>()
-                .reportComment(comment.id);
-            if (context.mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Reported')),
-              );
-            }
-          }
-        },
-      ),
-    );
-  }
-}
-
-class _CommentComposer extends StatefulWidget {
-  const _CommentComposer({required this.postId});
-
-  final int postId;
-
-  @override
-  State<_CommentComposer> createState() => _CommentComposerState();
-}
-
-class _CommentComposerState extends State<_CommentComposer> {
-  final _ctrl = TextEditingController();
-
-  @override
-  void dispose() {
-    _ctrl.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        TextField(
-          controller: _ctrl,
-          minLines: 1,
-          maxLines: 4,
-          decoration: const InputDecoration(
-            hintText: 'Write a comment…',
-            border: OutlineInputBorder(),
-          ),
-        ),
-        const SizedBox(height: 8),
-        Align(
-          alignment: Alignment.centerRight,
-          child: FilledButton(
-            onPressed: () async {
-              final t = _ctrl.text.trim();
-              if (t.isEmpty) return;
-              await context.read<SocialPostCubit>().submitComment(t);
-              _ctrl.clear();
-            },
-            child: const Text('Send'),
-          ),
-        ),
-      ],
     );
   }
 }
