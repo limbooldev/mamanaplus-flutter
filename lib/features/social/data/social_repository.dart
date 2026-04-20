@@ -57,6 +57,42 @@ class SocialRepository {
     return raw.map((e) => f(e as Map<String, dynamic>)).toList();
   }
 
+  Future<UserProfile> userProfile(int userId) async {
+    final res = await _dio.get<Map<String, dynamic>>('/v1/users/$userId/profile');
+    return UserProfile.fromJson(res.data!);
+  }
+
+  Future<List<SocialPost>> userPosts(int userId, {int page = 1}) async {
+    final res = await _dio.get<Map<String, dynamic>>(
+      '/v1/users/$userId/posts',
+      queryParameters: {'page': page},
+    );
+    return _items(res.data ?? {}, SocialPost.fromJson);
+  }
+
+  Future<void> reportUser(int userId, {String? reason}) async {
+    await _dio.post<void>(
+      '/v1/users/$userId/report',
+      data: {
+        if (reason != null && reason.trim().isNotEmpty) 'reason': reason.trim(),
+      },
+    );
+  }
+
+  /// Updates the signed-in user (`PATCH /v1/me`). Returns the updated profile map.
+  Future<Map<String, dynamic>> patchMe({
+    String? displayName,
+    String? bio,
+    String? avatarMediaKey,
+  }) async {
+    final body = <String, dynamic>{};
+    if (displayName != null) body['display_name'] = displayName;
+    if (bio != null) body['bio'] = bio;
+    if (avatarMediaKey != null) body['avatar_media_key'] = avatarMediaKey;
+    final res = await _dio.patch<Map<String, dynamic>>('/v1/me', data: body);
+    return res.data!;
+  }
+
   Future<List<SocialPost>> feed({int page = 1}) async {
     final res = await _dio.get<Map<String, dynamic>>(
       '/v1/social/feed',

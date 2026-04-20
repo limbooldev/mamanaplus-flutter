@@ -4,9 +4,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import '../../../../core/jwt_util.dart';
 import '../../../../shared/ui/ui.dart';
 import '../../../social/data/social_repository.dart';
+import '../../../social/presentation/pages/edit_profile_page.dart';
 import '../../../social/presentation/pages/social_user_list_page.dart';
+import '../../../social/presentation/pages/user_profile_page.dart';
 import '../../data/chat_repository.dart';
 import '../cubit/auth_cubit.dart';
 import '../cubit/theme_cubit.dart';
@@ -66,6 +69,10 @@ class _ProfilePageState extends State<ProfilePage> {
     final initials = displayName.isNotEmpty
         ? displayName[0].toUpperCase()
         : (email.isNotEmpty ? email[0].toUpperCase() : '?');
+    final myId = (source['id'] as num?)?.toInt() ??
+        (authState is AuthAuthenticated
+            ? parseUserIdFromAccessToken(authState.accessToken)
+            : null);
 
     return Scaffold(
       appBar: AppBar(
@@ -81,6 +88,32 @@ class _ProfilePageState extends State<ProfilePage> {
           ),
           const SizedBox(height: 8),
           const Divider(height: 1),
+          if (myId != null) ...[
+            ListTile(
+              leading: const Icon(Icons.person_outlined),
+              title: const Text('My profile'),
+              subtitle: const Text('Posts, followers, bio'),
+              onTap: () {
+                Navigator.of(context).push<void>(
+                  MaterialPageRoute<void>(
+                    builder: (_) => UserProfilePage(userId: myId),
+                  ),
+                );
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.edit_outlined),
+              title: const Text('Edit profile'),
+              subtitle: const Text('Name, bio, photo'),
+              onTap: () async {
+                await Navigator.of(context).push<void>(
+                  MaterialPageRoute<void>(builder: (_) => const EditProfilePage()),
+                );
+                if (context.mounted) _loadProfile();
+              },
+            ),
+            const Divider(height: 1),
+          ],
           // ── Appearance ──────────────────────────────────────────────────
           _SectionHeader(title: 'Appearance'),
           const _ThemeSelector(),

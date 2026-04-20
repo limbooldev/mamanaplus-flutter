@@ -10,6 +10,7 @@ import '../../../chat/presentation/cubit/auth_cubit.dart';
 import '../../data/social_repository.dart';
 import '../../domain/social_models.dart';
 import '../pages/social_user_list_page.dart';
+import '../pages/user_profile_page.dart';
 import 'social_comments_bottom_sheet.dart';
 import 'social_media_widgets.dart';
 
@@ -344,30 +345,46 @@ class _SocialFeedPostCardState extends State<SocialFeedPostCard> {
           padding: const EdgeInsets.fromLTRB(12, 10, 8, 8),
           child: Row(
             children: [
-              CircleAvatar(
-                radius: 18,
-                backgroundColor: AppColors.primary.withValues(alpha: 0.25),
-                child: Text(
-                  post.authorName.isNotEmpty
-                      ? post.authorName[0].toUpperCase()
-                      : '?',
-                  style: GoogleFonts.inter(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w600,
-                    color: onSurface,
-                  ),
-                ),
-              ),
-              const SizedBox(width: 10),
               Expanded(
-                child: Text(
-                  post.authorName,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: GoogleFonts.inter(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w500,
-                    color: onSurface,
+                child: InkWell(
+                  onTap: () {
+                    Navigator.of(context).push<void>(
+                      MaterialPageRoute<void>(
+                        builder: (_) => UserProfilePage(userId: post.authorId),
+                      ),
+                    );
+                  },
+                  borderRadius: BorderRadius.circular(8),
+                  child: Row(
+                    children: [
+                      CircleAvatar(
+                        radius: 18,
+                        backgroundColor: AppColors.primary.withValues(alpha: 0.25),
+                        child: Text(
+                          post.authorName.isNotEmpty
+                              ? post.authorName[0].toUpperCase()
+                              : '?',
+                          style: GoogleFonts.inter(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w600,
+                            color: onSurface,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          post.authorName,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: GoogleFonts.inter(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w500,
+                            color: onSurface,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ),

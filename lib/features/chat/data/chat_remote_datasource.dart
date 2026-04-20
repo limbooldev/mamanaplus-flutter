@@ -31,7 +31,7 @@ class ChatRemoteDataSource {
     return res.data!;
   }
 
-  /// Returns the authenticated user's profile: id, email, display_name, created_at.
+  /// Returns the authenticated user's profile (`GET /v1/me`).
   Future<Map<String, dynamic>> fetchMe() async {
     final res = await _dio.get<Map<String, dynamic>>('/v1/me');
     return res.data!;

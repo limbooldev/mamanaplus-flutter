@@ -128,6 +128,74 @@ class SocialUserBrief {
   }
 }
 
+/// `GET /v1/users/{id}/profile`
+class UserProfile {
+  const UserProfile({
+    required this.id,
+    required this.displayName,
+    required this.bio,
+    this.avatarMediaKey,
+    required this.profileApproved,
+    required this.followersCount,
+    required this.followingCount,
+    required this.postsCount,
+    required this.following,
+    required this.hiddenByMe,
+    required this.isSelf,
+  });
+
+  final int id;
+  final String displayName;
+  final String bio;
+  final String? avatarMediaKey;
+  final bool profileApproved;
+  final int followersCount;
+  final int followingCount;
+  final int postsCount;
+  final bool following;
+  final bool hiddenByMe;
+  final bool isSelf;
+
+  UserProfile copyWith({
+    bool? following,
+    bool? hiddenByMe,
+    bool? profileApproved,
+    int? followersCount,
+    int? followingCount,
+    int? postsCount,
+  }) {
+    return UserProfile(
+      id: id,
+      displayName: displayName,
+      bio: bio,
+      avatarMediaKey: avatarMediaKey,
+      profileApproved: profileApproved ?? this.profileApproved,
+      followersCount: followersCount ?? this.followersCount,
+      followingCount: followingCount ?? this.followingCount,
+      postsCount: postsCount ?? this.postsCount,
+      following: following ?? this.following,
+      hiddenByMe: hiddenByMe ?? this.hiddenByMe,
+      isSelf: isSelf,
+    );
+  }
+
+  factory UserProfile.fromJson(Map<String, dynamic> j) {
+    return UserProfile(
+      id: (j['id'] as num).toInt(),
+      displayName: j['display_name'] as String? ?? '',
+      bio: j['bio'] as String? ?? '',
+      avatarMediaKey: j['avatar_media_key'] as String?,
+      profileApproved: j['profile_approved'] == true,
+      followersCount: (j['followers_count'] as num?)?.toInt() ?? 0,
+      followingCount: (j['following_count'] as num?)?.toInt() ?? 0,
+      postsCount: (j['posts_count'] as num?)?.toInt() ?? 0,
+      following: j['following'] == true,
+      hiddenByMe: j['hidden_by_me'] == true,
+      isSelf: j['is_self'] == true,
+    );
+  }
+}
+
 class StoryRing {
   const StoryRing({
     required this.userId,

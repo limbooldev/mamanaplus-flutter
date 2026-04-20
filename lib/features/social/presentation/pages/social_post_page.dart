@@ -10,6 +10,7 @@ import '../cubit/social_post_cubit.dart';
 import '../widgets/social_media_widgets.dart';
 import '../widgets/social_post_comment_widgets.dart';
 import 'social_user_list_page.dart';
+import 'user_profile_page.dart';
 
 class SocialPostPage extends StatelessWidget {
   const SocialPostPage({super.key, required this.postId});
@@ -124,11 +125,22 @@ class _PostScaffold extends StatelessWidget {
                   ),
                 ),
               const SizedBox(height: 12),
-              Text(
-                p.authorName,
-                style: GoogleFonts.inter(
-                  fontSize: 14,
-                  color: AppColors.subtitleLight,
+              InkWell(
+                onTap: () {
+                  Navigator.of(context).push<void>(
+                    MaterialPageRoute<void>(
+                      builder: (_) => UserProfilePage(userId: p.authorId),
+                    ),
+                  );
+                },
+                child: Text(
+                  p.authorName,
+                  style: GoogleFonts.inter(
+                    fontSize: 14,
+                    color: AppColors.subtitleLight,
+                    decoration: TextDecoration.underline,
+                    decorationColor: AppColors.subtitleLight,
+                  ),
                 ),
               ),
               const SizedBox(height: 8),
