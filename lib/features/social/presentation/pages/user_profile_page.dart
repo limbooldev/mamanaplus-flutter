@@ -532,7 +532,6 @@ class _UserProfilePageState extends State<UserProfilePage> {
                   delegate: SliverChildBuilderDelegate(
                     (context, i) {
                       final post = _posts[i];
-                      final ref = post.thumbnailUrl ?? post.mediaUrl;
                       return Material(
                         color: Colors.grey.shade900,
                         child: InkWell(
@@ -555,11 +554,7 @@ class _UserProfilePageState extends State<UserProfilePage> {
                               ),
                             );
                           },
-                          child: ref != null && ref.isNotEmpty
-                              ? SocialPostImage(mediaRef: ref, fit: BoxFit.cover)
-                              : const Center(
-                                  child: Icon(Icons.article_outlined, color: Colors.white38),
-                                ),
+                          child: _profilePostGridPreview(post),
                         ),
                       );
                     },
@@ -580,6 +575,30 @@ class _UserProfilePageState extends State<UserProfilePage> {
       ),
     );
   }
+}
+
+/// Static grid preview: video uses [SocialPost.thumbnailUrl] only (never [SocialPost.mediaUrl],
+/// which points at the video file). Matches [SocialFeedPostCard] / explore tile behavior.
+Widget _profilePostGridPreview(SocialPost post) {
+  if (post.postType == 'video') {
+    final t = post.thumbnailUrl;
+    if (t != null && t.isNotEmpty) {
+      return SocialPostImage(mediaRef: t, fit: BoxFit.cover);
+    }
+    return ColoredBox(
+      color: Colors.grey.shade900,
+      child: const Center(
+        child: Icon(Icons.play_circle_outline, color: Colors.white70, size: 40),
+      ),
+    );
+  }
+  final ref = post.thumbnailUrl ?? post.mediaUrl;
+  if (ref != null && ref.isNotEmpty) {
+    return SocialPostImage(mediaRef: ref, fit: BoxFit.cover);
+  }
+  return const Center(
+    child: Icon(Icons.article_outlined, color: Colors.white38),
+  );
 }
 
 class _StatChip extends StatelessWidget {
