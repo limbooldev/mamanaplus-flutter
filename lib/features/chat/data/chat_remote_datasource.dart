@@ -83,6 +83,7 @@ class ChatRemoteDataSource {
     int conversationId, {
     required String body,
     int? replyToMessageId,
+    int? storyMediaId,
     String contentType = 'text/plain',
   }) async {
     final res = await _dio.post<Map<String, dynamic>>(
@@ -91,6 +92,7 @@ class ChatRemoteDataSource {
         'body': body,
         'content_type': contentType,
         if (replyToMessageId != null) 'reply_to_message_id': replyToMessageId,
+        if (storyMediaId != null) 'story_media_id': storyMediaId,
       },
     );
     return res.data!;

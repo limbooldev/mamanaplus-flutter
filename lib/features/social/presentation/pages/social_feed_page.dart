@@ -1,14 +1,18 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:provider/provider.dart';
 
 import '../../../../shared/ui/ui.dart';
+import '../../../chat/data/chat_repository.dart';
 import '../../data/social_repository.dart';
+import '../../data/story_seen_local_store.dart';
 import '../../domain/social_models.dart' show StoryRing;
 import '../cubit/social_feed_cubit.dart';
 import '../widgets/social_feed_post_card.dart';
+import '../widgets/social_media_widgets.dart';
 import 'social_composer_page.dart';
-import 'story_viewer_page.dart';
+import 'story_chain_viewer_page.dart';
 
 class SocialFeedPage extends StatelessWidget {
   const SocialFeedPage({super.key});
@@ -16,7 +20,10 @@ class SocialFeedPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return BlocProvider(
-      create: (_) => SocialFeedCubit(context.read<SocialRepository>())..refresh(),
+      create: (_) => SocialFeedCubit(
+        context.read<SocialRepository>(),
+        context.read<StorySeenLocalStore>(),
+      )..refresh(),
       child: const _SocialFeedView(),
     );
   }
@@ -24,6 +31,25 @@ class SocialFeedPage extends StatelessWidget {
 
 class _SocialFeedView extends StatelessWidget {
   const _SocialFeedView();
+
+  void _openChain(BuildContext context, List<StoryRing> rings, int startIndex) {
+    Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        builder: (_) => MultiProvider(
+          providers: [
+            RepositoryProvider.value(value: context.read<SocialRepository>()),
+            RepositoryProvider.value(value: context.read<ChatRepository>()),
+            Provider.value(value: context.read<StorySeenLocalStore>()),
+          ],
+          child: StoryChainViewerPage(
+            rings: rings,
+            initialUserIndex: startIndex,
+            seenStore: context.read<StorySeenLocalStore>(),
+          ),
+        ),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -101,19 +127,7 @@ class _SocialFeedView extends StatelessWidget {
                 if (state.stories.isNotEmpty)
                   _StoryStrip(
                     stories: state.stories,
-                    onOpen: (ring) {
-                      Navigator.of(context).push<void>(
-                        MaterialPageRoute<void>(
-                          builder: (_) => RepositoryProvider.value(
-                            value: context.read<SocialRepository>(),
-                            child: StoryViewerPage(
-                              storyId: ring.storyId,
-                              title: ring.displayName,
-                            ),
-                          ),
-                        ),
-                      );
-                    },
+                    onOpen: (i) => _openChain(context, state.stories, i),
                   ),
                 Expanded(
                   child: NotificationListener<ScrollNotification>(
@@ -166,7 +180,7 @@ class _StoryStrip extends StatelessWidget {
   const _StoryStrip({required this.stories, required this.onOpen});
 
   final List<StoryRing> stories;
-  final void Function(StoryRing) onOpen;
+  final void Function(int index) onOpen;
 
   @override
   Widget build(BuildContext context) {
@@ -182,8 +196,22 @@ class _StoryStrip extends StatelessWidget {
           separatorBuilder: (_, __) => const SizedBox(width: 8),
           itemBuilder: (context, i) {
             final s = stories[i];
+            final ringDecoration = s.hasUnseen && !s.isAddPlaceholder
+                ? BoxDecoration(
+                    shape: BoxShape.circle,
+                    gradient: LinearGradient(
+                      colors: [
+                        AppColors.primary,
+                        AppColors.primary.withValues(alpha: 0.4),
+                      ],
+                    ),
+                  )
+                : BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: isDark ? Colors.grey.shade800 : Colors.grey.shade300,
+                  );
             return InkWell(
-              onTap: () => onOpen(s),
+              onTap: () => onOpen(i),
               borderRadius: BorderRadius.circular(40),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
@@ -191,39 +219,37 @@ class _StoryStrip extends StatelessWidget {
                   Stack(
                     clipBehavior: Clip.none,
                     children: [
-                      CircleAvatar(
-                        radius: 32,
-                        backgroundColor:
-                            AppColors.primary.withValues(alpha: 0.2),
-                        backgroundImage: (s.coverUrl != null &&
-                                s.coverUrl!.isNotEmpty)
-                            ? NetworkImage(s.coverUrl!)
-                            : null,
-                        child: (s.coverUrl == null || s.coverUrl!.isEmpty)
-                            ? Text(
-                                s.displayName.isNotEmpty
-                                    ? s.displayName[0].toUpperCase()
-                                    : '?',
-                                style: GoogleFonts.inter(
-                                  fontSize: 20,
-                                  fontWeight: FontWeight.w700,
+                      Container(
+                        padding: const EdgeInsets.all(3),
+                        decoration: ringDecoration,
+                        child: CircleAvatar(
+                          radius: 32,
+                          backgroundColor:
+                              AppColors.primary.withValues(alpha: 0.2),
+                          child: (s.coverUrl == null || s.coverUrl!.isEmpty)
+                              ? (s.isAddPlaceholder
+                                  ? const Icon(Icons.add, size: 32)
+                                  : Text(
+                                      s.displayName.isNotEmpty
+                                          ? s.displayName[0].toUpperCase()
+                                          : '?',
+                                      style: GoogleFonts.inter(
+                                        fontSize: 20,
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                    ))
+                              : ClipOval(
+                                  child: SizedBox(
+                                    width: 64,
+                                    height: 64,
+                                    child: SocialPostImage(
+                                      mediaRef: s.coverUrl,
+                                      fit: BoxFit.cover,
+                                    ),
+                                  ),
                                 ),
-                              )
-                            : null,
-                      ),
-                      if (s.hasUnseen)
-                        Positioned(
-                          right: 0,
-                          top: 0,
-                          child: Container(
-                            width: 12,
-                            height: 12,
-                            decoration: const BoxDecoration(
-                              color: AppColors.primary,
-                              shape: BoxShape.circle,
-                            ),
-                          ),
                         ),
+                      ),
                     ],
                   ),
                   const SizedBox(height: 4),

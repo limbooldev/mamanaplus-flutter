@@ -18,6 +18,7 @@ import 'features/chat/data/chat_socket.dart';
 import 'features/chat/presentation/cubit/auth_cubit.dart';
 import 'features/chat/presentation/cubit/theme_cubit.dart';
 import 'features/social/data/social_repository.dart';
+import 'features/social/data/story_seen_local_store.dart';
 import 'core/push_messaging.dart';
 
 Future<void> main() async {
@@ -48,29 +49,33 @@ Future<void> main() async {
   final prefs = await SharedPreferences.getInstance();
   final themeCubit = ThemeCubit(prefs);
   final mutePrefs = ChatMutePrefs(prefs);
+  final storySeenStore = StorySeenLocalStore(prefs);
 
   runApp(
     Provider<ApiConfig>.value(
       value: config,
-      child: Provider<ChatMutePrefs>.value(
-        value: mutePrefs,
-        child: RepositoryProvider<ChatRepository>.value(
-          value: repo,
-          child: MultiBlocProvider(
-            providers: [
-              BlocProvider<AuthCubit>.value(value: auth),
-              BlocProvider<ThemeCubit>.value(value: themeCubit),
-            ],
-            child: RepositoryProvider<SocialRepository>(
-              create: (ctx) => SocialRepository(
-                ctx.read<AuthCubit>().apiDio,
-                mediaApi: remote,
-                tokens: tokens,
-              ),
-              child: MamanaApp(
-                authCubit: auth,
-                config: config,
-                chatRepository: repo,
+      child: Provider<StorySeenLocalStore>.value(
+        value: storySeenStore,
+        child: Provider<ChatMutePrefs>.value(
+          value: mutePrefs,
+          child: RepositoryProvider<ChatRepository>.value(
+            value: repo,
+            child: MultiBlocProvider(
+              providers: [
+                BlocProvider<AuthCubit>.value(value: auth),
+                BlocProvider<ThemeCubit>.value(value: themeCubit),
+              ],
+              child: RepositoryProvider<SocialRepository>(
+                create: (ctx) => SocialRepository(
+                  ctx.read<AuthCubit>().apiDio,
+                  mediaApi: remote,
+                  tokens: tokens,
+                ),
+                child: MamanaApp(
+                  authCubit: auth,
+                  config: config,
+                  chatRepository: repo,
+                ),
               ),
             ),
           ),

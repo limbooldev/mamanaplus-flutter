@@ -2,7 +2,9 @@ import 'package:equatable/equatable.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../data/social_repository.dart';
+import '../../data/story_seen_local_store.dart';
 import '../../domain/social_models.dart';
+import '../../story_ring_order.dart';
 
 sealed class SocialFeedState extends Equatable {
   @override
@@ -40,15 +42,22 @@ class SocialFeedFailure extends SocialFeedState {
 }
 
 class SocialFeedCubit extends Cubit<SocialFeedState> {
-  SocialFeedCubit(this._repo) : super(SocialFeedInitial());
+  SocialFeedCubit(
+    this._repo,
+    this._seenStore,
+  ) : super(SocialFeedInitial());
 
   final SocialRepository _repo;
+  final StorySeenLocalStore _seenStore;
 
   Future<void> refresh() async {
     emit(SocialFeedLoading());
     try {
+      await _seenStore.flushPending(_repo);
       final posts = await _repo.feed(page: 1);
-      final stories = await _repo.listStoryRings();
+      final storiesRaw = await _repo.listStoryRings();
+      final myId = await _repo.currentUserId();
+      final stories = orderStoryRingsForFeed(storiesRaw, myId);
       emit(SocialFeedLoaded(
         posts: posts,
         stories: stories,

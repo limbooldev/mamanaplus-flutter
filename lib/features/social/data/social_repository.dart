@@ -1,6 +1,7 @@
 import 'package:dio/dio.dart';
 
 import '../../chat/data/chat_remote_datasource.dart';
+import '../../../core/jwt_util.dart';
 import '../../../core/token_storage.dart';
 import '../domain/social_models.dart';
 
@@ -16,6 +17,13 @@ class SocialRepository {
   final Dio _dio;
   final ChatRemoteDataSource _mediaApi;
   final TokenStorage _tokens;
+
+  /// Decodes `sub` from the current access token (UI / ordering only).
+  Future<int?> currentUserId() async {
+    final t = await _tokens.getAccessToken();
+    if (t == null || t.isEmpty) return null;
+    return parseUserIdFromAccessToken(t);
+  }
 
   /// Same pipeline as chat: presign → PUT (local needs Bearer) → complete for S3/GCS.
   /// Returns [object_key] to store as `media_url` on the post.
@@ -296,4 +304,25 @@ class SocialRepository {
         '/v1/social/stories/report',
         data: {'story_id': storyId},
       );
+
+  /// Owner-only: viewers of one slide.
+  Future<List<StoryMediaViewer>> listStoryMediaViewers({
+    required int storyId,
+    required int mediaId,
+  }) async {
+    final res = await _dio.get<Map<String, dynamic>>(
+      '/v1/social/stories/$storyId/media/$mediaId/viewers',
+    );
+    return _items(res.data ?? {}, StoryMediaViewer.fromJson);
+  }
+
+  /// Returns max allowed slides when server responds with `story_media_limit`.
+  int? parseStoryMediaLimitError(Object e) {
+    if (e is! DioException) return null;
+    final data = e.response?.data;
+    if (data is Map && data['error'] == 'story_media_limit') {
+      return (data['max'] as num?)?.toInt();
+    }
+    return null;
+  }
 }

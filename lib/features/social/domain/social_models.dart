@@ -220,6 +220,9 @@ class StoryRing {
       hasUnseen: j['has_unseen'] == true,
     );
   }
+
+  /// Client-only placeholder for "Your story" when the user has no active ring (`story_id == 0`).
+  bool get isAddPlaceholder => storyId == 0;
 }
 
 class StoryMedia {
@@ -248,6 +251,28 @@ class StoryMedia {
       createdAt: DateTime.tryParse(j['created_at'] as String? ?? '') ??
           DateTime.fromMillisecondsSinceEpoch(0),
       seenByMe: j['seen_by_me'] == true,
+    );
+  }
+}
+
+/// One account that viewed a story slide (`GET .../viewers`).
+class StoryMediaViewer {
+  const StoryMediaViewer({
+    required this.userId,
+    required this.displayName,
+    required this.seenAt,
+  });
+
+  final int userId;
+  final String displayName;
+  final DateTime seenAt;
+
+  factory StoryMediaViewer.fromJson(Map<String, dynamic> j) {
+    return StoryMediaViewer(
+      userId: (j['user_id'] as num).toInt(),
+      displayName: j['display_name'] as String? ?? '',
+      seenAt: DateTime.tryParse(j['seen_at'] as String? ?? '') ??
+          DateTime.fromMillisecondsSinceEpoch(0),
     );
   }
 }
