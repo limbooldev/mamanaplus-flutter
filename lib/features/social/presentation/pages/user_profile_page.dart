@@ -2,6 +2,8 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:intl/intl.dart';
+import 'package:share_plus/share_plus.dart';
 import '../../../../core/jwt_util.dart';
 import '../../../../router/app_routes.dart';
 import '../../../../shared/ui/ui.dart';
@@ -323,26 +325,20 @@ class _UserProfilePageState extends State<UserProfilePage> {
             slivers: [
               SliverAppBar(
                 pinned: true,
-                expandedHeight: 180,
+                elevation: 0,
+                scrolledUnderElevation: 0.5,
+                surfaceTintColor: Colors.transparent,
+                backgroundColor: theme.scaffoldBackgroundColor,
                 title: Text(
                   p.displayName,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
+                  style: GoogleFonts.inter(fontWeight: FontWeight.w600, fontSize: 16),
                 ),
                 actions: [
-                  if (isSelf)
-                    IconButton(
-                      tooltip: 'Edit profile',
-                      icon: const Icon(Icons.edit_outlined),
-                      onPressed: () async {
-                        await Navigator.of(context).push<void>(
-                          MaterialPageRoute<void>(builder: (_) => const EditProfilePage()),
-                        );
-                        if (mounted) await _refreshAll();
-                      },
-                    ),
                   if (!isSelf && me != null)
                     PopupMenuButton<String>(
+                      icon: const Icon(Icons.more_horiz),
                       onSelected: (v) async {
                         if (v == 'hide') await _toggleHide(p);
                         if (v == 'report') await _reportUser();
@@ -356,155 +352,9 @@ class _UserProfilePageState extends State<UserProfilePage> {
                       ],
                     ),
                 ],
-                flexibleSpace: FlexibleSpaceBar(
-                  background: Container(
-                    alignment: Alignment.bottomCenter,
-                    padding: const EdgeInsets.fromLTRB(16, 48, 16, 16),
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
-                        colors: [
-                          theme.colorScheme.primary.withValues(alpha: 0.35),
-                          theme.scaffoldBackgroundColor,
-                        ],
-                      ),
-                    ),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: [
-                        ClipOval(
-                          child: SizedBox(
-                            width: 88,
-                            height: 88,
-                            child: p.avatarMediaKey != null && p.avatarMediaKey!.isNotEmpty
-                                ? SocialPostImage(
-                                    mediaRef: p.avatarMediaKey,
-                                    fit: BoxFit.cover,
-                                  )
-                                : ColoredBox(
-                                    color: AppColors.primary.withValues(alpha: 0.3),
-                                    child: Center(
-                                      child: Text(
-                                        p.displayName.isNotEmpty
-                                            ? p.displayName[0].toUpperCase()
-                                            : '?',
-                                        style: GoogleFonts.inter(
-                                          fontSize: 32,
-                                          fontWeight: FontWeight.w700,
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.end,
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              if (!p.profileApproved)
-                                Padding(
-                                  padding: const EdgeInsets.only(bottom: 4),
-                                  child: Text(
-                                    'Pending approval',
-                                    style: GoogleFonts.inter(
-                                      fontSize: 12,
-                                      color: theme.colorScheme.tertiary,
-                                    ),
-                                  ),
-                                ),
-                              if (p.bio.isNotEmpty)
-                                Text(
-                                  p.bio,
-                                  maxLines: 3,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: GoogleFonts.inter(
-                                    fontSize: 13,
-                                    color: theme.colorScheme.onSurface.withValues(alpha: 0.8),
-                                  ),
-                                ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
               ),
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
-                  child: Row(
-                    children: [
-                      _StatChip(
-                        label: 'Followers',
-                        value: p.followersCount,
-                        onTap: () {
-                          Navigator.of(context).push<void>(
-                            MaterialPageRoute<void>(
-                              builder: (_) => RepositoryProvider.value(
-                                value: context.read<SocialRepository>(),
-                                child: SocialUserListPage(
-                                  title: 'Followers',
-                                  load: (r, page) => r.followers(p.id, page: page),
-                                ),
-                              ),
-                            ),
-                          );
-                        },
-                      ),
-                      const SizedBox(width: 8),
-                      _StatChip(
-                        label: 'Following',
-                        value: p.followingCount,
-                        onTap: () {
-                          Navigator.of(context).push<void>(
-                            MaterialPageRoute<void>(
-                              builder: (_) => RepositoryProvider.value(
-                                value: context.read<SocialRepository>(),
-                                child: SocialUserListPage(
-                                  title: 'Following',
-                                  load: (r, page) => r.following(p.id, page: page),
-                                ),
-                              ),
-                            ),
-                          );
-                        },
-                      ),
-                      const SizedBox(width: 8),
-                      _StatChip(label: 'Posts', value: p.postsCount, onTap: null),
-                    ],
-                  ),
-                ),
-              ),
-              if (!isSelf && me != null)
-                SliverToBoxAdapter(
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(12, 4, 12, 8),
-                    child: Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: [
-                        FilledButton.tonal(
-                          onPressed: _followBusy ? null : () => _toggleFollow(p),
-                          child: Text(p.following ? 'Following' : 'Follow'),
-                        ),
-                        OutlinedButton.icon(
-                          onPressed: _messageUser,
-                          icon: const Icon(Icons.chat_bubble_outline, size: 18),
-                          label: const Text('Message'),
-                        ),
-                        if (_isSuperAdmin && !p.profileApproved)
-                          FilledButton(
-                            onPressed: _actionBusy ? null : _approveProfile,
-                            child: const Text('Approve'),
-                          ),
-                      ],
-                    ),
-                  ),
-                ),
+              SliverToBoxAdapter(child: _igProfileBlock(context, theme, p, isSelf: isSelf, me: me)),
+              const SliverToBoxAdapter(child: _IgPostsTabStrip()),
               if (_posts.isEmpty && !_loadingPosts)
                 SliverToBoxAdapter(
                   child: Padding(
@@ -521,19 +371,22 @@ class _UserProfilePageState extends State<UserProfilePage> {
                   ),
                 ),
               SliverPadding(
-                padding: const EdgeInsets.fromLTRB(4, 0, 4, 24),
+                padding: const EdgeInsets.fromLTRB(2, 0, 2, 24),
                 sliver: SliverGrid(
                   gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                     crossAxisCount: 3,
-                    mainAxisSpacing: 4,
-                    crossAxisSpacing: 4,
+                    mainAxisSpacing: 2,
+                    crossAxisSpacing: 2,
                     childAspectRatio: 1,
                   ),
                   delegate: SliverChildBuilderDelegate(
                     (context, i) {
                       final post = _posts[i];
+                      final tileBg = theme.brightness == Brightness.dark
+                          ? const Color(0xFF121212)
+                          : theme.colorScheme.surfaceContainerHighest;
                       return Material(
-                        color: Colors.grey.shade900,
+                        color: tileBg,
                         child: InkWell(
                           onTap: () {
                             final p = _profile;
@@ -575,6 +428,278 @@ class _UserProfilePageState extends State<UserProfilePage> {
       ),
     );
   }
+
+  static const Color _igFollowBlue = Color(0xFF0095F6);
+
+  Widget _igProfileBlock(
+    BuildContext context,
+    ThemeData theme,
+    UserProfile p, {
+    required bool isSelf,
+    required int? me,
+  }) {
+    final fmt = NumberFormat('#,###');
+    final onSurface = theme.colorScheme.onSurface;
+    final igGreyFill = theme.brightness == Brightness.dark
+        ? const Color(0xFF262626)
+        : const Color(0xFFEFEFEF);
+    final igGreyFg = theme.brightness == Brightness.dark ? Colors.white : Colors.black87;
+
+    ButtonStyle igCompactGrey({bool outlined = false}) {
+      final shape = RoundedRectangleBorder(borderRadius: BorderRadius.circular(8));
+      if (outlined) {
+        return OutlinedButton.styleFrom(
+          minimumSize: const Size(0, 36),
+          padding: const EdgeInsets.symmetric(horizontal: 8),
+          shape: shape,
+          side: BorderSide(color: theme.dividerColor),
+          foregroundColor: onSurface,
+        );
+      }
+      return FilledButton.styleFrom(
+        minimumSize: const Size(0, 36),
+        padding: const EdgeInsets.symmetric(horizontal: 8),
+        elevation: 0,
+        shape: shape,
+        backgroundColor: igGreyFill,
+        foregroundColor: igGreyFg,
+      );
+    }
+
+    void openFollowers() {
+      Navigator.of(context).push<void>(
+        MaterialPageRoute<void>(
+          builder: (_) => RepositoryProvider.value(
+            value: context.read<SocialRepository>(),
+            child: SocialUserListPage(
+              title: 'Followers',
+              load: (r, page) => r.followers(p.id, page: page),
+            ),
+          ),
+        ),
+      );
+    }
+
+    void openFollowing() {
+      Navigator.of(context).push<void>(
+        MaterialPageRoute<void>(
+          builder: (_) => RepositoryProvider.value(
+            value: context.read<SocialRepository>(),
+            child: SocialUserListPage(
+              title: 'Following',
+              load: (r, page) => r.following(p.id, page: page),
+            ),
+          ),
+        ),
+      );
+    }
+
+    Future<void> openEdit() async {
+      await Navigator.of(context).push<void>(
+        MaterialPageRoute<void>(builder: (_) => const EditProfilePage()),
+      );
+      if (mounted) await _refreshAll();
+    }
+
+    Future<void> shareProfile() async {
+      await Share.share('${p.displayName} — Mamana+');
+    }
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              ClipOval(
+                child: SizedBox(
+                  width: 86,
+                  height: 86,
+                  child: p.avatarMediaKey != null && p.avatarMediaKey!.isNotEmpty
+                      ? SocialPostImage(
+                          mediaRef: p.avatarMediaKey,
+                          fit: BoxFit.cover,
+                        )
+                      : ColoredBox(
+                          color: AppColors.primary.withValues(alpha: 0.25),
+                          child: Center(
+                            child: Text(
+                              p.displayName.isNotEmpty ? p.displayName[0].toUpperCase() : '?',
+                              style: GoogleFonts.inter(
+                                fontSize: 30,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                        ),
+                ),
+              ),
+              const SizedBox(width: 18),
+              Expanded(
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: _IgStatColumn(
+                        valueText: fmt.format(p.postsCount),
+                        label: 'Posts',
+                        onTap: null,
+                      ),
+                    ),
+                    Expanded(
+                      child: _IgStatColumn(
+                        valueText: fmt.format(p.followersCount),
+                        label: 'Followers',
+                        onTap: openFollowers,
+                      ),
+                    ),
+                    Expanded(
+                      child: _IgStatColumn(
+                        valueText: fmt.format(p.followingCount),
+                        label: 'Following',
+                        onTap: openFollowing,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          if (!p.profileApproved)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 6),
+              child: Text(
+                'Pending approval',
+                style: GoogleFonts.inter(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
+                  color: theme.colorScheme.tertiary,
+                ),
+              ),
+            ),
+          Text(
+            p.displayName,
+            style: GoogleFonts.inter(
+              fontSize: 15,
+              fontWeight: FontWeight.w700,
+              color: onSurface,
+            ),
+          ),
+          if (p.bio.isNotEmpty) ...[
+            const SizedBox(height: 4),
+            Text(
+              p.bio,
+              style: GoogleFonts.inter(
+                fontSize: 14,
+                height: 1.35,
+                color: onSurface,
+              ),
+            ),
+          ],
+          const SizedBox(height: 14),
+          if (isSelf)
+            Row(
+              children: [
+                Expanded(
+                  child: FilledButton(
+                    onPressed: openEdit,
+                    style: FilledButton.styleFrom(
+                      minimumSize: const Size(0, 36),
+                      elevation: 0,
+                      backgroundColor: igGreyFill,
+                      foregroundColor: igGreyFg,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                    ),
+                    child: Text(
+                      'Edit profile',
+                      style: GoogleFonts.inter(fontWeight: FontWeight.w600, fontSize: 13),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: FilledButton(
+                    onPressed: shareProfile,
+                    style: FilledButton.styleFrom(
+                      minimumSize: const Size(0, 36),
+                      elevation: 0,
+                      backgroundColor: igGreyFill,
+                      foregroundColor: igGreyFg,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                    ),
+                    child: Text(
+                      'Share profile',
+                      style: GoogleFonts.inter(fontWeight: FontWeight.w600, fontSize: 13),
+                    ),
+                  ),
+                ),
+              ],
+            )
+          else if (me != null)
+            Row(
+              children: [
+                Expanded(
+                  child: p.following
+                      ? FilledButton(
+                          onPressed: _followBusy ? null : () => _toggleFollow(p),
+                          style: igCompactGrey(),
+                          child: Text(
+                            'Following',
+                            style: GoogleFonts.inter(fontWeight: FontWeight.w600, fontSize: 13),
+                          ),
+                        )
+                      : FilledButton(
+                          onPressed: _followBusy ? null : () => _toggleFollow(p),
+                          style: FilledButton.styleFrom(
+                            minimumSize: const Size(0, 36),
+                            elevation: 0,
+                            backgroundColor: _igFollowBlue,
+                            foregroundColor: Colors.white,
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                          ),
+                          child: Text(
+                            'Follow',
+                            style: GoogleFonts.inter(fontWeight: FontWeight.w700, fontSize: 13),
+                          ),
+                        ),
+                ),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: _messageUser,
+                    style: igCompactGrey(outlined: true),
+                    child: Text(
+                      'Message',
+                      style: GoogleFonts.inter(fontWeight: FontWeight.w600, fontSize: 13),
+                    ),
+                  ),
+                ),
+                if (_isSuperAdmin && !p.profileApproved) ...[
+                  const SizedBox(width: 6),
+                  SizedBox(
+                    width: 44,
+                    height: 36,
+                    child: FilledButton(
+                      onPressed: _actionBusy ? null : _approveProfile,
+                      style: FilledButton.styleFrom(
+                        padding: EdgeInsets.zero,
+                        elevation: 0,
+                        backgroundColor: theme.colorScheme.primary,
+                        foregroundColor: theme.colorScheme.onPrimary,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                      ),
+                      child: const Icon(Icons.check, size: 20),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+        ],
+      ),
+    );
+  }
 }
 
 /// Static grid preview: video uses [SocialPost.thumbnailUrl] only (never [SocialPost.mediaUrl],
@@ -586,7 +711,7 @@ Widget _profilePostGridPreview(SocialPost post) {
       return SocialPostImage(mediaRef: t, fit: BoxFit.cover);
     }
     return ColoredBox(
-      color: Colors.grey.shade900,
+      color: Colors.black26,
       child: const Center(
         child: Icon(Icons.play_circle_outline, color: Colors.white70, size: 40),
       ),
@@ -597,48 +722,106 @@ Widget _profilePostGridPreview(SocialPost post) {
     return SocialPostImage(mediaRef: ref, fit: BoxFit.cover);
   }
   return const Center(
-    child: Icon(Icons.article_outlined, color: Colors.white38),
+    child: Icon(Icons.article_outlined, color: Color(0xFF8E8E8E)),
   );
 }
 
-class _StatChip extends StatelessWidget {
-  const _StatChip({
+/// Instagram-style stat: bold count on top, label below, equal width columns.
+class _IgStatColumn extends StatelessWidget {
+  const _IgStatColumn({
+    required this.valueText,
     required this.label,
-    required this.value,
     this.onTap,
   });
 
+  final String valueText;
   final String label;
-  final int value;
   final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final box = Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: theme.dividerColor),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            '$value',
-            style: GoogleFonts.inter(fontSize: 16, fontWeight: FontWeight.w700),
-          ),
-          Text(
-            label,
+    final muted = theme.colorScheme.onSurface.withValues(alpha: 0.75);
+    final col = Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Text(
+            valueText,
+            maxLines: 1,
             style: GoogleFonts.inter(
-              fontSize: 11,
-              color: theme.colorScheme.onSurface.withValues(alpha: 0.65),
+              fontSize: 18,
+              fontWeight: FontWeight.w700,
+              letterSpacing: -0.2,
+            ),
+          ),
+        ),
+        const SizedBox(height: 2),
+        Text(
+          label,
+          textAlign: TextAlign.center,
+          style: GoogleFonts.inter(
+            fontSize: 13,
+            fontWeight: FontWeight.w400,
+            color: muted,
+          ),
+        ),
+      ],
+    );
+    final padded = Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: col,
+    );
+    if (onTap == null) {
+      return SizedBox(width: double.infinity, child: padded);
+    }
+    return SizedBox(
+      width: double.infinity,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(4),
+        child: padded,
+      ),
+    );
+  }
+}
+
+/// Single “Posts” grid tab with underline, matching Instagram’s tab strip.
+class _IgPostsTabStrip extends StatelessWidget {
+  const _IgPostsTabStrip();
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final line = theme.colorScheme.onSurface;
+    return Container(
+      decoration: BoxDecoration(
+        border: Border(
+          top: BorderSide(color: theme.dividerColor.withValues(alpha: 0.35)),
+        ),
+      ),
+      height: 46,
+      padding: const EdgeInsets.symmetric(horizontal: 8),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 56,
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                Icon(Icons.grid_on_rounded, size: 22, color: line),
+                const SizedBox(height: 8),
+                Align(
+                  alignment: Alignment.bottomCenter,
+                  child: Container(height: 1.5, width: 28, color: line),
+                ),
+              ],
             ),
           ),
         ],
       ),
     );
-    if (onTap == null) return box;
-    return InkWell(onTap: onTap, borderRadius: BorderRadius.circular(12), child: box);
   }
 }
