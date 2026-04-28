@@ -28,6 +28,7 @@ class LocalMessages extends Table {
   TextColumn get body => text()();
   TextColumn get contentType => text().withDefault(const Constant('text/plain'))();
   IntColumn get replyToMessageId => integer().nullable()();
+  IntColumn get storyMediaId => integer().nullable()();
   DateTimeColumn get createdAt => dateTime()();
   /// From API `receipt`: for own messages in a DM = peer delivery/read; for others = local read state.
   DateTimeColumn get receiptDeliveredAt => dateTime().nullable()();
@@ -52,7 +53,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(_openConnection());
 
   @override
-  int get schemaVersion => 4;
+  int get schemaVersion => 5;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -70,6 +71,9 @@ class AppDatabase extends _$AppDatabase {
           }
           if (from < 4) {
             await m.addColumn(localConversations, localConversations.unreadCount);
+          }
+          if (from < 5) {
+            await m.addColumn(localMessages, localMessages.storyMediaId);
           }
         },
       );

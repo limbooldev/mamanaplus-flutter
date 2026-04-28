@@ -107,6 +107,7 @@ class _DmFab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return FloatingActionButton(
+      heroTag: 'fab_inbox_new_dm',
       onPressed: () => _openPickUser(context, l10n),
       child: const Icon(Icons.edit_outlined),
     );

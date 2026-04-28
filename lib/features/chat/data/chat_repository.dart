@@ -140,6 +140,7 @@ class ChatRepository {
         final body = m['body'] as String? ?? '';
         final ct = m['content_type'] as String? ?? 'text/plain';
         final reply = m['reply_to_message_id'];
+        final storyMid = m['story_media_id'];
         final created =
             DateTime.tryParse(m['created_at'] as String? ?? '') ??
             DateTime.now();
@@ -160,6 +161,9 @@ class ChatRepository {
             contentType: Value(ct),
             replyToMessageId: Value(
               reply == null ? null : (reply as num).toInt(),
+            ),
+            storyMediaId: Value(
+              storyMid == null ? null : (storyMid as num).toInt(),
             ),
             createdAt: created,
             receiptDeliveredAt: Value(recDel),
@@ -248,13 +252,16 @@ class ChatRepository {
     int conversationId, {
     required String body,
     int? replyToMessageId,
+    int? storyMediaId,
     String contentType = 'text/plain',
-  }) => _remote.sendMessage(
-    conversationId,
-    body: body,
-    replyToMessageId: replyToMessageId,
-    contentType: contentType,
-  );
+  }) =>
+      _remote.sendMessage(
+        conversationId,
+        body: body,
+        replyToMessageId: replyToMessageId,
+        storyMediaId: storyMediaId,
+        contentType: contentType,
+      );
 
   Future<Map<String, dynamic>> editMessage(
     int conversationId,

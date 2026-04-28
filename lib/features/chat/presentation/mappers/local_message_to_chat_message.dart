@@ -129,6 +129,21 @@ List<Message> mapLocalMessagesToChatMessages(
       );
     }
 
+    if (m.storyMediaId != null) {
+      return Message.custom(
+        id: id,
+        authorId: authorId,
+        createdAt: m.createdAt,
+        replyToMessageId: replyTo,
+        status: status,
+        metadata: <String, dynamic>{
+          'mamanaStoryReply': true,
+          'story_media_id': m.storyMediaId,
+          'story_reply_text': m.body,
+        },
+      );
+    }
+
     return Message.text(
       id: id,
       authorId: authorId,

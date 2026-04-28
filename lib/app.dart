@@ -69,8 +69,9 @@ class _MamanaAppState extends State<MamanaApp> {
           return AppRoutes.login;
         }
         if (s is AuthAuthenticated) {
-          if (loc == AppRoutes.login || loc == AppRoutes.splash)
+          if (loc == AppRoutes.login || loc == AppRoutes.splash) {
             return AppRoutes.inbox;
+          }
           return null;
         }
         return null;

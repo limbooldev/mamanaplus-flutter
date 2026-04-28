@@ -372,6 +372,43 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
                   builders: Builders(
                     customMessageBuilder:
                         (context, CustomMessage message, int index, {required isSentByMe, groupStatus}) {
+                      if (message.metadata?['mamanaStoryReply'] == true) {
+                        final text =
+                            (message.metadata?['story_reply_text'] as String?) ?? '';
+                        final theme = context.read<ChatTheme>();
+                        final bubble = isSentByMe
+                            ? theme.colors.primary
+                            : theme.colors.surfaceContainerHigh;
+                        final fg = isSentByMe ? theme.colors.onPrimary : theme.colors.onSurface;
+                        return Align(
+                          alignment:
+                              isSentByMe ? Alignment.centerRight : Alignment.centerLeft,
+                          child: ConstrainedBox(
+                            constraints: BoxConstraints(maxWidth: maxBubbleW),
+                            child: Container(
+                              margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
+                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                              decoration: BoxDecoration(
+                                color: bubble,
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(Icons.auto_stories_outlined, color: fg, size: 22),
+                                  const SizedBox(width: 8),
+                                  Flexible(
+                                    child: Text(
+                                      text.isEmpty ? 'Story' : text,
+                                      style: TextStyle(color: fg),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        );
+                      }
                       final emoji = message.metadata?['mamanaStickerEmoji'] as String?;
                       if (emoji == null) {
                         return const SizedBox.shrink();

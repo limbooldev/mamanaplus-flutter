@@ -2,13 +2,10 @@ import 'package:flutter/material.dart';
 
 import 'inbox_page.dart';
 import 'profile_page.dart';
+import '../../../social/presentation/pages/social_explore_page.dart';
+import '../../../social/presentation/pages/social_feed_page.dart';
 
-/// Persistent shell that hosts the two bottom-nav tabs:
-///   0 → Chats (InboxPage)
-///   1 → Profile (ProfilePage)
-///
-/// [IndexedStack] keeps both subtrees alive so InboxPage preserves its
-/// scroll position and BLoC state when the user switches tabs.
+/// Persistent shell: Chats, Community feed, Explore, Profile.
 class MainShell extends StatefulWidget {
   const MainShell({super.key});
 
@@ -21,6 +18,8 @@ class _MainShellState extends State<MainShell> {
 
   static const _pages = <Widget>[
     InboxPage(),
+    SocialFeedPage(),
+    SocialExplorePage(),
     ProfilePage(),
   ];
 
@@ -41,6 +40,16 @@ class _MainShellState extends State<MainShell> {
             icon: Icon(Icons.chat_bubble_outline_rounded),
             selectedIcon: Icon(Icons.chat_bubble_rounded),
             label: 'Chats',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.dynamic_feed_outlined),
+            selectedIcon: Icon(Icons.dynamic_feed_rounded),
+            label: 'Community',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.explore_outlined),
+            selectedIcon: Icon(Icons.explore_rounded),
+            label: 'Explore',
           ),
           NavigationDestination(
             icon: Icon(Icons.person_outline_rounded),
