@@ -492,33 +492,45 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
                             children: [
                               ClipRRect(
                                 borderRadius: BorderRadius.circular(8),
-                                child: GestureDetector(
-                                  onTap: () => openChatFullscreenImage(
-                                    context,
-                                    url: message.source,
-                                    accessToken: widget.accessToken,
-                                  ),
-                                  child: Image.network(
-                                    message.source,
-                                    width: 220,
-                                    fit: BoxFit.cover,
-                                    headers: {
-                                      'Authorization': 'Bearer ${widget.accessToken}',
-                                    },
-                                    loadingBuilder: (c, child, p) => p == null
-                                        ? child
-                                        : const SizedBox(
-                                            width: 220,
-                                            height: 160,
-                                            child: Center(
-                                              child: CircularProgressIndicator(strokeWidth: 2),
-                                            ),
+                                child: SizedBox(
+                                  width: kChatInlineImageW,
+                                  height: kChatInlineImageH,
+                                  child: GestureDetector(
+                                    onTap: () => openChatFullscreenImage(
+                                      context,
+                                      url: message.source,
+                                      accessToken: widget.accessToken,
+                                    ),
+                                    child: Image.network(
+                                      message.source,
+                                      width: kChatInlineImageW,
+                                      height: kChatInlineImageH,
+                                      fit: BoxFit.cover,
+                                      headers: {
+                                        'Authorization': 'Bearer ${widget.accessToken}',
+                                      },
+                                      loadingBuilder: (c, child, progress) {
+                                        if (progress == null) {
+                                          return child;
+                                        }
+                                        return DecoratedBox(
+                                          decoration: BoxDecoration(
+                                            color: fg.withValues(alpha: 0.12),
                                           ),
-                                    errorBuilder: (_, __, ___) => Padding(
-                                      padding: const EdgeInsets.all(8),
-                                      child: Text(
-                                        message.text ?? message.source,
-                                        style: TextStyle(color: fg),
+                                          child: const Center(
+                                            child: CircularProgressIndicator(strokeWidth: 2),
+                                          ),
+                                        );
+                                      },
+                                      errorBuilder: (_, __, ___) => Padding(
+                                        padding: const EdgeInsets.all(8),
+                                        child: Center(
+                                          child: Text(
+                                            message.text ?? message.source,
+                                            style: TextStyle(color: fg),
+                                            textAlign: TextAlign.center,
+                                          ),
+                                        ),
                                       ),
                                     ),
                                   ),

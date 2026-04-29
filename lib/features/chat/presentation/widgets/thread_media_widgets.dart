@@ -5,6 +5,13 @@ import 'package:provider/provider.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:video_player/video_player.dart';
 
+/// Inline chat thumbnails use fixed dimensions so the message list does not
+/// reflow while images/videos decode or stream.
+const double kChatInlineImageW = 220;
+const double kChatInlineImageH = 160;
+const double kChatInlineVideoW = 220;
+const double kChatInlineVideoH = 140;
+
 Future<void> openChatFullscreenImage(
   BuildContext context, {
   required String url,
@@ -470,10 +477,18 @@ class _ThreadVideoBubbleState extends State<ThreadVideoBubble> {
           mainAxisSize: MainAxisSize.min,
           children: [
             if (_loading)
-              const SizedBox(
-                width: 220,
-                height: 140,
-                child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
+              SizedBox(
+                width: kChatInlineVideoW,
+                height: kChatInlineVideoH,
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: widget.foreground.withValues(alpha: 0.08),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Center(
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
+                ),
               )
             else if (_err != null)
               Padding(
@@ -484,8 +499,8 @@ class _ThreadVideoBubbleState extends State<ThreadVideoBubble> {
               ClipRRect(
                 borderRadius: BorderRadius.circular(8),
                 child: SizedBox(
-                  width: 220,
-                  height: 140,
+                  width: kChatInlineVideoW,
+                  height: kChatInlineVideoH,
                   child: GestureDetector(
                     behavior: HitTestBehavior.opaque,
                     onTap: () {
@@ -505,10 +520,10 @@ class _ThreadVideoBubbleState extends State<ThreadVideoBubble> {
                           child: SizedBox(
                             width: _c!.value.size.width > 0
                                 ? _c!.value.size.width
-                                : 220,
+                                : kChatInlineVideoW,
                             height: _c!.value.size.height > 0
                                 ? _c!.value.size.height
-                                : 140,
+                                : kChatInlineVideoH,
                             child: VideoPlayer(_c!),
                           ),
                         ),
