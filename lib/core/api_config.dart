@@ -1,9 +1,12 @@
 import 'package:flutter/foundation.dart'
-    show TargetPlatform, defaultTargetPlatform;
+    show TargetPlatform, defaultTargetPlatform, kProfileMode, kReleaseMode;
 
 /// Backend base URL and derived WebSocket URL.
 ///
 /// Override with `--dart-define=API_BASE_URL=https://api.example.com`
+///
+/// When unset, **release** and **profile** builds use the deployed backend;
+/// **debug** uses the local emulator defaults below.
 ///
 /// **Release discipline:** bump [expectedBackendContractTag] when adopting a
 /// backend OpenAPI / behavior release the app was verified against.
@@ -20,9 +23,18 @@ class ApiConfig {
   /// Default dev URL when [API_BASE_URL] is unset:
   /// - **Android emulator:** `http://10.0.2.2:8080` (host loopback).
   /// - **iOS simulator / desktop:** `http://127.0.0.1:8080`.
+  static const String _productionBaseUrl = 'https://mamana.getapi.cloud';
+
   static ApiConfig fromEnvironment() {
     const fromDefine = String.fromEnvironment('API_BASE_URL');
-    final base = fromDefine.isNotEmpty ? fromDefine : _defaultDevBaseUrl();
+    final String base;
+    if (fromDefine.isNotEmpty) {
+      base = fromDefine;
+    } else if (kReleaseMode || kProfileMode) {
+      base = _productionBaseUrl;
+    } else {
+      base = _defaultDevBaseUrl();
+    }
     return ApiConfig(baseUrl: base.replaceAll(RegExp(r'/$'), ''));
   }
 

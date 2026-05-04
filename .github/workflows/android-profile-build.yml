@@ -1,0 +1,108 @@
+# Manual: build staging profile APK and upload to Firebase App Distribution.
+#
+# Required repository secrets (same pattern as Trackit):
+#   ANDROID_KEY_STORE_FILE        — base64-encoded JKS keystore
+#   ANDROID_RELEASE_SECRETS       — lines appended to android/local.properties (keyAlias, keyPassword, storePassword, …)
+#   GOOGLE_SERVICES_JSON          — base64-encoded google-services.json for CI
+#   ASSETS_ENV                    — optional; appended to assets/.env
+#   FIREBASE_AUTH_TOKEN           — base64-encoded Google Cloud service account JSON (Firebase App Distribution)
+#   FIREBASE_ANDROID_PROFILE_APP_ID — Firebase Android app ID for the staging package (com.mamanaplus.android.profile)
+name: Build Android Profile APK
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_note:
+        description: "Release notes (use \\n for new lines)"
+        required: true
+        type: string
+      target_group:
+        description: "Firebase App Distribution tester groups (comma-separated)"
+        required: true
+        type: string
+        default: "Admins"
+
+permissions:
+  contents: read
+
+jobs:
+  build-apk:
+    name: Build Profile APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Format release notes
+        run: |
+          echo "${{ github.event.inputs.release_note }}" | awk '{print $0 "\\n"}' > release_notes.txt
+          cat release_notes.txt
+
+      - name: Flutter doctor
+        run: flutter doctor -v
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Decode keystore
+        run: |
+          echo "${{ secrets.ANDROID_KEY_STORE_FILE }}" | base64 --decode > android/app/release-key.jks
+
+      - name: Write android/local.properties
+        run: |
+          VERSION_CODE=${{ github.run_number }}
+          VERSION_NAME="0.0.${VERSION_CODE}"
+          {
+            echo "flutter.buildMode=profile"
+            echo "flutter.versionName=$VERSION_NAME"
+            echo "flutter.versionCode=$VERSION_CODE"
+            echo "${{ secrets.ANDROID_RELEASE_SECRETS }}"
+            echo "storeFile=release-key.jks"
+          } >> android/local.properties
+          sed -i "s/^version:.*/version: $VERSION_NAME+$VERSION_CODE/" pubspec.yaml
+          grep '^version:' pubspec.yaml
+
+      - name: Write google-services.json
+        run: |
+          echo "${{ secrets.GOOGLE_SERVICES_JSON }}" | base64 --decode > android/app/google-services.json
+
+      - name: Write assets/.env (optional)
+        run: |
+          mkdir -p assets
+          echo "${{ secrets.ASSETS_ENV }}" >> assets/.env
+
+      - name: Build profile APK
+        run: flutter build apk --flavor staging --profile
+
+      - name: Set up Node (Firebase CLI)
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install Firebase CLI
+        run: npm install -g firebase-tools
+
+      - name: Upload to Firebase App Distribution
+        env:
+          FIREBASE_ANDROID_APP_ID: ${{ secrets.FIREBASE_ANDROID_PROFILE_APP_ID }}
+        run: |
+          echo "${{ secrets.FIREBASE_AUTH_TOKEN }}" | base64 --decode > firebase-auth.json
+          export GOOGLE_APPLICATION_CREDENTIALS="$PWD/firebase-auth.json"
+          firebase appdistribution:distribute \
+            build/app/outputs/flutter-apk/app-staging-profile.apk \
+            --app "$FIREBASE_ANDROID_APP_ID" \
+            --release-notes "$(cat release_notes.txt)" \
+            --groups "${{ github.event.inputs.target_group }}"

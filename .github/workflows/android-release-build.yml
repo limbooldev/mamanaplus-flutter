@@ -1,0 +1,138 @@
+# Manual: build prod release APK + AAB, upload APK to Firebase App Distribution, optionally upload AAB to Play internal testing.
+#
+# Required repository secrets (align with Trackit / your org):
+#   ANDROID_KEY_STORE_FILE           — base64-encoded JKS keystore
+#   ANDROID_RELEASE_SECRETS          — lines appended to android/local.properties
+#   GOOGLE_SERVICES_JSON             — base64-encoded google-services.json
+#   ASSETS_ENV                       — optional; appended to assets/.env
+#   FIREBASE_AUTH_TOKEN              — base64-encoded service account JSON (App Distribution)
+#   FIREBASE_ANDROID_APP_ID          — Firebase Android app ID for prod (com.mamanaplus.android)
+#   ANDROID_PLAY_STORE_SERVICE_ACCOUNT — base64-encoded Play Console JSON key (only if Play upload enabled)
+name: Build Android Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version_name:
+        description: "Version name (e.g. 1.0.0)"
+        required: true
+        type: string
+      release_note:
+        description: "Release notes (use \\n for new lines)"
+        required: true
+        type: string
+      target_group:
+        description: "Firebase App Distribution tester groups (comma-separated)"
+        required: true
+        type: string
+        default: "Admins, MVP"
+      upload_to_play_store:
+        description: "Upload AAB to Google Play internal testing"
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  build-release:
+    name: Build Release APK and AAB
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Format release notes and Play whats-new
+        run: |
+          echo "${{ github.event.inputs.release_note }}" | awk '{print $0 "\\n"}' > release_notes.txt
+          cat release_notes.txt
+          mkdir -p whats-new/en-US/
+          echo "${{ github.event.inputs.release_note }}" > whats-new/en-US/whatsnew
+
+      - name: Flutter doctor
+        run: flutter doctor -v
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Decode keystore
+        run: |
+          echo "${{ secrets.ANDROID_KEY_STORE_FILE }}" | base64 --decode > android/app/release-key.jks
+
+      - name: Append CI signing and version to local.properties
+        run: |
+          VERSION_CODE=${{ github.run_number }}
+          VERSION_NAME="${{ github.event.inputs.version_name }}"
+          {
+            echo "flutter.buildMode=release"
+            echo "flutter.versionName=$VERSION_NAME"
+            echo "flutter.versionCode=$VERSION_CODE"
+            echo "${{ secrets.ANDROID_RELEASE_SECRETS }}"
+            echo "storeFile=release-key.jks"
+          } >> android/local.properties
+          sed -i "s/^version:.*/version: $VERSION_NAME+$VERSION_CODE/" pubspec.yaml
+          grep '^version:' pubspec.yaml
+
+      - name: Write google-services.json
+        run: |
+          echo "${{ secrets.GOOGLE_SERVICES_JSON }}" | base64 --decode > android/app/google-services.json
+
+      - name: Write assets/.env (optional)
+        run: |
+          mkdir -p assets
+          echo "${{ secrets.ASSETS_ENV }}" >> assets/.env
+
+      - name: Build release APK and AAB
+        run: |
+          flutter build apk --flavor prod --release
+          flutter build appbundle --flavor prod --release
+
+      - name: Set up Node (Firebase CLI)
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install Firebase CLI
+        run: npm install -g firebase-tools
+
+      - name: Upload APK to Firebase App Distribution
+        env:
+          FIREBASE_ANDROID_APP_ID: ${{ secrets.FIREBASE_ANDROID_APP_ID }}
+        run: |
+          echo "${{ secrets.FIREBASE_AUTH_TOKEN }}" | base64 --decode > firebase-auth.json
+          export GOOGLE_APPLICATION_CREDENTIALS="$PWD/firebase-auth.json"
+          firebase appdistribution:distribute \
+            build/app/outputs/flutter-apk/app-prod-release.apk \
+            --app "$FIREBASE_ANDROID_APP_ID" \
+            --release-notes "$(cat release_notes.txt)" \
+            --groups "${{ github.event.inputs.target_group }}"
+
+      - name: Decode Play Console service account
+        if: ${{ github.event.inputs.upload_to_play_store == 'true' }}
+        run: |
+          echo "${{ secrets.ANDROID_PLAY_STORE_SERVICE_ACCOUNT }}" | base64 --decode > play-store-service-account.json
+
+      - name: Upload AAB to Google Play (internal testing)
+        if: ${{ github.event.inputs.upload_to_play_store == 'true' }}
+        uses: r0adkll/upload-google-play@v1
+        with:
+          serviceAccountJson: play-store-service-account.json
+          packageName: com.mamanaplus.android
+          releaseFiles: build/app/outputs/bundle/prodRelease/app-prod-release.aab
+          track: internal
+          status: completed
+          whatsNewDirectory: whats-new/

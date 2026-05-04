@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     // START: FlutterFire Configuration
@@ -6,6 +8,12 @@ plugins {
     id("kotlin-android")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
+}
+
+val localProperties = Properties()
+val localPropertiesFile = rootProject.file("local.properties")
+if (localPropertiesFile.exists()) {
+    localPropertiesFile.inputStream().use { localProperties.load(it) }
 }
 
 android {
@@ -23,21 +31,51 @@ android {
     }
 
     defaultConfig {
-        // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
         applicationId = "com.mamanaplus.android"
-        // You can update the following values to match your application needs.
-        // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = flutter.minSdkVersion
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
     }
 
+    val storeFilePath = localProperties.getProperty("storeFile")?.trim().orEmpty()
+    signingConfigs {
+        if (storeFilePath.isNotEmpty()) {
+            create("releaseStore") {
+                keyAlias = localProperties.getProperty("keyAlias")
+                keyPassword = localProperties.getProperty("keyPassword")
+                storeFile = file(storeFilePath)
+                storePassword = localProperties.getProperty("storePassword")
+            }
+        }
+    }
+
+    val storeSigning = signingConfigs.findByName("releaseStore")
+
     buildTypes {
-        release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
+        named("debug") { }
+        // Use named("profile") — bare `profile` clashes with Kotlin Multiplatform Gradle DSL.
+        named("profile") {
+            signingConfig = storeSigning ?: signingConfigs.getByName("debug")
+        }
+        named("release") {
+            signingConfig = storeSigning ?: signingConfigs.getByName("debug")
+        }
+    }
+
+    flavorDimensions += "default"
+    productFlavors {
+        create("dev") {
+            dimension = "default"
+            versionNameSuffix = "-dev"
+        }
+        create("staging") {
+            dimension = "default"
+            applicationIdSuffix = ".profile"
+            versionNameSuffix = "-profile"
+        }
+        create("prod") {
+            dimension = "default"
         }
     }
 }
