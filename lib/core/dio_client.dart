@@ -35,8 +35,9 @@ Dio createDio({
   final dio = Dio(
     BaseOptions(
       baseUrl: config.baseUrl,
-      connectTimeout: const Duration(seconds: 15),
-      receiveTimeout: const Duration(seconds: 30),
+      connectTimeout: const Duration(seconds: 60),
+      receiveTimeout: const Duration(seconds: 60),
+      sendTimeout: const Duration(seconds: 60),
       headers: {'Accept': 'application/json'},
     ),
   );
@@ -124,7 +125,9 @@ Future<bool> _tryRefresh(
     final plain = Dio(
       BaseOptions(
         baseUrl: config.baseUrl,
-        connectTimeout: const Duration(seconds: 15),
+        connectTimeout: const Duration(seconds: 60),
+        receiveTimeout: const Duration(seconds: 60),
+        sendTimeout: const Duration(seconds: 60),
       ),
     );
     final res = await plain.post<Map<String, dynamic>>(
