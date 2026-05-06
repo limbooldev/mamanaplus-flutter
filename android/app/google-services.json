@@ -14,11 +14,11 @@
       },
       "oauth_client": [
         {
-          "client_id": "1032889903903-34jfjrht7im89lotfon237evuftcokb6.apps.googleusercontent.com",
+          "client_id": "1032889903903-r2aucvnqfik50u3p257u6p1rbs9bmsg1.apps.googleusercontent.com",
           "client_type": 1,
           "android_info": {
             "package_name": "com.mamanaplus.android",
-            "certificate_hash": "bb760b3675da8760acd5588a0d07680ea03f9016"
+            "certificate_hash": "cb725b31da11f6220cbcd7c1db12bec01a1e1632"
           }
         },
         {
@@ -58,6 +58,14 @@
         }
       },
       "oauth_client": [
+        {
+          "client_id": "1032889903903-5ngav641a3nrj5drhdoiv1473pmps3lg.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.mamanaplus.android.profile",
+            "certificate_hash": "cb725b31da11f6220cbcd7c1db12bec01a1e1632"
+          }
+        },
         {
           "client_id": "1032889903903-umcrl7k4ehqgsgmuo1957950ugspombp.apps.googleusercontent.com",
           "client_type": 3
