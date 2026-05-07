@@ -5,6 +5,7 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/widgets.dart';
 import 'package:go_router/go_router.dart';
 
+import 'crash_reporting.dart';
 import '../firebase_options.dart';
 import '../features/chat/data/chat_repository.dart';
 import '../features/chat/presentation/cubit/auth_cubit.dart';
@@ -35,6 +36,7 @@ Future<bool> initializeFirebaseCore() async {
     return true;
   } catch (e, st) {
     debugPrint('Firebase.initializeApp failed: $e\n$st');
+    reportCaughtError(e, st);
     return false;
   }
 }

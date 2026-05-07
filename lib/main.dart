@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -9,6 +10,7 @@ import 'app.dart';
 import 'package:provider/provider.dart';
 
 import 'core/api_config.dart';
+import 'core/crash_reporting.dart';
 import 'core/database/app_database.dart';
 import 'core/token_storage.dart';
 import 'features/chat/data/chat_mute_prefs.dart';
@@ -23,64 +25,78 @@ import 'core/push_messaging.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  var firebaseReady = false;
   if (Platform.isAndroid || Platform.isIOS) {
     await applyWorkaroundToOpenSqlite3OnOldAndroidVersions();
-    await initializeFirebaseCore();
+    firebaseReady = await initializeFirebaseCore();
   }
+  setupCrashReporting(firebaseInitialized: firebaseReady);
 
-  final config = ApiConfig.fromEnvironment();
-  final tokens = TokenStorage();
-  final db = AppDatabase();
-  final auth = AuthCubit(config: config, tokens: tokens);
-  final dio = auth.apiDio;
-  final remote = ChatRemoteDataSource(dio);
-  final socket = ChatSocket();
-  final repo = ChatRepository(
-    remote: remote,
-    db: db,
-    socket: socket,
-    tokens: tokens,
-  );
-  auth.beforeLogout = () async {
-    await repo.unregisterPush();
-  };
-  await auth.restore();
+  await runZonedGuarded(
+    () async {
+      final config = ApiConfig.fromEnvironment();
+      final tokens = TokenStorage();
+      final db = AppDatabase();
+      final auth = AuthCubit(config: config, tokens: tokens);
+      final dio = auth.apiDio;
+      final remote = ChatRemoteDataSource(dio);
+      final socket = ChatSocket();
+      final repo = ChatRepository(
+        remote: remote,
+        db: db,
+        socket: socket,
+        tokens: tokens,
+      );
+      auth.beforeLogout = () async {
+        await repo.unregisterPush();
+      };
+      await auth.restore();
 
-  final prefs = await SharedPreferences.getInstance();
-  final themeCubit = ThemeCubit(prefs);
-  final mutePrefs = ChatMutePrefs(prefs);
-  final storySeenStore = StorySeenLocalStore(prefs);
+      final prefs = await SharedPreferences.getInstance();
+      final themeCubit = ThemeCubit(prefs);
+      final mutePrefs = ChatMutePrefs(prefs);
+      final storySeenStore = StorySeenLocalStore(prefs);
 
-  runApp(
-    Provider<ApiConfig>.value(
-      value: config,
-      child: Provider<StorySeenLocalStore>.value(
-        value: storySeenStore,
-        child: Provider<ChatMutePrefs>.value(
-          value: mutePrefs,
-          child: RepositoryProvider<ChatRepository>.value(
-            value: repo,
-            child: MultiBlocProvider(
-              providers: [
-                BlocProvider<AuthCubit>.value(value: auth),
-                BlocProvider<ThemeCubit>.value(value: themeCubit),
-              ],
-              child: RepositoryProvider<SocialRepository>(
-                create: (ctx) => SocialRepository(
-                  ctx.read<AuthCubit>().apiDio,
-                  mediaApi: remote,
-                  tokens: tokens,
-                ),
-                child: MamanaApp(
-                  authCubit: auth,
-                  config: config,
-                  chatRepository: repo,
+      runApp(
+        Provider<ApiConfig>.value(
+          value: config,
+          child: Provider<StorySeenLocalStore>.value(
+            value: storySeenStore,
+            child: Provider<ChatMutePrefs>.value(
+              value: mutePrefs,
+              child: RepositoryProvider<ChatRepository>.value(
+                value: repo,
+                child: MultiBlocProvider(
+                  providers: [
+                    BlocProvider<AuthCubit>.value(value: auth),
+                    BlocProvider<ThemeCubit>.value(value: themeCubit),
+                  ],
+                  child: RepositoryProvider<SocialRepository>(
+                    create: (ctx) => SocialRepository(
+                      ctx.read<AuthCubit>().apiDio,
+                      mediaApi: remote,
+                      tokens: tokens,
+                    ),
+                    child: MamanaApp(
+                      authCubit: auth,
+                      config: config,
+                      chatRepository: repo,
+                    ),
+                  ),
                 ),
               ),
             ),
           ),
         ),
-      ),
-    ),
+      );
+    },
+    (Object error, StackTrace stack) {
+      reportUncaughtAsyncError(
+        error,
+        stack,
+        firebaseReady: firebaseReady,
+      );
+    },
   );
 }
