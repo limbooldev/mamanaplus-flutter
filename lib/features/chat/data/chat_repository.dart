@@ -30,10 +30,10 @@ class ChatRepository {
   AppDatabase get database => _db;
 
   /// Opens WebSocket using [TokenStorage] for fresh tokens on each connect/reconnect.
-  void connectRealtime(String wsUrl) {
+  void connectRealtime(Uri wsUri) {
     final t = _tokens;
     if (t == null) return;
-    _socket.connect(wsUrl, t.getAccessToken);
+    _socket.connect(wsUri, t.getAccessToken);
   }
 
   /// Returns the authenticated user's profile from `GET /v1/me`.

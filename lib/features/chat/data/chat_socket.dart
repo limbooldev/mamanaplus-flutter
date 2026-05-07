@@ -14,7 +14,7 @@ class ChatSocket {
   StreamSubscription<dynamic>? _sub;
   final _controller = StreamController<Map<String, dynamic>>.broadcast();
 
-  String? _wsUrl;
+  Uri? _wsUri;
   Future<String?> Function()? _tokenProvider;
   Timer? _reconnectTimer;
   int _reconnectDelaySeconds = 1;
@@ -24,11 +24,11 @@ class ChatSocket {
 
   /// Opens a connection; repeats after disconnect using [accessTokenProvider] for a fresh bearer.
   void connect(
-    String wsUrl,
+    Uri wsUri,
     Future<String?> Function() accessTokenProvider,
   ) {
     _manualDisconnect = false;
-    _wsUrl = wsUrl;
+    _wsUri = wsUri;
     _tokenProvider = accessTokenProvider;
     _reconnectDelaySeconds = 1;
     _cancelReconnectTimer();
@@ -36,9 +36,9 @@ class ChatSocket {
   }
 
   Future<void> _establish() async {
-    final url = _wsUrl;
+    final uri = _wsUri;
     final provider = _tokenProvider;
-    if (url == null || provider == null || _manualDisconnect) {
+    if (uri == null || provider == null || _manualDisconnect) {
       return;
     }
 
@@ -52,7 +52,7 @@ class ChatSocket {
 
     try {
       _channel = IOWebSocketChannel.connect(
-        Uri.parse(url),
+        uri,
         headers: {'Authorization': 'Bearer $token'},
       );
       _reconnectDelaySeconds = 1;
@@ -127,7 +127,7 @@ class ChatSocket {
   void disconnect() {
     _manualDisconnect = true;
     _cancelReconnectTimer();
-    _wsUrl = null;
+    _wsUri = null;
     _tokenProvider = null;
     unawaited(_tearDownChannel());
   }

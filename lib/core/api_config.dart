@@ -45,9 +45,29 @@ class ApiConfig {
     return 'http://127.0.0.1:8080';
   }
 
-  String get wsUrl {
+  /// Chat WebSocket endpoint derived from [baseUrl].
+  ///
+  /// Returned as a [Uri] (not a string) so the socket layer keeps a non-zero
+  /// port: a `wss://host/path` string re-parsed on some SDKs yields
+  /// [Uri.port] == 0 and the client dials `:0`.
+  Uri get wsUri {
     final u = Uri.parse(baseUrl);
     final scheme = u.scheme == 'https' ? 'wss' : 'ws';
-    return u.replace(scheme: scheme, path: '${u.path}/v1/ws').toString();
+    final path = u.path.endsWith('/') ? '${u.path}v1/ws' : '${u.path}/v1/ws';
+    final int port;
+    if (u.hasPort && u.port != 0) {
+      port = u.port;
+    } else if (scheme == 'wss') {
+      port = 443;
+    } else {
+      port = 80;
+    }
+    return Uri(
+      scheme: scheme,
+      host: u.host,
+      port: port,
+      path: path,
+      queryParameters: u.queryParameters.isEmpty ? null : u.queryParameters,
+    );
   }
 }

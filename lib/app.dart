@@ -143,7 +143,7 @@ class _MamanaAppState extends State<MamanaApp> {
 
   Future<void> _attachSessionRealtimeAndPush() async {
     if (!mounted) return;
-    widget.chatRepository.connectRealtime(widget.config.wsUrl);
+    widget.chatRepository.connectRealtime(widget.config.wsUri);
     if (Platform.isAndroid || Platform.isIOS) {
       await setupPushForAuthenticatedUser(
         chatRepository: widget.chatRepository,
