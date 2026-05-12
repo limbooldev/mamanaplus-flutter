@@ -5,6 +5,11 @@ import 'package:flutter_chat_core/flutter_chat_core.dart';
 import '../../../../core/database/app_database.dart';
 import '../../media_constants.dart';
 
+/// Prefix on synthetic ids for outbox rows. Lets the chat list key pending
+/// bubbles separately from server messages and lets gesture handlers ignore
+/// taps on bubbles that don't yet have a server id.
+const String kPendingMessagePrefix = 'pending_';
+
 bool _looksLikeImageUrl(LocalMessage m) {
   if (!m.contentType.toLowerCase().startsWith('image/')) return false;
   final u = Uri.tryParse(m.body.trim());
@@ -149,6 +154,93 @@ List<Message> mapLocalMessagesToChatMessages(
       authorId: authorId,
       text: m.body.isEmpty ? '(empty)' : m.body,
       createdAt: m.createdAt,
+      replyToMessageId: replyTo,
+      status: status,
+    );
+  }).toList();
+}
+
+/// Maps outbox rows to chat messages with [MessageStatus.sending].
+///
+/// Pending media bubbles point at the local file (`file://...`) so the user
+/// sees their own attachment immediately while the upload + send is running.
+/// Once the server returns the message, the row is removed from the outbox
+/// and the server's [LocalMessage] takes its place (with status Sent).
+List<Message> mapPendingOutboxToChatMessages(
+  List<MessageOutboxData> outbox, {
+  required int myUserId,
+}) {
+  return outbox.map((row) {
+    final id = '$kPendingMessagePrefix${row.localId}';
+    final authorId = '$myUserId';
+    final replyTo =
+        row.replyToMessageId != null ? '${row.replyToMessageId}' : null;
+    const status = MessageStatus.sending;
+
+    if (row.contentType == kMamanaStickerContentType) {
+      var emoji = '💬';
+      String? sid;
+      try {
+        final map = jsonDecode(row.body) as Map<String, dynamic>;
+        emoji = map['emoji'] as String? ?? emoji;
+        sid = map['sticker_id'] as String?;
+      } catch (_) {}
+      return Message.custom(
+        id: id,
+        authorId: authorId,
+        createdAt: row.createdAt,
+        replyToMessageId: replyTo,
+        status: status,
+        metadata: <String, dynamic>{
+          'mamanaStickerEmoji': emoji,
+          if (sid != null) 'mamanaStickerId': sid,
+        },
+      );
+    }
+
+    final mediaPath = row.mediaPath;
+    if (mediaPath != null && mediaPath.isNotEmpty) {
+      final source = 'file://$mediaPath';
+      final durMs = row.mediaDurationMs ?? 0;
+      switch (row.mediaKind) {
+        case 'video':
+          return Message.video(
+            id: id,
+            authorId: authorId,
+            source: source,
+            createdAt: row.createdAt,
+            replyToMessageId: replyTo,
+            status: status,
+          );
+        case 'voice':
+          return Message.audio(
+            id: id,
+            authorId: authorId,
+            source: source,
+            duration: Duration(milliseconds: durMs > 0 ? durMs : 1),
+            createdAt: row.createdAt,
+            replyToMessageId: replyTo,
+            status: status,
+          );
+        case 'sticker':
+        case 'image':
+        default:
+          return Message.image(
+            id: id,
+            authorId: authorId,
+            source: source,
+            createdAt: row.createdAt,
+            replyToMessageId: replyTo,
+            status: status,
+          );
+      }
+    }
+
+    return Message.text(
+      id: id,
+      authorId: authorId,
+      text: row.body.isEmpty ? '(empty)' : row.body,
+      createdAt: row.createdAt,
       replyToMessageId: replyTo,
       status: status,
     );

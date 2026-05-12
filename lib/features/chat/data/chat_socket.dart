@@ -13,6 +13,7 @@ class ChatSocket {
   IOWebSocketChannel? _channel;
   StreamSubscription<dynamic>? _sub;
   final _controller = StreamController<Map<String, dynamic>>.broadcast();
+  final _connectedCtrl = StreamController<void>.broadcast();
 
   Uri? _wsUri;
   Future<String?> Function()? _tokenProvider;
@@ -21,6 +22,10 @@ class ChatSocket {
   bool _manualDisconnect = false;
 
   Stream<Map<String, dynamic>> get events => _controller.stream;
+
+  /// Fires once each time a WebSocket connection is successfully established.
+  /// Subscribers (e.g. [ThreadCubit]) use this to flush pending outbox rows.
+  Stream<void> get connected => _connectedCtrl.stream;
 
   /// Opens a connection; repeats after disconnect using [accessTokenProvider] for a fresh bearer.
   void connect(
@@ -61,6 +66,7 @@ class ChatSocket {
         onError: (_, __) => _onSocketTerminated(),
         onDone: _onSocketTerminated,
       );
+      if (!_connectedCtrl.isClosed) _connectedCtrl.add(null);
     } catch (_) {
       _scheduleReconnect();
     }
@@ -123,6 +129,24 @@ class ChatSocket {
     } catch (_) {}
   }
 
+  /// Acknowledges that [messageIds] reached this device. The server flips each
+  /// message's `delivered_at` and emits `receipt_update` to its sender so the
+  /// sender's bubble can flip from Sent to Delivered in real time.
+  void sendDeliveredAck(int conversationId, List<int> messageIds) {
+    final ch = _channel;
+    if (ch == null || messageIds.isEmpty) return;
+    final payload = jsonEncode({
+      'type': 'receipt:delivered',
+      'payload': {
+        'conversation_id': conversationId,
+        'message_ids': messageIds,
+      },
+    });
+    try {
+      ch.sink.add(payload);
+    } catch (_) {}
+  }
+
   /// Stops reconnecting and closes the socket (e.g. logout).
   void disconnect() {
     _manualDisconnect = true;
@@ -135,5 +159,6 @@ class ChatSocket {
   void dispose() {
     disconnect();
     _controller.close();
+    _connectedCtrl.close();
   }
 }

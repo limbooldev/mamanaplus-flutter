@@ -1,4 +1,6 @@
+import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:drift/drift.dart';
 
@@ -25,6 +27,13 @@ class ChatRepository {
   final ChatSocket _socket;
   final TokenStorage? _tokens;
 
+  /// Pokes a `conversationId` whenever a row in [MessageOutbox] is inserted,
+  /// updated, or removed. Cubits subscribe to drive optimistic UI updates.
+  final StreamController<int> _outboxChangesCtrl =
+      StreamController<int>.broadcast();
+
+  Stream<int> get outboxChangedFor => _outboxChangesCtrl.stream;
+
   ChatSocket get socket => _socket;
 
   AppDatabase get database => _db;
@@ -40,11 +49,15 @@ class ChatRepository {
   /// Keys: id, email, display_name, created_at.
   Future<Map<String, dynamic>> fetchMe() => _remote.fetchMe();
 
+  /// Inserts a text/sticker outbox row. Used by [sendTextOptimistic] and the
+  /// existing offline-fallback path on the cubit.
   Future<void> enqueuePendingSend({
     required String localId,
     required int conversationId,
     required String body,
     int? replyToMessageId,
+    String contentType = 'text/plain',
+    int? storyMediaId,
   }) async {
     await _db
         .into(_db.messageOutbox)
@@ -55,8 +68,169 @@ class ChatRepository {
             body: body,
             replyToMessageId: Value(replyToMessageId),
             createdAt: DateTime.now(),
+            contentType: Value(contentType),
+            storyMediaId: Value(storyMediaId),
           ),
         );
+    _outboxChangesCtrl.add(conversationId);
+  }
+
+  /// Inserts a media outbox row carrying the local file path. The body stays
+  /// empty until the upload completes and the media JSON is built.
+  Future<void> enqueuePendingMediaSend({
+    required String localId,
+    required int conversationId,
+    required String mediaPath,
+    required String mediaMime,
+    required String mediaKind,
+    int? mediaDurationMs,
+    int? replyToMessageId,
+  }) async {
+    await _db
+        .into(_db.messageOutbox)
+        .insert(
+          MessageOutboxCompanion.insert(
+            localId: localId,
+            conversationId: conversationId,
+            body: '',
+            replyToMessageId: Value(replyToMessageId),
+            createdAt: DateTime.now(),
+            contentType: const Value(kMamanaMediaContentType),
+            mediaPath: Value(mediaPath),
+            mediaMime: Value(mediaMime),
+            mediaKind: Value(mediaKind),
+            mediaDurationMs: Value(mediaDurationMs),
+          ),
+        );
+    _outboxChangesCtrl.add(conversationId);
+  }
+
+  /// Loads pending rows for [conversationId], oldest first.
+  Future<List<MessageOutboxData>> loadOutboxLocal(int conversationId) {
+    return (_db.select(_db.messageOutbox)
+          ..where((t) => t.conversationId.equals(conversationId))
+          ..orderBy([(t) => OrderingTerm.asc(t.createdAt)]))
+        .get();
+  }
+
+  /// Optimistic text/sticker send. Inserts the outbox row first so the bubble
+  /// appears with a clock icon, then attempts the REST call. On success the
+  /// row is replaced by a [LocalMessage]; on failure it stays for later flush.
+  Future<void> sendTextOptimistic({
+    required String localId,
+    required int conversationId,
+    required String body,
+    int? replyToMessageId,
+    String contentType = 'text/plain',
+    int? storyMediaId,
+  }) async {
+    await enqueuePendingSend(
+      localId: localId,
+      conversationId: conversationId,
+      body: body,
+      replyToMessageId: replyToMessageId,
+      contentType: contentType,
+      storyMediaId: storyMediaId,
+    );
+    try {
+      final m = await _remote.sendMessage(
+        conversationId,
+        body: body,
+        replyToMessageId: replyToMessageId,
+        storyMediaId: storyMediaId,
+        contentType: contentType,
+      );
+      await cacheMessages(conversationId, [m]);
+      await _deleteOutbox(localId, conversationId);
+    } catch (_) {
+      await _markOutboxFailed(localId, conversationId);
+    }
+  }
+
+  /// Optimistic media send. Inserts the outbox row first (renders the bubble
+  /// with the local file under a clock icon), then runs the existing
+  /// presign + PUT + send chain. The row is removed on success.
+  Future<void> sendMediaOptimistic({
+    required String localId,
+    required int conversationId,
+    required String path,
+    required String mime,
+    required String kind,
+    int? durationMs,
+    int? replyToMessageId,
+  }) async {
+    await enqueuePendingMediaSend(
+      localId: localId,
+      conversationId: conversationId,
+      mediaPath: path,
+      mediaMime: mime,
+      mediaKind: kind,
+      mediaDurationMs: durationMs,
+      replyToMessageId: replyToMessageId,
+    );
+    try {
+      final bytes = await File(path).readAsBytes();
+      await _uploadAndSendMediaFromBytes(
+        conversationId: conversationId,
+        bytes: bytes,
+        mimeType: mime,
+        kind: kind,
+        durationMs: durationMs,
+        replyToMessageId: replyToMessageId,
+      );
+      await _deleteOutbox(localId, conversationId);
+    } catch (_) {
+      await _markOutboxFailed(localId, conversationId);
+    }
+  }
+
+  Future<void> _deleteOutbox(String localId, int conversationId) async {
+    await (_db.delete(
+      _db.messageOutbox,
+    )..where((t) => t.localId.equals(localId))).go();
+    _outboxChangesCtrl.add(conversationId);
+  }
+
+  Future<void> _markOutboxFailed(String localId, int conversationId) async {
+    final row = await (_db.select(_db.messageOutbox)
+          ..where((t) => t.localId.equals(localId)))
+        .getSingleOrNull();
+    if (row == null) return;
+    await (_db.update(_db.messageOutbox)
+          ..where((t) => t.localId.equals(localId)))
+        .write(MessageOutboxCompanion(
+      attempts: Value(row.attempts + 1),
+      lastErrorAt: Value(DateTime.now()),
+    ));
+    _outboxChangesCtrl.add(conversationId);
+  }
+
+  /// Updates the per-message `delivered_at` from a `receipt_update` WS event.
+  /// Preserves all other fields (avoids the `insertOrReplace` null overwrite
+  /// that [cacheMessages] would do).
+  Future<void> applyDeliveredReceipt({
+    required int conversationId,
+    required int messageId,
+    required DateTime deliveredAt,
+  }) async {
+    await (_db.update(_db.localMessages)
+          ..where((t) => t.id.equals(messageId)))
+        .write(LocalMessagesCompanion(
+      receiptDeliveredAt: Value(deliveredAt),
+    ));
+  }
+
+  /// Updates per-message `read_at` from a `receipt_update` WS event.
+  Future<void> applyReadReceipt({
+    required int conversationId,
+    required int messageId,
+    required DateTime readAt,
+  }) async {
+    await (_db.update(_db.localMessages)
+          ..where((t) => t.id.equals(messageId)))
+        .write(LocalMessagesCompanion(
+      receiptReadAt: Value(readAt),
+    ));
   }
 
   Future<void> flushPendingSends(int conversationId) async {
@@ -64,16 +238,7 @@ class ChatRepository {
       _db.messageOutbox,
     )..where((t) => t.conversationId.equals(conversationId))).get();
     for (final row in rows) {
-      try {
-        await _remote.sendMessage(
-          conversationId,
-          body: row.body,
-          replyToMessageId: row.replyToMessageId,
-        );
-        await (_db.delete(
-          _db.messageOutbox,
-        )..where((t) => t.localId.equals(row.localId))).go();
-      } catch (_) {}
+      await _flushOutboxRow(row);
     }
   }
 
@@ -81,16 +246,43 @@ class ChatRepository {
   Future<void> flushAllOutbox() async {
     final rows = await _db.select(_db.messageOutbox).get();
     for (final row in rows) {
-      try {
-        await _remote.sendMessage(
+      await _flushOutboxRow(row);
+    }
+  }
+
+  Future<void> _flushOutboxRow(MessageOutboxData row) async {
+    final isMedia = row.mediaPath != null && row.mediaPath!.isNotEmpty;
+    try {
+      if (isMedia) {
+        final file = File(row.mediaPath!);
+        if (!file.existsSync()) {
+          // Media file is gone (e.g. cache cleared); drop the row to avoid an
+          // unending retry loop.
+          await _deleteOutbox(row.localId, row.conversationId);
+          return;
+        }
+        final bytes = await file.readAsBytes();
+        await _uploadAndSendMediaFromBytes(
+          conversationId: row.conversationId,
+          bytes: bytes,
+          mimeType: row.mediaMime ?? 'application/octet-stream',
+          kind: row.mediaKind ?? 'image',
+          durationMs: row.mediaDurationMs,
+          replyToMessageId: row.replyToMessageId,
+        );
+      } else {
+        final m = await _remote.sendMessage(
           row.conversationId,
           body: row.body,
           replyToMessageId: row.replyToMessageId,
+          storyMediaId: row.storyMediaId,
+          contentType: row.contentType,
         );
-        await (_db.delete(
-          _db.messageOutbox,
-        )..where((t) => t.localId.equals(row.localId))).go();
-      } catch (_) {}
+        await cacheMessages(row.conversationId, [m]);
+      }
+      await _deleteOutbox(row.localId, row.conversationId);
+    } catch (_) {
+      await _markOutboxFailed(row.localId, row.conversationId);
     }
   }
 
@@ -133,6 +325,19 @@ class ChatRepository {
     int conversationId,
     List<Map<String, dynamic>> items,
   ) async {
+    if (items.isEmpty) return;
+    // Read existing rows so we can preserve newer receipt timestamps if the
+    // incoming payload is missing them. Without this, an `insertOrReplace`
+    // arriving from `POST /messages` (no receipt block) would clobber a
+    // `delivered_at`/`read_at` that previously arrived via WS receipt_update.
+    final ids = items
+        .map((m) => (m['id'] as num).toInt())
+        .toList(growable: false);
+    final existing = await (_db.select(_db.localMessages)
+          ..where((t) => t.id.isIn(ids)))
+        .get();
+    final existingById = {for (final row in existing) row.id: row};
+
     await _db.batch((b) {
       for (final m in items) {
         final id = (m['id'] as num).toInt();
@@ -150,6 +355,21 @@ class ChatRepository {
         if (receipt is Map<String, dynamic>) {
           recDel = DateTime.tryParse(receipt['delivered_at'] as String? ?? '');
           recRead = DateTime.tryParse(receipt['read_at'] as String? ?? '');
+        }
+        // Preserve existing receipt timestamps when the new payload omits them
+        // or carries an older value.
+        final prev = existingById[id];
+        if (prev != null) {
+          if (recDel == null ||
+              (prev.receiptDeliveredAt != null &&
+                  prev.receiptDeliveredAt!.isAfter(recDel))) {
+            recDel = prev.receiptDeliveredAt;
+          }
+          if (recRead == null ||
+              (prev.receiptReadAt != null &&
+                  prev.receiptReadAt!.isAfter(recRead))) {
+            recRead = prev.receiptReadAt;
+          }
         }
         b.insert(
           _db.localMessages,
@@ -324,6 +544,23 @@ class ChatRepository {
     required String kind,
     int? durationMs,
     int? replyToMessageId,
+  }) =>
+      _uploadAndSendMediaFromBytes(
+        conversationId: conversationId,
+        bytes: bytes,
+        mimeType: mimeType,
+        kind: kind,
+        durationMs: durationMs,
+        replyToMessageId: replyToMessageId,
+      );
+
+  Future<Map<String, dynamic>> _uploadAndSendMediaFromBytes({
+    required int conversationId,
+    required List<int> bytes,
+    required String mimeType,
+    required String kind,
+    int? durationMs,
+    int? replyToMessageId,
   }) async {
     final presign = await _remote.presignMedia(
       contentType: mimeType,
@@ -370,7 +607,9 @@ class ChatRepository {
       _remote.markRead(conversationId, lastReadMessageId);
 
   Future<void> typing(int conversationId, bool typing) async {
-    await _remote.sendTyping(conversationId, typing);
+    try {
+      await _remote.sendTyping(conversationId, typing);
+    } catch (_) {}
     _socket.sendTyping(conversationId, typing);
   }
 
@@ -433,6 +672,10 @@ class ChatRepository {
 
   Future<void> leavePublicGroup(int groupId) =>
       _remote.leavePublicGroup(groupId);
+
+  void dispose() {
+    _outboxChangesCtrl.close();
+  }
 }
 
 int _parseUnreadCount(Map<String, dynamic> m) {

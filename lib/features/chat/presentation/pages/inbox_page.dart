@@ -8,8 +8,10 @@ import 'package:mamana_plus/l10n/app_localizations.dart';
 import '../../../../router/app_routes.dart';
 import '../../../../core/formatting/relative_message_time.dart';
 import '../../../../core/database/app_database.dart';
+import '../../../../core/jwt_util.dart';
 import '../../../../shared/ui/ui.dart';
 import '../../data/chat_repository.dart';
+import '../cubit/auth_cubit.dart';
 import '../cubit/inbox_cubit.dart';
 import '../cubit/public_groups_cubit.dart';
 
@@ -20,10 +22,17 @@ class InboxPage extends StatelessWidget {
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final auth = context.watch<AuthCubit>().state;
+    final myId = auth is AuthAuthenticated
+        ? parseUserIdFromAccessToken(auth.accessToken)
+        : null;
     return DefaultTabController(
       length: 2,
       child: BlocProvider(
-        create: (context) => InboxCubit(context.read<ChatRepository>())..refresh(),
+        create: (context) => InboxCubit(
+          context.read<ChatRepository>(),
+          myUserId: myId,
+        )..refresh(),
         child: Scaffold(
           appBar: _InboxAppBar(l10n: l10n, isDark: isDark),
           body: TabBarView(

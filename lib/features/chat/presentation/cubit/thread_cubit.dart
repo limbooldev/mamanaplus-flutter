@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io';
 
 import 'package:equatable/equatable.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -57,6 +56,7 @@ int? _peerUserIdFromPeerJson(String? peerJson) {
 class ThreadState extends Equatable {
   const ThreadState({
     this.messages = const [],
+    this.pending = const [],
     this.loading = false,
     this.sending = false,
     this.error,
@@ -69,6 +69,10 @@ class ThreadState extends Equatable {
   });
 
   final List<LocalMessage> messages;
+
+  /// Outbox rows (oldest first) shown as pending bubbles with a clock icon.
+  /// Removed once the server returns the persisted message and we cache it.
+  final List<MessageOutboxData> pending;
   final bool loading;
   final bool sending;
   final String? error;
@@ -89,6 +93,7 @@ class ThreadState extends Equatable {
 
   ThreadState copyWith({
     List<LocalMessage>? messages,
+    List<MessageOutboxData>? pending,
     bool? loading,
     bool? sending,
     String? error,
@@ -102,6 +107,7 @@ class ThreadState extends Equatable {
   }) =>
       ThreadState(
         messages: messages ?? this.messages,
+        pending: pending ?? this.pending,
         loading: loading ?? this.loading,
         sending: sending ?? this.sending,
         error: error,
@@ -127,6 +133,7 @@ class ThreadState extends Equatable {
   @override
   List<Object?> get props => [
         messages,
+        pending,
         loading,
         sending,
         error,
@@ -152,6 +159,8 @@ class ThreadCubit extends Cubit<ThreadState> {
   final int myUserId;
   final String? conversationType;
   StreamSubscription<Map<String, dynamic>>? _sub;
+  StreamSubscription<int>? _outboxSub;
+  StreamSubscription<void>? _reconnectSub;
 
   /// Route extra and/or local inbox cache (`private` / `group`).
   String? _resolvedConversationType;
@@ -174,6 +183,19 @@ class ThreadCubit extends Cubit<ThreadState> {
     unawaited(_resolveDmPeerUserId(prefetched: prefetchedConv));
     await _reloadMessagesFromRemote();
 
+    // Watch outbox so the optimistic bubble appears immediately when [send]
+    // inserts the row, and disappears as soon as the server response is cached.
+    _outboxSub =
+        _repo.outboxChangedFor.where((id) => id == conversationId).listen((_) {
+      unawaited(_reloadLocal());
+    });
+
+    // Flush any outbox rows that failed to send (e.g. sent while offline)
+    // every time the WebSocket re-establishes a connection.
+    _reconnectSub = _repo.socket.connected.listen((_) {
+      unawaited(flushOutbox());
+    });
+
     _sub = _repo.socket.events.listen((event) async {
       final type = event['type'] as String?;
       final payload = event['payload'];
@@ -189,8 +211,14 @@ class ThreadCubit extends Cubit<ThreadState> {
           await _repo.cacheMessages(conversationId, [msg]);
           await _reloadLocal();
         }
-        // Mark new message as read immediately (user is in the thread).
         final msgId = _jsonInt(msg['id']);
+        final senderId = _jsonInt(msg['sender_id']);
+        // Send `receipt:delivered` so the sender's bubble flips Sent → Delivered
+        // in real time. Idempotent on the backend (see `MarkMessagesDelivered`).
+        if (msgId != null && senderId != null && senderId != myUserId) {
+          _repo.socket.sendDeliveredAck(conversationId, [msgId]);
+        }
+        // Mark new message as read immediately (user is in the thread).
         if (msgId != null) {
           unawaited(_repo.markRead(conversationId, msgId));
         }
@@ -212,16 +240,40 @@ class ThreadCubit extends Cubit<ThreadState> {
         final uid = _jsonInt(payload['user_id']);
         final mid = _jsonInt(payload['message_id']);
         if (uid == null || mid == null || uid == myUserId) return;
+        final deliveredAt =
+            DateTime.tryParse(payload['delivered_at'] as String? ?? '');
+        final readAt = DateTime.tryParse(payload['read_at'] as String? ?? '');
+
+        // Per-message receipts: write delivered_at / read_at to the matching
+        // LocalMessage so the bubble flips Sent → Delivered → Seen even without
+        // a follow-up REST fetch.
+        if (deliveredAt != null) {
+          await _repo.applyDeliveredReceipt(
+            conversationId: conversationId,
+            messageId: mid,
+            deliveredAt: deliveredAt,
+          );
+        }
+        if (readAt != null) {
+          await _repo.applyReadReceipt(
+            conversationId: conversationId,
+            messageId: mid,
+            readAt: readAt,
+          );
+        }
+
         final prev = state.readCursorByUserId[uid] ?? 0;
-        final v = mid > prev ? mid : prev;
-        final newCursor = {...state.readCursorByUserId, uid: v};
+        final next = readAt != null && mid > prev ? mid : prev;
+        final newCursor = {...state.readCursorByUserId, uid: next};
         // Load fresh messages first, then emit ONCE with both cursor + messages.
         // Previously two separate emits (cursor, then reload) caused two concurrent
         // setMessages calls that raced and clobbered each other.
         final local = await _repo.loadMessagesLocal(conversationId);
+        final pending = await _repo.loadOutboxLocal(conversationId);
         emit(state.copyWith(
           readCursorByUserId: newCursor,
           messages: local,
+          pending: pending,
         ));
       }
     });
@@ -289,7 +341,8 @@ class ThreadCubit extends Cubit<ThreadState> {
 
   Future<void> _reloadLocal() async {
     final local = await _repo.loadMessagesLocal(conversationId);
-    emit(state.copyWith(messages: local));
+    final pending = await _repo.loadOutboxLocal(conversationId);
+    emit(state.copyWith(messages: local, pending: pending));
   }
 
   Future<void> _reloadMessagesFromRemote() async {
@@ -303,7 +356,12 @@ class ThreadCubit extends Cubit<ThreadState> {
           .toList();
       await _repo.cacheMessages(conversationId, items);
       final local = await _repo.loadMessagesLocal(conversationId);
-      emit(state.copyWith(messages: local, loading: false));
+      final pending = await _repo.loadOutboxLocal(conversationId);
+      emit(state.copyWith(
+        messages: local,
+        pending: pending,
+        loading: false,
+      ));
       if (local.isNotEmpty) {
         await _repo.markRead(conversationId, local.first.id);
       }
@@ -322,33 +380,21 @@ class ThreadCubit extends Cubit<ThreadState> {
 
   void setReplyTo(LocalMessage? m) => emit(state.copyWith(replyTo: m));
 
+  String _newLocalId() =>
+      '${conversationId}_${DateTime.now().microsecondsSinceEpoch}';
+
   Future<void> send(String text) async {
-    if (text.trim().isEmpty) return;
-    emit(state.copyWith(sending: true, error: null));
-    try {
-      await _repo.sendMessage(
-        conversationId,
-        body: text.trim(),
-        replyToMessageId: state.replyTo?.id,
-      );
-      emit(state.copyWith(sending: false, replyTo: null));
-      final data = await _repo.fetchMessages(conversationId, q: state.messageSearchQuery);
-      final items = (data['items'] as List<dynamic>? ?? [])
-          .map((e) => e as Map<String, dynamic>)
-          .toList();
-      await _repo.cacheMessages(conversationId, items);
-      await _reloadLocal();
-    } catch (e) {
-      try {
-        await _repo.enqueuePendingSend(
-          localId: '${conversationId}_${DateTime.now().microsecondsSinceEpoch}',
-          conversationId: conversationId,
-          body: text.trim(),
-          replyToMessageId: state.replyTo?.id,
-        );
-      } catch (_) {}
-      emit(state.copyWith(sending: false, error: e.toString()));
-    }
+    final body = text.trim();
+    if (body.isEmpty) return;
+    final replyId = state.replyTo?.id;
+    // Clear the reply chip immediately — bubble already appears via outbox.
+    emit(state.copyWith(replyTo: null, error: null));
+    unawaited(_repo.sendTextOptimistic(
+      localId: _newLocalId(),
+      conversationId: conversationId,
+      body: body,
+      replyToMessageId: replyId,
+    ));
   }
 
   /// [kind] is `image`, `video`, or `voice` (matches backend JSON).
@@ -357,51 +403,31 @@ class ThreadCubit extends Cubit<ThreadState> {
     required String kind,
     int? durationMs,
   }) async {
-    final file = File(path);
-    final bytes = await file.readAsBytes();
     final mime = lookupMimeType(path) ?? 'application/octet-stream';
-    emit(state.copyWith(sending: true, error: null));
-    try {
-      await _repo.uploadAndSendMediaMessage(
-        conversationId: conversationId,
-        bytes: bytes,
-        mimeType: mime,
-        kind: kind,
-        durationMs: durationMs,
-        replyToMessageId: state.replyTo?.id,
-      );
-      emit(state.copyWith(sending: false, replyTo: null));
-      final data = await _repo.fetchMessages(conversationId, q: state.messageSearchQuery);
-      final items = (data['items'] as List<dynamic>? ?? [])
-          .map((e) => e as Map<String, dynamic>)
-          .toList();
-      await _repo.cacheMessages(conversationId, items);
-      await _reloadLocal();
-    } catch (e) {
-      emit(state.copyWith(sending: false, error: e.toString()));
-    }
+    final replyId = state.replyTo?.id;
+    emit(state.copyWith(replyTo: null, error: null));
+    unawaited(_repo.sendMediaOptimistic(
+      localId: _newLocalId(),
+      conversationId: conversationId,
+      path: path,
+      mime: mime,
+      kind: kind,
+      durationMs: durationMs,
+      replyToMessageId: replyId,
+    ));
   }
 
   Future<void> sendSticker({required String stickerId, required String emoji}) async {
-    emit(state.copyWith(sending: true, error: null));
-    try {
-      final body = jsonEncode({'sticker_id': stickerId, 'emoji': emoji});
-      await _repo.sendMessage(
-        conversationId,
-        body: body,
-        contentType: kMamanaStickerContentType,
-        replyToMessageId: state.replyTo?.id,
-      );
-      emit(state.copyWith(sending: false, replyTo: null));
-      final data = await _repo.fetchMessages(conversationId, q: state.messageSearchQuery);
-      final items = (data['items'] as List<dynamic>? ?? [])
-          .map((e) => e as Map<String, dynamic>)
-          .toList();
-      await _repo.cacheMessages(conversationId, items);
-      await _reloadLocal();
-    } catch (e) {
-      emit(state.copyWith(sending: false, error: e.toString()));
-    }
+    final body = jsonEncode({'sticker_id': stickerId, 'emoji': emoji});
+    final replyId = state.replyTo?.id;
+    emit(state.copyWith(replyTo: null, error: null));
+    unawaited(_repo.sendTextOptimistic(
+      localId: _newLocalId(),
+      conversationId: conversationId,
+      body: body,
+      contentType: kMamanaStickerContentType,
+      replyToMessageId: replyId,
+    ));
   }
 
   Future<void> editMessage(int messageId, String newBody) async {
@@ -437,6 +463,8 @@ class ThreadCubit extends Cubit<ThreadState> {
   @override
   Future<void> close() {
     _sub?.cancel();
+    _outboxSub?.cancel();
+    _reconnectSub?.cancel();
     return super.close();
   }
 }

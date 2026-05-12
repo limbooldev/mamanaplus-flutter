@@ -37,13 +37,38 @@ class LocalMessages extends Table {
   Set<Column> get primaryKey => {id};
 }
 
-/// Pending sends when offline (M5).
+/// Pending sends when offline (M5). Also used for optimistic UI on every send:
+/// a row is inserted immediately so the bubble appears with a clock icon, then
+/// removed once the server returns the persisted [LocalMessage].
 class MessageOutbox extends Table {
   TextColumn get localId => text()();
   IntColumn get conversationId => integer()();
   TextColumn get body => text()();
   IntColumn get replyToMessageId => integer().nullable()();
   DateTimeColumn get createdAt => dateTime()();
+
+  /// Wire `content_type` so non-text outbox rows (sticker / media JSON) can
+  /// flush through the right send path.
+  TextColumn get contentType =>
+      text().withDefault(const Constant('text/plain'))();
+
+  /// Story-reply messages keep their `story_media_id` while pending.
+  IntColumn get storyMediaId => integer().nullable()();
+
+  /// Local file path for media uploads still pending presign + PUT.
+  TextColumn get mediaPath => text().nullable()();
+  TextColumn get mediaMime => text().nullable()();
+
+  /// `image` | `video` | `voice` | `sticker` — drives the upload pipeline.
+  TextColumn get mediaKind => text().nullable()();
+  IntColumn get mediaDurationMs => integer().nullable()();
+
+  /// Number of failed send attempts (incremented on each network failure).
+  IntColumn get attempts => integer().withDefault(const Constant(0))();
+
+  /// Timestamp of the most recent failure — surfaces a small error tint while
+  /// the bubble stays in the pending state until the next retry succeeds.
+  DateTimeColumn get lastErrorAt => dateTime().nullable()();
   @override
   Set<Column> get primaryKey => {localId};
 }
@@ -53,7 +78,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(_openConnection());
 
   @override
-  int get schemaVersion => 5;
+  int get schemaVersion => 6;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -74,6 +99,16 @@ class AppDatabase extends _$AppDatabase {
           }
           if (from < 5) {
             await m.addColumn(localMessages, localMessages.storyMediaId);
+          }
+          if (from < 6) {
+            await m.addColumn(messageOutbox, messageOutbox.contentType);
+            await m.addColumn(messageOutbox, messageOutbox.storyMediaId);
+            await m.addColumn(messageOutbox, messageOutbox.mediaPath);
+            await m.addColumn(messageOutbox, messageOutbox.mediaMime);
+            await m.addColumn(messageOutbox, messageOutbox.mediaKind);
+            await m.addColumn(messageOutbox, messageOutbox.mediaDurationMs);
+            await m.addColumn(messageOutbox, messageOutbox.attempts);
+            await m.addColumn(messageOutbox, messageOutbox.lastErrorAt);
           }
         },
       );

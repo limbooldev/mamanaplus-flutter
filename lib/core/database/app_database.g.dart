@@ -1222,6 +1222,96 @@ class $MessageOutboxTable extends MessageOutbox
     type: DriftSqlType.dateTime,
     requiredDuringInsert: true,
   );
+  static const VerificationMeta _contentTypeMeta = const VerificationMeta(
+    'contentType',
+  );
+  @override
+  late final GeneratedColumn<String> contentType = GeneratedColumn<String>(
+    'content_type',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('text/plain'),
+  );
+  static const VerificationMeta _storyMediaIdMeta = const VerificationMeta(
+    'storyMediaId',
+  );
+  @override
+  late final GeneratedColumn<int> storyMediaId = GeneratedColumn<int>(
+    'story_media_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _mediaPathMeta = const VerificationMeta(
+    'mediaPath',
+  );
+  @override
+  late final GeneratedColumn<String> mediaPath = GeneratedColumn<String>(
+    'media_path',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _mediaMimeMeta = const VerificationMeta(
+    'mediaMime',
+  );
+  @override
+  late final GeneratedColumn<String> mediaMime = GeneratedColumn<String>(
+    'media_mime',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _mediaKindMeta = const VerificationMeta(
+    'mediaKind',
+  );
+  @override
+  late final GeneratedColumn<String> mediaKind = GeneratedColumn<String>(
+    'media_kind',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _mediaDurationMsMeta = const VerificationMeta(
+    'mediaDurationMs',
+  );
+  @override
+  late final GeneratedColumn<int> mediaDurationMs = GeneratedColumn<int>(
+    'media_duration_ms',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _attemptsMeta = const VerificationMeta(
+    'attempts',
+  );
+  @override
+  late final GeneratedColumn<int> attempts = GeneratedColumn<int>(
+    'attempts',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  static const VerificationMeta _lastErrorAtMeta = const VerificationMeta(
+    'lastErrorAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> lastErrorAt = GeneratedColumn<DateTime>(
+    'last_error_at',
+    aliasedName,
+    true,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+  );
   @override
   List<GeneratedColumn> get $columns => [
     localId,
@@ -1229,6 +1319,14 @@ class $MessageOutboxTable extends MessageOutbox
     body,
     replyToMessageId,
     createdAt,
+    contentType,
+    storyMediaId,
+    mediaPath,
+    mediaMime,
+    mediaKind,
+    mediaDurationMs,
+    attempts,
+    lastErrorAt,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -1286,6 +1384,66 @@ class $MessageOutboxTable extends MessageOutbox
     } else if (isInserting) {
       context.missing(_createdAtMeta);
     }
+    if (data.containsKey('content_type')) {
+      context.handle(
+        _contentTypeMeta,
+        contentType.isAcceptableOrUnknown(
+          data['content_type']!,
+          _contentTypeMeta,
+        ),
+      );
+    }
+    if (data.containsKey('story_media_id')) {
+      context.handle(
+        _storyMediaIdMeta,
+        storyMediaId.isAcceptableOrUnknown(
+          data['story_media_id']!,
+          _storyMediaIdMeta,
+        ),
+      );
+    }
+    if (data.containsKey('media_path')) {
+      context.handle(
+        _mediaPathMeta,
+        mediaPath.isAcceptableOrUnknown(data['media_path']!, _mediaPathMeta),
+      );
+    }
+    if (data.containsKey('media_mime')) {
+      context.handle(
+        _mediaMimeMeta,
+        mediaMime.isAcceptableOrUnknown(data['media_mime']!, _mediaMimeMeta),
+      );
+    }
+    if (data.containsKey('media_kind')) {
+      context.handle(
+        _mediaKindMeta,
+        mediaKind.isAcceptableOrUnknown(data['media_kind']!, _mediaKindMeta),
+      );
+    }
+    if (data.containsKey('media_duration_ms')) {
+      context.handle(
+        _mediaDurationMsMeta,
+        mediaDurationMs.isAcceptableOrUnknown(
+          data['media_duration_ms']!,
+          _mediaDurationMsMeta,
+        ),
+      );
+    }
+    if (data.containsKey('attempts')) {
+      context.handle(
+        _attemptsMeta,
+        attempts.isAcceptableOrUnknown(data['attempts']!, _attemptsMeta),
+      );
+    }
+    if (data.containsKey('last_error_at')) {
+      context.handle(
+        _lastErrorAtMeta,
+        lastErrorAt.isAcceptableOrUnknown(
+          data['last_error_at']!,
+          _lastErrorAtMeta,
+        ),
+      );
+    }
     return context;
   }
 
@@ -1315,6 +1473,38 @@ class $MessageOutboxTable extends MessageOutbox
         DriftSqlType.dateTime,
         data['${effectivePrefix}created_at'],
       )!,
+      contentType: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}content_type'],
+      )!,
+      storyMediaId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}story_media_id'],
+      ),
+      mediaPath: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}media_path'],
+      ),
+      mediaMime: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}media_mime'],
+      ),
+      mediaKind: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}media_kind'],
+      ),
+      mediaDurationMs: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}media_duration_ms'],
+      ),
+      attempts: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}attempts'],
+      )!,
+      lastErrorAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}last_error_at'],
+      ),
     );
   }
 
@@ -1331,12 +1521,42 @@ class MessageOutboxData extends DataClass
   final String body;
   final int? replyToMessageId;
   final DateTime createdAt;
+
+  /// Wire `content_type` so non-text outbox rows (sticker / media JSON) can
+  /// flush through the right send path.
+  final String contentType;
+
+  /// Story-reply messages keep their `story_media_id` while pending.
+  final int? storyMediaId;
+
+  /// Local file path for media uploads still pending presign + PUT.
+  final String? mediaPath;
+  final String? mediaMime;
+
+  /// `image` | `video` | `voice` | `sticker` — drives the upload pipeline.
+  final String? mediaKind;
+  final int? mediaDurationMs;
+
+  /// Number of failed send attempts (incremented on each network failure).
+  final int attempts;
+
+  /// Timestamp of the most recent failure — surfaces a small error tint while
+  /// the bubble stays in the pending state until the next retry succeeds.
+  final DateTime? lastErrorAt;
   const MessageOutboxData({
     required this.localId,
     required this.conversationId,
     required this.body,
     this.replyToMessageId,
     required this.createdAt,
+    required this.contentType,
+    this.storyMediaId,
+    this.mediaPath,
+    this.mediaMime,
+    this.mediaKind,
+    this.mediaDurationMs,
+    required this.attempts,
+    this.lastErrorAt,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -1348,6 +1568,26 @@ class MessageOutboxData extends DataClass
       map['reply_to_message_id'] = Variable<int>(replyToMessageId);
     }
     map['created_at'] = Variable<DateTime>(createdAt);
+    map['content_type'] = Variable<String>(contentType);
+    if (!nullToAbsent || storyMediaId != null) {
+      map['story_media_id'] = Variable<int>(storyMediaId);
+    }
+    if (!nullToAbsent || mediaPath != null) {
+      map['media_path'] = Variable<String>(mediaPath);
+    }
+    if (!nullToAbsent || mediaMime != null) {
+      map['media_mime'] = Variable<String>(mediaMime);
+    }
+    if (!nullToAbsent || mediaKind != null) {
+      map['media_kind'] = Variable<String>(mediaKind);
+    }
+    if (!nullToAbsent || mediaDurationMs != null) {
+      map['media_duration_ms'] = Variable<int>(mediaDurationMs);
+    }
+    map['attempts'] = Variable<int>(attempts);
+    if (!nullToAbsent || lastErrorAt != null) {
+      map['last_error_at'] = Variable<DateTime>(lastErrorAt);
+    }
     return map;
   }
 
@@ -1360,6 +1600,26 @@ class MessageOutboxData extends DataClass
           ? const Value.absent()
           : Value(replyToMessageId),
       createdAt: Value(createdAt),
+      contentType: Value(contentType),
+      storyMediaId: storyMediaId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(storyMediaId),
+      mediaPath: mediaPath == null && nullToAbsent
+          ? const Value.absent()
+          : Value(mediaPath),
+      mediaMime: mediaMime == null && nullToAbsent
+          ? const Value.absent()
+          : Value(mediaMime),
+      mediaKind: mediaKind == null && nullToAbsent
+          ? const Value.absent()
+          : Value(mediaKind),
+      mediaDurationMs: mediaDurationMs == null && nullToAbsent
+          ? const Value.absent()
+          : Value(mediaDurationMs),
+      attempts: Value(attempts),
+      lastErrorAt: lastErrorAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(lastErrorAt),
     );
   }
 
@@ -1374,6 +1634,14 @@ class MessageOutboxData extends DataClass
       body: serializer.fromJson<String>(json['body']),
       replyToMessageId: serializer.fromJson<int?>(json['replyToMessageId']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+      contentType: serializer.fromJson<String>(json['contentType']),
+      storyMediaId: serializer.fromJson<int?>(json['storyMediaId']),
+      mediaPath: serializer.fromJson<String?>(json['mediaPath']),
+      mediaMime: serializer.fromJson<String?>(json['mediaMime']),
+      mediaKind: serializer.fromJson<String?>(json['mediaKind']),
+      mediaDurationMs: serializer.fromJson<int?>(json['mediaDurationMs']),
+      attempts: serializer.fromJson<int>(json['attempts']),
+      lastErrorAt: serializer.fromJson<DateTime?>(json['lastErrorAt']),
     );
   }
   @override
@@ -1385,6 +1653,14 @@ class MessageOutboxData extends DataClass
       'body': serializer.toJson<String>(body),
       'replyToMessageId': serializer.toJson<int?>(replyToMessageId),
       'createdAt': serializer.toJson<DateTime>(createdAt),
+      'contentType': serializer.toJson<String>(contentType),
+      'storyMediaId': serializer.toJson<int?>(storyMediaId),
+      'mediaPath': serializer.toJson<String?>(mediaPath),
+      'mediaMime': serializer.toJson<String?>(mediaMime),
+      'mediaKind': serializer.toJson<String?>(mediaKind),
+      'mediaDurationMs': serializer.toJson<int?>(mediaDurationMs),
+      'attempts': serializer.toJson<int>(attempts),
+      'lastErrorAt': serializer.toJson<DateTime?>(lastErrorAt),
     };
   }
 
@@ -1394,6 +1670,14 @@ class MessageOutboxData extends DataClass
     String? body,
     Value<int?> replyToMessageId = const Value.absent(),
     DateTime? createdAt,
+    String? contentType,
+    Value<int?> storyMediaId = const Value.absent(),
+    Value<String?> mediaPath = const Value.absent(),
+    Value<String?> mediaMime = const Value.absent(),
+    Value<String?> mediaKind = const Value.absent(),
+    Value<int?> mediaDurationMs = const Value.absent(),
+    int? attempts,
+    Value<DateTime?> lastErrorAt = const Value.absent(),
   }) => MessageOutboxData(
     localId: localId ?? this.localId,
     conversationId: conversationId ?? this.conversationId,
@@ -1402,6 +1686,16 @@ class MessageOutboxData extends DataClass
         ? replyToMessageId.value
         : this.replyToMessageId,
     createdAt: createdAt ?? this.createdAt,
+    contentType: contentType ?? this.contentType,
+    storyMediaId: storyMediaId.present ? storyMediaId.value : this.storyMediaId,
+    mediaPath: mediaPath.present ? mediaPath.value : this.mediaPath,
+    mediaMime: mediaMime.present ? mediaMime.value : this.mediaMime,
+    mediaKind: mediaKind.present ? mediaKind.value : this.mediaKind,
+    mediaDurationMs: mediaDurationMs.present
+        ? mediaDurationMs.value
+        : this.mediaDurationMs,
+    attempts: attempts ?? this.attempts,
+    lastErrorAt: lastErrorAt.present ? lastErrorAt.value : this.lastErrorAt,
   );
   MessageOutboxData copyWithCompanion(MessageOutboxCompanion data) {
     return MessageOutboxData(
@@ -1414,6 +1708,22 @@ class MessageOutboxData extends DataClass
           ? data.replyToMessageId.value
           : this.replyToMessageId,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+      contentType: data.contentType.present
+          ? data.contentType.value
+          : this.contentType,
+      storyMediaId: data.storyMediaId.present
+          ? data.storyMediaId.value
+          : this.storyMediaId,
+      mediaPath: data.mediaPath.present ? data.mediaPath.value : this.mediaPath,
+      mediaMime: data.mediaMime.present ? data.mediaMime.value : this.mediaMime,
+      mediaKind: data.mediaKind.present ? data.mediaKind.value : this.mediaKind,
+      mediaDurationMs: data.mediaDurationMs.present
+          ? data.mediaDurationMs.value
+          : this.mediaDurationMs,
+      attempts: data.attempts.present ? data.attempts.value : this.attempts,
+      lastErrorAt: data.lastErrorAt.present
+          ? data.lastErrorAt.value
+          : this.lastErrorAt,
     );
   }
 
@@ -1424,14 +1734,35 @@ class MessageOutboxData extends DataClass
           ..write('conversationId: $conversationId, ')
           ..write('body: $body, ')
           ..write('replyToMessageId: $replyToMessageId, ')
-          ..write('createdAt: $createdAt')
+          ..write('createdAt: $createdAt, ')
+          ..write('contentType: $contentType, ')
+          ..write('storyMediaId: $storyMediaId, ')
+          ..write('mediaPath: $mediaPath, ')
+          ..write('mediaMime: $mediaMime, ')
+          ..write('mediaKind: $mediaKind, ')
+          ..write('mediaDurationMs: $mediaDurationMs, ')
+          ..write('attempts: $attempts, ')
+          ..write('lastErrorAt: $lastErrorAt')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode =>
-      Object.hash(localId, conversationId, body, replyToMessageId, createdAt);
+  int get hashCode => Object.hash(
+    localId,
+    conversationId,
+    body,
+    replyToMessageId,
+    createdAt,
+    contentType,
+    storyMediaId,
+    mediaPath,
+    mediaMime,
+    mediaKind,
+    mediaDurationMs,
+    attempts,
+    lastErrorAt,
+  );
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -1440,7 +1771,15 @@ class MessageOutboxData extends DataClass
           other.conversationId == this.conversationId &&
           other.body == this.body &&
           other.replyToMessageId == this.replyToMessageId &&
-          other.createdAt == this.createdAt);
+          other.createdAt == this.createdAt &&
+          other.contentType == this.contentType &&
+          other.storyMediaId == this.storyMediaId &&
+          other.mediaPath == this.mediaPath &&
+          other.mediaMime == this.mediaMime &&
+          other.mediaKind == this.mediaKind &&
+          other.mediaDurationMs == this.mediaDurationMs &&
+          other.attempts == this.attempts &&
+          other.lastErrorAt == this.lastErrorAt);
 }
 
 class MessageOutboxCompanion extends UpdateCompanion<MessageOutboxData> {
@@ -1449,6 +1788,14 @@ class MessageOutboxCompanion extends UpdateCompanion<MessageOutboxData> {
   final Value<String> body;
   final Value<int?> replyToMessageId;
   final Value<DateTime> createdAt;
+  final Value<String> contentType;
+  final Value<int?> storyMediaId;
+  final Value<String?> mediaPath;
+  final Value<String?> mediaMime;
+  final Value<String?> mediaKind;
+  final Value<int?> mediaDurationMs;
+  final Value<int> attempts;
+  final Value<DateTime?> lastErrorAt;
   final Value<int> rowid;
   const MessageOutboxCompanion({
     this.localId = const Value.absent(),
@@ -1456,6 +1803,14 @@ class MessageOutboxCompanion extends UpdateCompanion<MessageOutboxData> {
     this.body = const Value.absent(),
     this.replyToMessageId = const Value.absent(),
     this.createdAt = const Value.absent(),
+    this.contentType = const Value.absent(),
+    this.storyMediaId = const Value.absent(),
+    this.mediaPath = const Value.absent(),
+    this.mediaMime = const Value.absent(),
+    this.mediaKind = const Value.absent(),
+    this.mediaDurationMs = const Value.absent(),
+    this.attempts = const Value.absent(),
+    this.lastErrorAt = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   MessageOutboxCompanion.insert({
@@ -1464,6 +1819,14 @@ class MessageOutboxCompanion extends UpdateCompanion<MessageOutboxData> {
     required String body,
     this.replyToMessageId = const Value.absent(),
     required DateTime createdAt,
+    this.contentType = const Value.absent(),
+    this.storyMediaId = const Value.absent(),
+    this.mediaPath = const Value.absent(),
+    this.mediaMime = const Value.absent(),
+    this.mediaKind = const Value.absent(),
+    this.mediaDurationMs = const Value.absent(),
+    this.attempts = const Value.absent(),
+    this.lastErrorAt = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : localId = Value(localId),
        conversationId = Value(conversationId),
@@ -1475,6 +1838,14 @@ class MessageOutboxCompanion extends UpdateCompanion<MessageOutboxData> {
     Expression<String>? body,
     Expression<int>? replyToMessageId,
     Expression<DateTime>? createdAt,
+    Expression<String>? contentType,
+    Expression<int>? storyMediaId,
+    Expression<String>? mediaPath,
+    Expression<String>? mediaMime,
+    Expression<String>? mediaKind,
+    Expression<int>? mediaDurationMs,
+    Expression<int>? attempts,
+    Expression<DateTime>? lastErrorAt,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -1483,6 +1854,14 @@ class MessageOutboxCompanion extends UpdateCompanion<MessageOutboxData> {
       if (body != null) 'body': body,
       if (replyToMessageId != null) 'reply_to_message_id': replyToMessageId,
       if (createdAt != null) 'created_at': createdAt,
+      if (contentType != null) 'content_type': contentType,
+      if (storyMediaId != null) 'story_media_id': storyMediaId,
+      if (mediaPath != null) 'media_path': mediaPath,
+      if (mediaMime != null) 'media_mime': mediaMime,
+      if (mediaKind != null) 'media_kind': mediaKind,
+      if (mediaDurationMs != null) 'media_duration_ms': mediaDurationMs,
+      if (attempts != null) 'attempts': attempts,
+      if (lastErrorAt != null) 'last_error_at': lastErrorAt,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -1493,6 +1872,14 @@ class MessageOutboxCompanion extends UpdateCompanion<MessageOutboxData> {
     Value<String>? body,
     Value<int?>? replyToMessageId,
     Value<DateTime>? createdAt,
+    Value<String>? contentType,
+    Value<int?>? storyMediaId,
+    Value<String?>? mediaPath,
+    Value<String?>? mediaMime,
+    Value<String?>? mediaKind,
+    Value<int?>? mediaDurationMs,
+    Value<int>? attempts,
+    Value<DateTime?>? lastErrorAt,
     Value<int>? rowid,
   }) {
     return MessageOutboxCompanion(
@@ -1501,6 +1888,14 @@ class MessageOutboxCompanion extends UpdateCompanion<MessageOutboxData> {
       body: body ?? this.body,
       replyToMessageId: replyToMessageId ?? this.replyToMessageId,
       createdAt: createdAt ?? this.createdAt,
+      contentType: contentType ?? this.contentType,
+      storyMediaId: storyMediaId ?? this.storyMediaId,
+      mediaPath: mediaPath ?? this.mediaPath,
+      mediaMime: mediaMime ?? this.mediaMime,
+      mediaKind: mediaKind ?? this.mediaKind,
+      mediaDurationMs: mediaDurationMs ?? this.mediaDurationMs,
+      attempts: attempts ?? this.attempts,
+      lastErrorAt: lastErrorAt ?? this.lastErrorAt,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -1523,6 +1918,30 @@ class MessageOutboxCompanion extends UpdateCompanion<MessageOutboxData> {
     if (createdAt.present) {
       map['created_at'] = Variable<DateTime>(createdAt.value);
     }
+    if (contentType.present) {
+      map['content_type'] = Variable<String>(contentType.value);
+    }
+    if (storyMediaId.present) {
+      map['story_media_id'] = Variable<int>(storyMediaId.value);
+    }
+    if (mediaPath.present) {
+      map['media_path'] = Variable<String>(mediaPath.value);
+    }
+    if (mediaMime.present) {
+      map['media_mime'] = Variable<String>(mediaMime.value);
+    }
+    if (mediaKind.present) {
+      map['media_kind'] = Variable<String>(mediaKind.value);
+    }
+    if (mediaDurationMs.present) {
+      map['media_duration_ms'] = Variable<int>(mediaDurationMs.value);
+    }
+    if (attempts.present) {
+      map['attempts'] = Variable<int>(attempts.value);
+    }
+    if (lastErrorAt.present) {
+      map['last_error_at'] = Variable<DateTime>(lastErrorAt.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -1537,6 +1956,14 @@ class MessageOutboxCompanion extends UpdateCompanion<MessageOutboxData> {
           ..write('body: $body, ')
           ..write('replyToMessageId: $replyToMessageId, ')
           ..write('createdAt: $createdAt, ')
+          ..write('contentType: $contentType, ')
+          ..write('storyMediaId: $storyMediaId, ')
+          ..write('mediaPath: $mediaPath, ')
+          ..write('mediaMime: $mediaMime, ')
+          ..write('mediaKind: $mediaKind, ')
+          ..write('mediaDurationMs: $mediaDurationMs, ')
+          ..write('attempts: $attempts, ')
+          ..write('lastErrorAt: $lastErrorAt, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -2139,6 +2566,14 @@ typedef $$MessageOutboxTableCreateCompanionBuilder =
       required String body,
       Value<int?> replyToMessageId,
       required DateTime createdAt,
+      Value<String> contentType,
+      Value<int?> storyMediaId,
+      Value<String?> mediaPath,
+      Value<String?> mediaMime,
+      Value<String?> mediaKind,
+      Value<int?> mediaDurationMs,
+      Value<int> attempts,
+      Value<DateTime?> lastErrorAt,
       Value<int> rowid,
     });
 typedef $$MessageOutboxTableUpdateCompanionBuilder =
@@ -2148,6 +2583,14 @@ typedef $$MessageOutboxTableUpdateCompanionBuilder =
       Value<String> body,
       Value<int?> replyToMessageId,
       Value<DateTime> createdAt,
+      Value<String> contentType,
+      Value<int?> storyMediaId,
+      Value<String?> mediaPath,
+      Value<String?> mediaMime,
+      Value<String?> mediaKind,
+      Value<int?> mediaDurationMs,
+      Value<int> attempts,
+      Value<DateTime?> lastErrorAt,
       Value<int> rowid,
     });
 
@@ -2182,6 +2625,46 @@ class $$MessageOutboxTableFilterComposer
 
   ColumnFilters<DateTime> get createdAt => $composableBuilder(
     column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get contentType => $composableBuilder(
+    column: $table.contentType,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get storyMediaId => $composableBuilder(
+    column: $table.storyMediaId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get mediaPath => $composableBuilder(
+    column: $table.mediaPath,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get mediaMime => $composableBuilder(
+    column: $table.mediaMime,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get mediaKind => $composableBuilder(
+    column: $table.mediaKind,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get mediaDurationMs => $composableBuilder(
+    column: $table.mediaDurationMs,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get attempts => $composableBuilder(
+    column: $table.attempts,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get lastErrorAt => $composableBuilder(
+    column: $table.lastErrorAt,
     builder: (column) => ColumnFilters(column),
   );
 }
@@ -2219,6 +2702,46 @@ class $$MessageOutboxTableOrderingComposer
     column: $table.createdAt,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<String> get contentType => $composableBuilder(
+    column: $table.contentType,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get storyMediaId => $composableBuilder(
+    column: $table.storyMediaId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get mediaPath => $composableBuilder(
+    column: $table.mediaPath,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get mediaMime => $composableBuilder(
+    column: $table.mediaMime,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get mediaKind => $composableBuilder(
+    column: $table.mediaKind,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get mediaDurationMs => $composableBuilder(
+    column: $table.mediaDurationMs,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get attempts => $composableBuilder(
+    column: $table.attempts,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get lastErrorAt => $composableBuilder(
+    column: $table.lastErrorAt,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$MessageOutboxTableAnnotationComposer
@@ -2248,6 +2771,38 @@ class $$MessageOutboxTableAnnotationComposer
 
   GeneratedColumn<DateTime> get createdAt =>
       $composableBuilder(column: $table.createdAt, builder: (column) => column);
+
+  GeneratedColumn<String> get contentType => $composableBuilder(
+    column: $table.contentType,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get storyMediaId => $composableBuilder(
+    column: $table.storyMediaId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get mediaPath =>
+      $composableBuilder(column: $table.mediaPath, builder: (column) => column);
+
+  GeneratedColumn<String> get mediaMime =>
+      $composableBuilder(column: $table.mediaMime, builder: (column) => column);
+
+  GeneratedColumn<String> get mediaKind =>
+      $composableBuilder(column: $table.mediaKind, builder: (column) => column);
+
+  GeneratedColumn<int> get mediaDurationMs => $composableBuilder(
+    column: $table.mediaDurationMs,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get attempts =>
+      $composableBuilder(column: $table.attempts, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get lastErrorAt => $composableBuilder(
+    column: $table.lastErrorAt,
+    builder: (column) => column,
+  );
 }
 
 class $$MessageOutboxTableTableManager
@@ -2290,6 +2845,14 @@ class $$MessageOutboxTableTableManager
                 Value<String> body = const Value.absent(),
                 Value<int?> replyToMessageId = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
+                Value<String> contentType = const Value.absent(),
+                Value<int?> storyMediaId = const Value.absent(),
+                Value<String?> mediaPath = const Value.absent(),
+                Value<String?> mediaMime = const Value.absent(),
+                Value<String?> mediaKind = const Value.absent(),
+                Value<int?> mediaDurationMs = const Value.absent(),
+                Value<int> attempts = const Value.absent(),
+                Value<DateTime?> lastErrorAt = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => MessageOutboxCompanion(
                 localId: localId,
@@ -2297,6 +2860,14 @@ class $$MessageOutboxTableTableManager
                 body: body,
                 replyToMessageId: replyToMessageId,
                 createdAt: createdAt,
+                contentType: contentType,
+                storyMediaId: storyMediaId,
+                mediaPath: mediaPath,
+                mediaMime: mediaMime,
+                mediaKind: mediaKind,
+                mediaDurationMs: mediaDurationMs,
+                attempts: attempts,
+                lastErrorAt: lastErrorAt,
                 rowid: rowid,
               ),
           createCompanionCallback:
@@ -2306,6 +2877,14 @@ class $$MessageOutboxTableTableManager
                 required String body,
                 Value<int?> replyToMessageId = const Value.absent(),
                 required DateTime createdAt,
+                Value<String> contentType = const Value.absent(),
+                Value<int?> storyMediaId = const Value.absent(),
+                Value<String?> mediaPath = const Value.absent(),
+                Value<String?> mediaMime = const Value.absent(),
+                Value<String?> mediaKind = const Value.absent(),
+                Value<int?> mediaDurationMs = const Value.absent(),
+                Value<int> attempts = const Value.absent(),
+                Value<DateTime?> lastErrorAt = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => MessageOutboxCompanion.insert(
                 localId: localId,
@@ -2313,6 +2892,14 @@ class $$MessageOutboxTableTableManager
                 body: body,
                 replyToMessageId: replyToMessageId,
                 createdAt: createdAt,
+                contentType: contentType,
+                storyMediaId: storyMediaId,
+                mediaPath: mediaPath,
+                mediaMime: mediaMime,
+                mediaKind: mediaKind,
+                mediaDurationMs: mediaDurationMs,
+                attempts: attempts,
+                lastErrorAt: lastErrorAt,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0

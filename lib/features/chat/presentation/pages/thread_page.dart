@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -24,6 +25,7 @@ import '../cubit/thread_cubit.dart';
 import '../mappers/local_message_to_chat_message.dart';
 import '../widgets/chat_image_editor_flow.dart';
 import '../widgets/chat_video_editor_flow.dart';
+import '../widgets/message_status_icon.dart';
 import '../widgets/thread_media_widgets.dart';
 
 class ThreadPage extends StatelessWidget {
@@ -135,20 +137,33 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
               '${m.id}|${m.body}|${m.contentType}|${m.replyToMessageId}|${m.receiptDeliveredAt}|${m.receiptReadAt}',
         )
         .join('~');
+    final pendingParts = s.pending
+        .map(
+          (r) =>
+              'p:${r.localId}|${r.body}|${r.contentType}|${r.mediaPath}|${r.lastErrorAt}',
+        )
+        .join('~');
     final reads =
         s.readCursorByUserId.entries.map((e) => '${e.key}:${e.value}').join(',');
-    return '$parts#$reads';
+    return '$parts^$pendingParts#$reads';
   }
 
   Future<void> _syncChatMessages(ThreadState state) async {
     if (!mounted) return;
     final convType = context.read<ThreadCubit>().effectiveConversationType;
-    final mapped = mapLocalMessagesToChatMessages(
+    final delivered = mapLocalMessagesToChatMessages(
       state.messages,
       myUserId: widget.myUserId,
       readReceiptForOwn: (id) => state.readReceiptForOwnMessage(id, convType),
       apiBaseUrl: widget.apiBaseUrl,
     );
+    final pendingMapped = mapPendingOutboxToChatMessages(
+      state.pending,
+      myUserId: widget.myUserId,
+    );
+    // Pending bubbles always sit at the bottom (newest), keyed by 'pending_*'
+    // so they never collide with server message ids during the diff.
+    final mapped = [...delivered, ...pendingMapped];
     if (!mounted) return;
 
     // For existing messages whose content changed (e.g. status: delivered→seen),
@@ -328,13 +343,12 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
                 final sig = _chatSignature(state);
                 if (sig != _lastChatSyncSig) {
                   _lastChatSyncSig = sig;
-                  // Schedule AFTER the current frame so setMessages → insertItem
-                  // is not called during build (which Flutter silently drops).
-                  // Use the latest cubit state at callback time to avoid stale captures
-                  // racing with other pending setMessages calls.
+                  // Capture `state` here so each distinct state (including the
+                  // transient "pending/clock" state) is processed individually.
+                  final capturedState = state;
                   WidgetsBinding.instance.addPostFrameCallback((_) {
                     if (mounted) {
-                      unawaited(_syncChatMessages(context.read<ThreadCubit>().state));
+                      unawaited(_syncChatMessages(capturedState));
                     }
                   });
                 }
@@ -468,12 +482,134 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
                         ),
                       );
                     },
+                    textMessageBuilder:
+                        (context, message, index, {required isSentByMe, groupStatus}) {
+                      // Custom bubble so we can pair the timestamp with our
+                      // four-state [MessageStatusIcon] (the library's default
+                      // [SimpleTextMessage] uses `getIconForStatus`, which
+                      // collapses Sent and Delivered onto the same icon).
+                      final theme = context.read<ChatTheme>();
+                      final bubble = isSentByMe
+                          ? theme.colors.primary
+                          : theme.colors.surfaceContainerHigh;
+                      final fg = isSentByMe
+                          ? theme.colors.onPrimary
+                          : theme.colors.onSurface;
+                      return Align(
+                        alignment: isSentByMe
+                            ? Alignment.centerRight
+                            : Alignment.centerLeft,
+                        child: ConstrainedBox(
+                          constraints: BoxConstraints(maxWidth: maxBubbleW),
+                          child: Container(
+                            margin: const EdgeInsets.symmetric(
+                              vertical: 4,
+                              horizontal: 8,
+                            ),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 8,
+                            ),
+                            decoration: BoxDecoration(
+                              color: bubble,
+                              borderRadius: BorderRadius.circular(
+                                AppShapes.bubbleRadius,
+                              ),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.end,
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Align(
+                                  alignment: Alignment.centerLeft,
+                                  child: Text(
+                                    message.text,
+                                    style: theme.typography.bodyMedium
+                                        .copyWith(color: fg),
+                                  ),
+                                ),
+                                const SizedBox(height: 2),
+                                CustomTimeAndStatus(
+                                  time: message.resolvedTime,
+                                  status: isSentByMe
+                                      ? message.resolvedStatus
+                                      : null,
+                                  showStatus: isSentByMe,
+                                  textStyle: theme.typography.labelSmall.copyWith(
+                                    color: fg.withValues(alpha: 0.85),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      );
+                    },
                     imageMessageBuilder:
                         (context, message, index, {required isSentByMe, groupStatus}) {
                       final theme = context.read<ChatTheme>();
                       final bubble =
                           isSentByMe ? theme.colors.primary : theme.colors.surfaceContainerHigh;
                       final fg = isSentByMe ? theme.colors.onPrimary : theme.colors.onSurface;
+                      // Pending media bubbles render the local file directly via
+                      // [Image.file] — `Image.network` chokes on a `file://` URI
+                      // and bearer headers obviously don't apply.
+                      final src = message.source;
+                      final localPath = src.startsWith('file://')
+                          ? Uri.parse(src).toFilePath()
+                          : null;
+                      Widget imageWidget;
+                      if (localPath != null) {
+                        imageWidget = Image.file(
+                          File(localPath),
+                          width: kChatInlineImageW,
+                          height: kChatInlineImageH,
+                          fit: BoxFit.cover,
+                          errorBuilder: (_, __, ___) => Padding(
+                            padding: const EdgeInsets.all(8),
+                            child: Center(
+                              child: Text(
+                                message.text ?? src,
+                                style: TextStyle(color: fg),
+                                textAlign: TextAlign.center,
+                              ),
+                            ),
+                          ),
+                        );
+                      } else {
+                        imageWidget = Image.network(
+                          src,
+                          width: kChatInlineImageW,
+                          height: kChatInlineImageH,
+                          fit: BoxFit.cover,
+                          headers: {
+                            'Authorization': 'Bearer ${widget.accessToken}',
+                          },
+                          loadingBuilder: (c, child, progress) {
+                            if (progress == null) {
+                              return child;
+                            }
+                            return DecoratedBox(
+                              decoration: BoxDecoration(
+                                color: fg.withValues(alpha: 0.12),
+                              ),
+                              child: const Center(
+                                child: CircularProgressIndicator(strokeWidth: 2),
+                              ),
+                            );
+                          },
+                          errorBuilder: (_, __, ___) => Padding(
+                            padding: const EdgeInsets.all(8),
+                            child: Center(
+                              child: Text(
+                                message.text ?? src,
+                                style: TextStyle(color: fg),
+                                textAlign: TextAlign.center,
+                              ),
+                            ),
+                          ),
+                        );
+                      }
                       return Align(
                         alignment:
                             isSentByMe ? Alignment.centerRight : Alignment.centerLeft,
@@ -496,48 +632,19 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
                                   width: kChatInlineImageW,
                                   height: kChatInlineImageH,
                                   child: GestureDetector(
-                                    onTap: () => openChatFullscreenImage(
-                                      context,
-                                      url: message.source,
-                                      accessToken: widget.accessToken,
-                                    ),
-                                    child: Image.network(
-                                      message.source,
-                                      width: kChatInlineImageW,
-                                      height: kChatInlineImageH,
-                                      fit: BoxFit.cover,
-                                      headers: {
-                                        'Authorization': 'Bearer ${widget.accessToken}',
-                                      },
-                                      loadingBuilder: (c, child, progress) {
-                                        if (progress == null) {
-                                          return child;
-                                        }
-                                        return DecoratedBox(
-                                          decoration: BoxDecoration(
-                                            color: fg.withValues(alpha: 0.12),
-                                          ),
-                                          child: const Center(
-                                            child: CircularProgressIndicator(strokeWidth: 2),
-                                          ),
-                                        );
-                                      },
-                                      errorBuilder: (_, __, ___) => Padding(
-                                        padding: const EdgeInsets.all(8),
-                                        child: Center(
-                                          child: Text(
-                                            message.text ?? message.source,
-                                            style: TextStyle(color: fg),
-                                            textAlign: TextAlign.center,
-                                          ),
-                                        ),
-                                      ),
-                                    ),
+                                    onTap: localPath != null
+                                        ? null
+                                        : () => openChatFullscreenImage(
+                                              context,
+                                              url: src,
+                                              accessToken: widget.accessToken,
+                                            ),
+                                    child: imageWidget,
                                   ),
                                 ),
                               ),
                               if (isSentByMe)
-                                TimeAndStatus(
+                                CustomTimeAndStatus(
                                   time: message.resolvedTime,
                                   status: message.resolvedStatus,
                                   showTime: true,
@@ -629,7 +736,8 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
                     composerBuilder: (ctx) => Composer(
                       textEditingController: _composerController,
                       hintText: l10n.composerHint,
-                      sendButtonDisabled: state.sending,
+                      // Pending bubbles already convey progress; never block the
+                      // composer so users can keep typing/sending freely.
                       handleSafeArea: true,
                       topWidget: BlocBuilder<ThreadCubit, ThreadState>(
                         buildWhen: (a, b) =>

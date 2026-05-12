@@ -1,9 +1,12 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_chat_core/flutter_chat_core.dart';
-import 'package:flutter_chat_ui/flutter_chat_ui.dart';
 import 'package:provider/provider.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:video_player/video_player.dart';
+
+import 'message_status_icon.dart';
 
 /// Inline chat thumbnails use fixed dimensions so the message list does not
 /// reflow while images/videos decode or stream.
@@ -430,11 +433,17 @@ class _ThreadVideoBubbleState extends State<ThreadVideoBubble> {
 
   Future<void> _init() async {
     try {
-      final uri = Uri.parse(widget.message.source);
-      final ctrl = VideoPlayerController.networkUrl(
-        uri,
-        httpHeaders: {'Authorization': 'Bearer ${widget.accessToken}'},
-      );
+      final source = widget.message.source;
+      final uri = Uri.parse(source);
+      // Pending media bubbles point at a local file:// URL while the upload is
+      // still running. Switch the player to a `.file()` controller in that case
+      // — `networkUrl` would throw on a non-http scheme.
+      final ctrl = uri.scheme == 'file'
+          ? VideoPlayerController.file(File(uri.toFilePath()))
+          : VideoPlayerController.networkUrl(
+              uri,
+              httpHeaders: {'Authorization': 'Bearer ${widget.accessToken}'},
+            );
       await ctrl.initialize();
       if (!mounted) return;
       await ctrl.setVolume(0);
@@ -541,7 +550,7 @@ class _ThreadVideoBubbleState extends State<ThreadVideoBubble> {
                 ),
               ),
             if (widget.isSentByMe)
-              TimeAndStatus(
+              CustomTimeAndStatus(
                 time: widget.message.resolvedTime,
                 status: widget.message.resolvedStatus,
                 showTime: true,
@@ -590,12 +599,15 @@ class _ThreadAudioBubbleState extends State<ThreadAudioBubble> {
 
   Future<void> _load() async {
     try {
-      await _player.setAudioSource(
-        AudioSource.uri(
-          Uri.parse(widget.message.source),
-          headers: {'Authorization': 'Bearer ${widget.accessToken}'},
-        ),
-      );
+      final uri = Uri.parse(widget.message.source);
+      // Local pending file: skip the auth header (it's not a server URL).
+      final source = uri.scheme == 'file'
+          ? AudioSource.uri(uri)
+          : AudioSource.uri(
+              uri,
+              headers: {'Authorization': 'Bearer ${widget.accessToken}'},
+            );
+      await _player.setAudioSource(source);
       if (mounted) setState(() => _busy = false);
     } catch (_) {
       if (mounted) setState(() => _busy = false);
@@ -655,7 +667,7 @@ class _ThreadAudioBubbleState extends State<ThreadAudioBubble> {
             Icon(Icons.mic, color: widget.foreground.withValues(alpha: 0.8)),
             const SizedBox(width: 10),
             if (widget.isSentByMe)
-              TimeAndStatus(
+              CustomTimeAndStatus(
                 time: widget.message.resolvedTime,
                 status: widget.message.resolvedStatus,
                 showTime: true,
