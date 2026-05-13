@@ -3,6 +3,8 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:drift/drift.dart';
+import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
 
 import '../../../core/database/app_database.dart';
 import '../../../core/token_storage.dart';
@@ -37,6 +39,13 @@ class ChatRepository {
   ChatSocket get socket => _socket;
 
   AppDatabase get database => _db;
+
+  /// Latest access token from secure storage (for media that must not use a stale snapshot).
+  Future<String?> getFreshAccessToken() async {
+    final t = _tokens;
+    if (t == null) return null;
+    return t.getAccessToken();
+  }
 
   /// Opens WebSocket using [TokenStorage] for fresh tokens on each connect/reconnect.
   void connectRealtime(Uri wsUri) {
@@ -534,6 +543,22 @@ class ChatRepository {
     final data = await _remote.listGroupBans(groupId);
     final items = data['items'] as List<dynamic>? ?? [];
     return items.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+  }
+
+  /// Caches voice bytes under the app temp dir so [just_audio] can play from `file://`
+  /// (avoids iOS issues with streaming authenticated URLs).
+  Future<File> downloadVoiceToCache(String objectKey) async {
+    final root = await getTemporaryDirectory();
+    final dir = Directory(p.join(root.path, 'voice_cache'));
+    await dir.create(recursive: true);
+    final safe = objectKey.replaceAll(RegExp(r'[^A-Za-z0-9._-]'), '_');
+    final file = File(p.join(dir.path, '$safe.m4a'));
+    if (file.existsSync() && file.lengthSync() > 0) {
+      return file;
+    }
+    final bytes = await _remote.downloadMediaBytes(objectKey: objectKey);
+    await file.writeAsBytes(bytes, flush: true);
+    return file;
   }
 
   /// Presign → upload → optional complete (S3/GCS) → send `application/vnd.mamana.media+json` message.

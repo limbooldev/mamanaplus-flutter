@@ -304,4 +304,18 @@ class ChatRemoteDataSource {
       data: {'object_key': objectKey},
     );
   }
+
+  /// Authenticated full-object download (same path as browser `object_key` query).
+  Future<Uint8List> downloadMediaBytes({required String objectKey}) async {
+    final res = await _dio.get<Uint8List>(
+      '/v1/media/download',
+      queryParameters: {'object_key': objectKey},
+      options: Options(responseType: ResponseType.bytes),
+    );
+    final data = res.data;
+    if (data == null) {
+      throw StateError('empty download response');
+    }
+    return data;
+  }
 }

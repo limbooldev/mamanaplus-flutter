@@ -693,6 +693,7 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
                           constraints: BoxConstraints(maxWidth: maxBubbleW),
                           child: ThreadAudioBubble(
                             message: message,
+                            chatRepository: context.read<ThreadCubit>().chatRepository,
                             accessToken: widget.accessToken,
                             bubble: bubble,
                             foreground: fg,

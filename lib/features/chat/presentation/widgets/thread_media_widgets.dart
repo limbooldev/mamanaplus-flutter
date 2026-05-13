@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -6,6 +7,7 @@ import 'package:provider/provider.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:video_player/video_player.dart';
 
+import '../../data/chat_repository.dart';
 import 'message_status_icon.dart';
 
 /// Inline chat thumbnails use fixed dimensions so the message list does not
@@ -14,6 +16,17 @@ const double kChatInlineImageW = 220;
 const double kChatInlineImageH = 160;
 const double kChatInlineVideoW = 220;
 const double kChatInlineVideoH = 140;
+const double kChatAudioBubbleMinW = 220;
+
+/// Parses `object_key` from our `/v1/media/download?object_key=…` URLs (used by voice playback + tests).
+String? parseObjectKeyFromMediaDownloadUrl(String source) {
+  final uri = Uri.tryParse(source);
+  if (uri == null) return null;
+  if (!uri.isScheme('http') && !uri.isScheme('https')) return null;
+  final key = uri.queryParameters['object_key'];
+  if (key == null || key.isEmpty) return null;
+  return key;
+}
 
 Future<void> openChatFullscreenImage(
   BuildContext context, {
@@ -566,56 +579,182 @@ class _ThreadVideoBubbleState extends State<ThreadVideoBubble> {
   }
 }
 
-/// Voice note with Bearer auth stream.
+/// Voice note: local `file://` pending uploads stream directly; server messages are
+/// downloaded via [ChatRepository] (Dio + auth) then played from disk (reliable on iOS).
 class ThreadAudioBubble extends StatefulWidget {
   const ThreadAudioBubble({
     super.key,
     required this.message,
+    required this.chatRepository,
     required this.accessToken,
     required this.bubble,
     required this.foreground,
     required this.isSentByMe,
+    this.voiceCacheOverride,
   });
 
   final AudioMessage message;
+  final ChatRepository chatRepository;
   final String accessToken;
   final Color bubble;
   final Color foreground;
   final bool isSentByMe;
+
+  /// In tests, bypasses [ChatRepository.downloadVoiceToCache].
+  final Future<File> Function(String objectKey)? voiceCacheOverride;
 
   @override
   State<ThreadAudioBubble> createState() => _ThreadAudioBubbleState();
 }
 
 class _ThreadAudioBubbleState extends State<ThreadAudioBubble> {
+  static final ValueNotifier<_ThreadAudioBubbleState?> _activeVoiceBubble =
+      ValueNotifier<_ThreadAudioBubbleState?>(null);
+
   late final AudioPlayer _player = AudioPlayer();
-  bool _busy = true;
+  StreamSubscription<PlayerState>? _playerStateSub;
+  StreamSubscription<Duration>? _positionSub;
+  var _loading = true;
+  String? _loadError;
+  var _sliderDragging = false;
+  var _sliderDragProgress = 0.0;
+
+  void _onActiveVoiceBubbleChanged() {
+    final active = _activeVoiceBubble.value;
+    if (active != this && _player.playing) {
+      unawaited(
+        _player.pause().then((_) {
+          if (mounted) setState(() {});
+        }),
+      );
+    }
+  }
 
   @override
   void initState() {
     super.initState();
+    _activeVoiceBubble.addListener(_onActiveVoiceBubbleChanged);
+    _playerStateSub = _player.playerStateStream.listen(_onPlayerState);
+    _positionSub = _player.positionStream.listen(_onPositionTick);
     _load();
   }
 
-  Future<void> _load() async {
+  var _resettingAfterComplete = false;
+
+  void _onPlayerState(PlayerState state) {
+    if (state.processingState == ProcessingState.completed) {
+      unawaited(_resetAfterPlaybackComplete());
+    }
+  }
+
+  void _onPositionTick(Duration position) {
+    final d = _player.duration;
+    if (d == null || d.inMilliseconds <= 0 || _resettingAfterComplete) return;
+    if (!_player.playing) return;
+    if (position.inMilliseconds < d.inMilliseconds) return;
+    unawaited(_resetAfterPlaybackComplete());
+  }
+
+  Future<void> _resetAfterPlaybackComplete() async {
+    if (_resettingAfterComplete) return;
+    _resettingAfterComplete = true;
     try {
+      await _player.pause();
+      await _player.seek(Duration.zero);
+    } catch (_) {}
+    finally {
+      _resettingAfterComplete = false;
+    }
+    if (mounted) setState(() {});
+  }
+
+  @override
+  void didUpdateWidget(ThreadAudioBubble oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.message.source != widget.message.source) {
+      _load();
+    }
+  }
+
+  Future<void> _load() async {
+    if (!mounted) return;
+    setState(() {
+      _loading = true;
+      _loadError = null;
+    });
+    try {
+      await _player.stop();
       final uri = Uri.parse(widget.message.source);
-      // Local pending file: skip the auth header (it's not a server URL).
-      final source = uri.scheme == 'file'
-          ? AudioSource.uri(uri)
-          : AudioSource.uri(
+      if (uri.scheme == 'file') {
+        await _player.setAudioSource(AudioSource.uri(uri));
+      } else if (uri.isScheme('http') || uri.isScheme('https')) {
+        final key = parseObjectKeyFromMediaDownloadUrl(widget.message.source);
+        if (key != null && key.isNotEmpty) {
+          final file = widget.voiceCacheOverride != null
+              ? await widget.voiceCacheOverride!(key)
+              : await widget.chatRepository.downloadVoiceToCache(key);
+          await _player.setAudioSource(AudioSource.uri(Uri.file(file.path)));
+        } else {
+          final token =
+              await widget.chatRepository.getFreshAccessToken() ?? widget.accessToken;
+          await _player.setAudioSource(
+            AudioSource.uri(
               uri,
-              headers: {'Authorization': 'Bearer ${widget.accessToken}'},
-            );
-      await _player.setAudioSource(source);
-      if (mounted) setState(() => _busy = false);
-    } catch (_) {
-      if (mounted) setState(() => _busy = false);
+              headers: {'Authorization': 'Bearer $token'},
+            ),
+          );
+        }
+      } else {
+        throw UnsupportedError('Unsupported audio URI scheme: ${uri.scheme}');
+      }
+      if (mounted) setState(() => _loading = false);
+    } catch (e, st) {
+      debugPrint('ThreadAudioBubble load failed: $e\n$st');
+      if (mounted) {
+        setState(() {
+          _loading = false;
+          _loadError = e.toString();
+        });
+      }
+    }
+  }
+
+  Future<void> _togglePlay() async {
+    try {
+      final playing = _player.playing;
+      if (playing) {
+        await _player.pause();
+      } else {
+        _activeVoiceBubble.value = this;
+        await _player.seek(Duration.zero);
+        await _player.play();
+      }
+      if (mounted) setState(() {});
+    } catch (e, st) {
+      debugPrint('ThreadAudioBubble play failed: $e\n$st');
+      if (mounted) {
+        setState(() => _loadError = e.toString());
+      }
+    }
+  }
+
+  Future<void> _seekToProgress(double v, int maxMs) async {
+    try {
+      await _player.seek(Duration(milliseconds: (v * maxMs).round()));
+    } catch (e, st) {
+      debugPrint('ThreadAudioBubble seek failed: $e\n$st');
+      if (mounted) setState(() => _loadError = e.toString());
     }
   }
 
   @override
   void dispose() {
+    if (_activeVoiceBubble.value == this) {
+      _activeVoiceBubble.value = null;
+    }
+    _activeVoiceBubble.removeListener(_onActiveVoiceBubbleChanged);
+    unawaited(_playerStateSub?.cancel() ?? Future<void>.value());
+    unawaited(_positionSub?.cancel() ?? Future<void>.value());
     _player.dispose();
     super.dispose();
   }
@@ -632,51 +771,161 @@ class _ThreadAudioBubbleState extends State<ThreadAudioBubble> {
           color: widget.bubble,
           borderRadius: BorderRadius.circular(12),
         ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (_busy)
-              SizedBox(
-                width: 24,
-                height: 24,
-                child: CircularProgressIndicator(strokeWidth: 2, color: widget.foreground),
-              )
-            else
-              StreamBuilder<PlayerState>(
-                stream: _player.playerStateStream,
-                builder: (context, snap) {
-                  final playing = snap.data?.playing ?? false;
-                  return IconButton(
-                    icon: Icon(
-                      playing ? Icons.pause_circle_filled : Icons.play_circle_fill,
-                      color: widget.foreground,
-                      size: 36,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minWidth: kChatAudioBubbleMinW),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: [
+                  if (_loading)
+                    SizedBox(
+                      width: 36,
+                      height: 36,
+                      child: Padding(
+                        padding: const EdgeInsets.all(6),
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: widget.foreground,
+                        ),
+                      ),
+                    )
+                  else if (_loadError != null)
+                    Padding(
+                      padding: const EdgeInsets.all(6),
+                      child: Icon(Icons.error_outline, color: Colors.red.shade700, size: 28),
+                    )
+                  else
+                    StreamBuilder<PlayerState>(
+                      stream: _player.playerStateStream,
+                      builder: (context, snap) {
+                        final s = snap.data;
+                        final playing = s?.playing ?? false;
+                        final ps = s?.processingState ?? ProcessingState.idle;
+                        // Some platforms leave `playing` true at EOF; `completed` + position handle that.
+                        final showPause =
+                            playing && ps != ProcessingState.completed;
+                        return IconButton(
+                          icon: Icon(
+                            showPause ? Icons.pause_circle_filled : Icons.play_circle_fill,
+                            color: widget.foreground,
+                            size: 36,
+                          ),
+                          onPressed: _togglePlay,
+                        );
+                      },
                     ),
-                    onPressed: () async {
-                      if (playing) {
-                        await _player.pause();
-                      } else {
-                        await _player.seek(Duration.zero);
-                        await _player.play();
-                      }
-                    },
-                  );
-                },
+                  const SizedBox(width: 4),
+                  Icon(Icons.mic, color: widget.foreground.withValues(alpha: 0.8)),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: _loadError != null
+                        ? Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                _loadError!,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: theme.typography.labelSmall.copyWith(
+                                  color: widget.foreground.withValues(alpha: 0.85),
+                                ),
+                              ),
+                              TextButton(
+                                onPressed: _loading ? null : _load,
+                                child: const Text('Retry'),
+                              ),
+                            ],
+                          )
+                        : Align(
+                            alignment: Alignment.centerRight,
+                            child: widget.isSentByMe
+                                ? CustomTimeAndStatus(
+                                    time: widget.message.resolvedTime,
+                                    status: widget.message.resolvedStatus,
+                                    showTime: true,
+                                    showStatus: true,
+                                    textStyle: theme.typography.labelSmall.copyWith(
+                                      color: widget.foreground.withValues(alpha: 0.9),
+                                    ),
+                                  )
+                                : const SizedBox.shrink(),
+                          ),
+                  ),
+                ],
               ),
-            const SizedBox(width: 8),
-            Icon(Icons.mic, color: widget.foreground.withValues(alpha: 0.8)),
-            const SizedBox(width: 10),
-            if (widget.isSentByMe)
-              CustomTimeAndStatus(
-                time: widget.message.resolvedTime,
-                status: widget.message.resolvedStatus,
-                showTime: true,
-                showStatus: true,
-                textStyle: theme.typography.labelSmall.copyWith(
-                  color: widget.foreground.withValues(alpha: 0.9),
+              if (!_loading && _loadError == null)
+                StreamBuilder<Duration>(
+                  stream: _player.positionStream,
+                  initialData: _player.position,
+                  builder: (context, posSnap) {
+                    return StreamBuilder<Duration?>(
+                      stream: _player.durationStream,
+                      initialData: _player.duration,
+                      builder: (context, durSnap) {
+                        final position = posSnap.data ?? Duration.zero;
+                        final duration = durSnap.data ?? Duration.zero;
+                        final maxMs = duration.inMilliseconds;
+                        if (maxMs <= 0) return const SizedBox.shrink();
+                        final progress = maxMs > 0
+                            ? (position.inMilliseconds / maxMs).clamp(0.0, 1.0)
+                            : 0.0;
+                        final sliderValue = _sliderDragging ? _sliderDragProgress : progress;
+                        return Padding(
+                          padding: const EdgeInsets.only(top: 4),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Row(
+                                children: [
+                                  Text(
+                                    _formatDuration(position),
+                                    style: theme.typography.labelSmall.copyWith(
+                                      color: widget.foreground.withValues(alpha: 0.75),
+                                    ),
+                                  ),
+                                  const Spacer(),
+                                  Text(
+                                    _formatDuration(duration),
+                                    style: theme.typography.labelSmall.copyWith(
+                                      color: widget.foreground.withValues(alpha: 0.75),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              SliderTheme(
+                                data: SliderTheme.of(context).copyWith(
+                                  trackHeight: 2,
+                                  thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 5),
+                                  overlayShape: const RoundSliderOverlayShape(overlayRadius: 10),
+                                ),
+                                child: Slider(
+                                  value: sliderValue.clamp(0.0, 1.0),
+                                  onChangeStart: (_) {
+                                    setState(() {
+                                      _sliderDragging = true;
+                                      _sliderDragProgress = progress;
+                                    });
+                                  },
+                                  onChanged: (v) {
+                                    setState(() => _sliderDragProgress = v);
+                                    unawaited(_seekToProgress(v, maxMs));
+                                  },
+                                  onChangeEnd: (_) {
+                                    setState(() => _sliderDragging = false);
+                                  },
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                    );
+                  },
                 ),
-              ),
-          ],
+            ],
+          ),
         ),
       ),
     );

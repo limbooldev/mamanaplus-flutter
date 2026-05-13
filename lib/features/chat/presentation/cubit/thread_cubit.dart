@@ -158,6 +158,9 @@ class ThreadCubit extends Cubit<ThreadState> {
   final int conversationId;
   final int myUserId;
   final String? conversationType;
+
+  /// Exposed for widgets that need the same REST client as the cubit (e.g. voice download).
+  ChatRepository get chatRepository => _repo;
   StreamSubscription<Map<String, dynamic>>? _sub;
   StreamSubscription<int>? _outboxSub;
   StreamSubscription<void>? _reconnectSub;
