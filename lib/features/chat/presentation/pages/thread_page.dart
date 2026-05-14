@@ -27,6 +27,7 @@ import '../widgets/chat_image_editor_flow.dart';
 import '../widgets/chat_video_editor_flow.dart';
 import '../widgets/message_status_icon.dart';
 import '../widgets/thread_media_widgets.dart';
+import '../../../social/presentation/pages/user_profile_page.dart';
 
 class ThreadPage extends StatelessWidget {
   const ThreadPage({
@@ -207,7 +208,9 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
         ),
         title: BlocBuilder<ThreadCubit, ThreadState>(
           buildWhen: (a, b) =>
-              a.headerTitle != b.headerTitle || a.loading != b.loading,
+              a.headerTitle != b.headerTitle ||
+              a.loading != b.loading ||
+              a.dmPeerUserId != b.dmPeerUserId,
           builder: (context, state) {
             final isGroup =
                 context.read<ThreadCubit>().effectiveConversationType == 'group';
@@ -254,7 +257,21 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
                 ),
               ],
             );
-            if (!isGroup) return titleRow;
+            if (!isGroup) {
+              final peerId = state.dmPeerUserId;
+              if (peerId == null) return titleRow;
+              return Tooltip(
+                message: 'View profile',
+                child: MouseRegion(
+                  cursor: SystemMouseCursors.click,
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: () => _openDmPeerProfile(context, peerId),
+                    child: titleRow,
+                  ),
+                ),
+              );
+            }
             return Tooltip(
               message: l10n.threadMenuGroupInfo,
               child: MouseRegion(
@@ -820,6 +837,14 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
 
   void _openGroupDetailScreen(BuildContext context) {
     context.pushGroupDetail(widget.conversationId);
+  }
+
+  void _openDmPeerProfile(BuildContext context, int peerId) {
+    Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        builder: (_) => UserProfilePage(userId: peerId),
+      ),
+    );
   }
 
   Future<void> _openGroupMessageSearch(BuildContext context) async {
