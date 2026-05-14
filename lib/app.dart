@@ -164,7 +164,17 @@ class _MamanaAppState extends State<MamanaApp> {
       if (!mounted) return;
       switch (state) {
         case AuthAuthenticated():
-          _router.go(AppRoutes.inbox);
+          // Only redirect to inbox when coming FROM a non-authenticated route
+          // (e.g. just logged in). If already on an authenticated route such
+          // as /thread/:id, do NOT navigate away — this fires on every token
+          // refresh and would disrupt in-progress navigation (e.g. a thread
+          // opened from a notification push).
+          final currentUri =
+              _router.routerDelegate.currentConfiguration.uri.toString();
+          if (currentUri == AppRoutes.login ||
+              currentUri == AppRoutes.splash) {
+            _router.go(AppRoutes.inbox);
+          }
         case AuthUnauthenticated():
           _router.go(AppRoutes.login);
         case AuthFailure():

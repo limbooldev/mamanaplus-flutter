@@ -104,5 +104,9 @@ void _openConversationFromData(
   if (sid == null || sid <= 0) {
     return;
   }
-  router.go(AppRoutes.thread(sid));
+  // Navigate to inbox first so it sits beneath the thread in the back stack,
+  // then push the thread on top. Using go() alone would replace the entire
+  // stack and leave nothing to return to when the user presses Back.
+  router.go(AppRoutes.inbox);
+  router.push(AppRoutes.thread(sid));
 }
