@@ -27,6 +27,7 @@ import '../mappers/local_message_to_chat_message.dart';
 import '../widgets/chat_image_editor_flow.dart';
 import '../widgets/chat_video_editor_flow.dart';
 import '../widgets/message_status_icon.dart';
+import '../widgets/reply_quote.dart';
 import '../widgets/thread_media_widgets.dart';
 import '../../../social/presentation/pages/user_profile_page.dart';
 
@@ -514,6 +515,10 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
                       final fg = isSentByMe
                           ? theme.colors.onPrimary
                           : theme.colors.onSurface;
+                      final replyPreview = replyPreviewForId(
+                        message.replyToMessageId,
+                        context.read<ThreadCubit>().state.messages,
+                      );
                       return Align(
                         alignment: isSentByMe
                             ? Alignment.centerRight
@@ -539,6 +544,14 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
                               crossAxisAlignment: CrossAxisAlignment.end,
                               mainAxisSize: MainAxisSize.min,
                               children: [
+                                if (replyPreview != null)
+                                  ReplyQuote(
+                                    preview: replyPreview,
+                                    accentColor: isSentByMe
+                                        ? fg.withValues(alpha: 0.85)
+                                        : AppColors.primary,
+                                    textColor: fg,
+                                  ),
                                 Align(
                                   alignment: Alignment.centerLeft,
                                   child: Text(
@@ -570,6 +583,10 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
                       final bubble =
                           isSentByMe ? theme.colors.primary : theme.colors.surfaceContainerHigh;
                       final fg = isSentByMe ? theme.colors.onPrimary : theme.colors.onSurface;
+                      final replyPreview = replyPreviewForId(
+                        message.replyToMessageId,
+                        context.read<ThreadCubit>().state.messages,
+                      );
                       // Pending media bubbles render the local file directly via
                       // [Image.file] — `Image.network` chokes on a `file://` URI
                       // and bearer headers obviously don't apply.
@@ -645,6 +662,14 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
                             crossAxisAlignment: CrossAxisAlignment.end,
                             mainAxisSize: MainAxisSize.min,
                             children: [
+                              if (replyPreview != null)
+                                ReplyQuote(
+                                  preview: replyPreview,
+                                  accentColor: isSentByMe
+                                      ? fg.withValues(alpha: 0.85)
+                                      : AppColors.primary,
+                                  textColor: fg,
+                                ),
                               ClipRRect(
                                 borderRadius: BorderRadius.circular(8),
                                 child: SizedBox(
@@ -705,18 +730,39 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
                       final bubble =
                           isSentByMe ? theme.colors.primary : theme.colors.surfaceContainerHigh;
                       final fg = isSentByMe ? theme.colors.onPrimary : theme.colors.onSurface;
+                      final replyPreview = replyPreviewForId(
+                        message.replyToMessageId,
+                        context.read<ThreadCubit>().state.messages,
+                      );
                       return Align(
                         alignment:
                             isSentByMe ? Alignment.centerRight : Alignment.centerLeft,
                         child: ConstrainedBox(
                           constraints: BoxConstraints(maxWidth: maxBubbleW),
-                          child: ThreadAudioBubble(
-                            message: message,
-                            chatRepository: context.read<ThreadCubit>().chatRepository,
-                            accessToken: widget.accessToken,
-                            bubble: bubble,
-                            foreground: fg,
-                            isSentByMe: isSentByMe,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              if (replyPreview != null)
+                                Padding(
+                                  padding: const EdgeInsets.fromLTRB(8, 4, 8, 0),
+                                  child: ReplyQuote(
+                                    preview: replyPreview,
+                                    accentColor: isSentByMe
+                                        ? fg.withValues(alpha: 0.85)
+                                        : AppColors.primary,
+                                    textColor: fg,
+                                  ),
+                                ),
+                              ThreadAudioBubble(
+                                message: message,
+                                chatRepository: context.read<ThreadCubit>().chatRepository,
+                                accessToken: widget.accessToken,
+                                bubble: bubble,
+                                foreground: fg,
+                                isSentByMe: isSentByMe,
+                              ),
+                            ],
                           ),
                         ),
                       );
