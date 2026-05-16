@@ -414,7 +414,14 @@ class ChatRepository {
   Future<List<LocalConversation>> loadConversationsLocal() {
     return (_db.select(
       _db.localConversations,
-    )..orderBy([(t) => OrderingTerm.desc(t.updatedAt)])).get();
+    )..orderBy([
+        (t) => OrderingTerm(
+          expression: t.lastMessageAt,
+          mode: OrderingMode.desc,
+          nulls: NullsOrder.last,
+        ),
+        (t) => OrderingTerm.desc(t.updatedAt),
+      ])).get();
   }
 
   /// Single cached conversation row, if present.
