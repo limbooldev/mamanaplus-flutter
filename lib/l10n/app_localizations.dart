@@ -346,6 +346,12 @@ abstract class AppLocalizations {
   /// **'Replying to: {message}'**
   String replyingTo(String message);
 
+  /// No description provided for @replyToUser.
+  ///
+  /// In en, this message translates to:
+  /// **'Reply to {name}'**
+  String replyToUser(String name);
+
   /// No description provided for @userNameYou.
   ///
   /// In en, this message translates to:

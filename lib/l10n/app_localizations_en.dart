@@ -152,6 +152,11 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String replyToUser(String name) {
+    return 'Reply to $name';
+  }
+
+  @override
   String get userNameYou => 'You';
 
   @override

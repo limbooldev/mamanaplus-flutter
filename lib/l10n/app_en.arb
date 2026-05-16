@@ -89,6 +89,12 @@
       "message": {"type": "String"}
     }
   },
+  "replyToUser": "Reply to {name}",
+  "@replyToUser": {
+    "placeholders": {
+      "name": {"type": "String"}
+    }
+  },
   "userNameYou": "You",
   "typingIndicator": "Someone is typing\u2026",
   "composerHint": "Message",

@@ -199,6 +199,35 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
     return null;
   }
 
+  ReplyPreviewData _replyPreviewForMessage(LocalMessage message) {
+    final cubit = context.read<ThreadCubit>();
+    final l10n = AppLocalizations.of(context)!;
+    return replyPreviewDataForMessage(
+      message: message,
+      myUserId: widget.myUserId,
+      apiBaseUrl: widget.apiBaseUrl,
+      headerTitle: cubit.state.headerTitle,
+      conversationType: cubit.effectiveConversationType,
+      userNameYou: l10n.userNameYou,
+      userFallback: l10n.userFallback,
+    );
+  }
+
+  ReplyPreviewData? _replyPreviewForChatMessage(Message message) {
+    final cubit = context.read<ThreadCubit>();
+    final l10n = AppLocalizations.of(context)!;
+    return replyPreviewDataForId(
+      message.replyToMessageId,
+      cubit.state.messages,
+      myUserId: widget.myUserId,
+      apiBaseUrl: widget.apiBaseUrl,
+      headerTitle: cubit.state.headerTitle,
+      conversationType: cubit.effectiveConversationType,
+      userNameYou: l10n.userNameYou,
+      userFallback: l10n.userFallback,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
@@ -515,10 +544,8 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
                       final fg = isSentByMe
                           ? theme.colors.onPrimary
                           : theme.colors.onSurface;
-                      final replyPreview = replyPreviewForId(
-                        message.replyToMessageId,
-                        context.read<ThreadCubit>().state.messages,
-                      );
+                      final replyPreview =
+                          _replyPreviewForChatMessage(message);
                       return Align(
                         alignment: isSentByMe
                             ? Alignment.centerRight
@@ -546,11 +573,12 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
                               children: [
                                 if (replyPreview != null)
                                   ReplyQuote(
-                                    preview: replyPreview,
+                                    data: replyPreview,
                                     accentColor: isSentByMe
                                         ? fg.withValues(alpha: 0.85)
                                         : AppColors.primary,
                                     textColor: fg,
+                                    accessToken: widget.accessToken,
                                   ),
                                 Align(
                                   alignment: Alignment.centerLeft,
@@ -583,10 +611,8 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
                       final bubble =
                           isSentByMe ? theme.colors.primary : theme.colors.surfaceContainerHigh;
                       final fg = isSentByMe ? theme.colors.onPrimary : theme.colors.onSurface;
-                      final replyPreview = replyPreviewForId(
-                        message.replyToMessageId,
-                        context.read<ThreadCubit>().state.messages,
-                      );
+                      final replyPreview =
+                          _replyPreviewForChatMessage(message);
                       // Pending media bubbles render the local file directly via
                       // [Image.file] — `Image.network` chokes on a `file://` URI
                       // and bearer headers obviously don't apply.
@@ -664,11 +690,12 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
                             children: [
                               if (replyPreview != null)
                                 ReplyQuote(
-                                  preview: replyPreview,
+                                  data: replyPreview,
                                   accentColor: isSentByMe
                                       ? fg.withValues(alpha: 0.85)
                                       : AppColors.primary,
                                   textColor: fg,
+                                  accessToken: widget.accessToken,
                                 ),
                               ClipRRect(
                                 borderRadius: BorderRadius.circular(8),
@@ -730,10 +757,8 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
                       final bubble =
                           isSentByMe ? theme.colors.primary : theme.colors.surfaceContainerHigh;
                       final fg = isSentByMe ? theme.colors.onPrimary : theme.colors.onSurface;
-                      final replyPreview = replyPreviewForId(
-                        message.replyToMessageId,
-                        context.read<ThreadCubit>().state.messages,
-                      );
+                      final replyPreview =
+                          _replyPreviewForChatMessage(message);
                       return Align(
                         alignment:
                             isSentByMe ? Alignment.centerRight : Alignment.centerLeft,
@@ -747,11 +772,12 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
                                 Padding(
                                   padding: const EdgeInsets.fromLTRB(8, 4, 8, 0),
                                   child: ReplyQuote(
-                                    preview: replyPreview,
+                                    data: replyPreview,
                                     accentColor: isSentByMe
                                         ? fg.withValues(alpha: 0.85)
                                         : AppColors.primary,
                                     textColor: fg,
+                                    accessToken: widget.accessToken,
                                   ),
                                 ),
                               ThreadAudioBubble(
@@ -844,28 +870,24 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
                                     ),
                                   ),
                                 if (hasReply)
-                                  _ComposerMetaStrip(
-                                    borderColor: borderCol,
-                                    child: Row(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        Icon(Icons.reply_rounded, size: 18, color: AppColors.primary),
-                                        const SizedBox(width: 8),
-                                        Expanded(
-                                          child: Text(
-                                            l10n.replyingTo(st.replyTo!.body),
-                                            maxLines: 2,
-                                            overflow: TextOverflow.ellipsis,
-                                            style: GoogleFonts.inter(fontSize: 13),
-                                          ),
+                                  Builder(
+                                    builder: (ctx) {
+                                      final preview =
+                                          _replyPreviewForMessage(st.replyTo!);
+                                      return _ComposerMetaStrip(
+                                        borderColor: borderCol,
+                                        child: ComposerReplyPreview(
+                                          data: preview,
+                                          replyToTitle:
+                                              l10n.replyToUser(preview.authorName),
+                                          accessToken: widget.accessToken,
+                                          isDark: isDark,
+                                          onDismiss: () => context
+                                              .read<ThreadCubit>()
+                                              .setReplyTo(null),
                                         ),
-                                        IconButton(
-                                          visualDensity: VisualDensity.compact,
-                                          icon: const Icon(Icons.close, size: 20),
-                                          onPressed: () => context.read<ThreadCubit>().setReplyTo(null),
-                                        ),
-                                      ],
-                                    ),
+                                      );
+                                    },
                                   ),
                               ],
                             ),
