@@ -15,6 +15,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:record/record.dart';
 
 import '../../../../core/api_config.dart';
+import '../../../../core/notification_dismiss.dart';
 import '../../../../core/database/app_database.dart';
 import '../../../../core/jwt_util.dart';
 import '../../../../router/app_routes.dart';
@@ -95,6 +96,7 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
     super.initState();
     _chatController = InMemoryChatController();
     _composerController.addListener(_handleComposerTextChanged);
+    dismissConversationNotification(widget.conversationId);
   }
 
   @override

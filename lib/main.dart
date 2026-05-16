@@ -22,6 +22,7 @@ import 'features/chat/presentation/cubit/auth_cubit.dart';
 import 'features/chat/presentation/cubit/theme_cubit.dart';
 import 'features/social/data/social_repository.dart';
 import 'features/social/data/story_seen_local_store.dart';
+import 'core/notification_dismiss.dart';
 import 'core/push_messaging.dart';
 
 Future<void> main() async {
@@ -36,6 +37,7 @@ Future<void> main() async {
   if (Platform.isAndroid || Platform.isIOS) {
     await applyWorkaroundToOpenSqlite3OnOldAndroidVersions();
     firebaseReady = await initializeFirebaseCore();
+    await initNotificationDismiss();
   }
   setupCrashReporting(firebaseInitialized: firebaseReady);
 
