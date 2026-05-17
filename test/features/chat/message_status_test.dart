@@ -4,6 +4,7 @@ import 'package:mamana_plus/core/database/app_database.dart';
 import 'package:mamana_plus/features/chat/media_constants.dart';
 import 'package:mamana_plus/features/chat/presentation/cubit/thread_cubit.dart';
 import 'package:mamana_plus/features/chat/presentation/mappers/local_message_to_chat_message.dart';
+import 'package:mamana_plus/features/chat/presentation/widgets/reply_quote.dart';
 
 const _myUserId = 42;
 const _peerUserId = 7;
@@ -18,6 +19,7 @@ LocalMessage _localMessage({
   DateTime? createdAt,
   DateTime? receiptDeliveredAt,
   DateTime? receiptReadAt,
+  int? replyToMessageId,
 }) {
   return LocalMessage(
     id: id,
@@ -25,9 +27,22 @@ LocalMessage _localMessage({
     senderId: senderId,
     body: body,
     contentType: contentType,
+    replyToMessageId: replyToMessageId,
     createdAt: createdAt ?? DateTime(2026, 5, 11, 22, 0),
     receiptDeliveredAt: receiptDeliveredAt,
     receiptReadAt: receiptReadAt,
+  );
+}
+
+ReplyPreviewMapContext _replyCtx({String? myDisplayName}) {
+  return ReplyPreviewMapContext(
+    myUserId: _myUserId,
+    apiBaseUrl: _apiBaseUrl,
+    headerTitle: 'Peer',
+    conversationType: 'private',
+    myDisplayName: myDisplayName,
+    userNameYou: 'You',
+    userFallback: (id) => 'User $id',
   );
 }
 
@@ -238,6 +253,66 @@ void main() {
     });
   });
 
+  group('reply preview metadata', () {
+    test('reply to own message bakes author and subtitle into metadata', () {
+      final parent = _localMessage(
+        id: 10,
+        senderId: _myUserId,
+        body: 'my earlier text',
+      );
+      final reply = _localMessage(
+        id: 11,
+        senderId: _myUserId,
+        body: 'my reply',
+        replyToMessageId: 10,
+      );
+
+      final messages = mapLocalMessagesToChatMessages(
+        [reply, parent],
+        myUserId: _myUserId,
+        readReceiptForOwn: (_) => false,
+        apiBaseUrl: _apiBaseUrl,
+        replyPreview: _replyCtx(myDisplayName: 'Masoud'),
+      );
+
+      final mapped = messages.singleWhere((m) => m.id == '11');
+      expect(mapped.replyToMessageId, '10');
+      final preview = replyPreviewDataFromMetadata(mapped.metadata);
+      expect(preview?.authorName, 'Masoud');
+      expect(preview?.subtitle, 'my earlier text');
+    });
+
+    test('pending outbox reply to own message includes metadata', () {
+      final parent = _localMessage(
+        id: 20,
+        senderId: _myUserId,
+        body: 'parent body',
+      );
+      final pending = [
+        MessageOutboxData(
+          localId: 'p-reply',
+          conversationId: _conversationId,
+          body: 'sending reply',
+          replyToMessageId: 20,
+          createdAt: DateTime(2026, 5, 11, 22, 5),
+          contentType: 'text/plain',
+          attempts: 0,
+        ),
+      ];
+
+      final messages = mapPendingOutboxToChatMessages(
+        pending,
+        myUserId: _myUserId,
+        allMessages: [parent],
+        replyPreview: _replyCtx(),
+      );
+
+      final mapped = messages.single;
+      expect(mapped.replyToMessageId, '20');
+      expect(replyPreviewDataFromMetadata(mapped.metadata)?.subtitle, 'parent body');
+    });
+  });
+
   group('ThreadState', () {
     test('default has empty pending list', () {
       const s = ThreadState();
@@ -252,6 +327,17 @@ void main() {
       final next = base.copyWith(loading: true);
       expect(next.pending, same(pending));
       expect(next.loading, isTrue);
+    });
+
+    test('copyWith preserves replyTo unless explicitly cleared', () {
+      final parent = _localMessage(id: 1, senderId: _myUserId);
+      final base = ThreadState(replyTo: parent);
+
+      final next = base.copyWith(loading: true);
+      expect(next.replyTo, parent);
+
+      final cleared = base.copyWith(replyTo: null);
+      expect(cleared.replyTo, isNull);
     });
 
     test('readReceiptForOwnMessage returns false when conversation is not private', () {

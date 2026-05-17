@@ -52,16 +52,25 @@ String mediaDownloadUrl(String apiBaseUrl, String objectKey) {
   return '$base/v1/media/download?object_key=${Uri.encodeComponent(objectKey)}';
 }
 
+const String kMetaReplyAuthor = 'mamanaReplyAuthor';
+const String kMetaReplySubtitle = 'mamanaReplySubtitle';
+const String kMetaReplyThumb = 'mamanaReplyThumb';
+
 /// Display name for the author of [message] in this thread.
 String authorDisplayNameForMessage({
   required LocalMessage message,
   required int myUserId,
   required String? headerTitle,
   required String? conversationType,
+  required String? myDisplayName,
   required String userNameYou,
   required String Function(String) userFallback,
 }) {
   if (message.senderId == myUserId) {
+    final name = myDisplayName?.trim();
+    if (name != null && name.isNotEmpty) {
+      return name;
+    }
     return userNameYou;
   }
   if (conversationType == 'private' &&
@@ -105,12 +114,65 @@ String subtitleForLocalMessage(LocalMessage m) {
   return t;
 }
 
+/// Bakes reply preview fields into [metadata] so bubbles keep quotes after sync.
+void attachReplyPreviewMetadata(
+  Map<String, dynamic> metadata,
+  LocalMessage m,
+  List<LocalMessage> allMessages, {
+  required int myUserId,
+  required String apiBaseUrl,
+  required String? headerTitle,
+  required String? conversationType,
+  required String? myDisplayName,
+  required String userNameYou,
+  required String Function(String) userFallback,
+}) {
+  if (m.replyToMessageId == null) {
+    return;
+  }
+  final parent = findLocalMessage(allMessages, m.replyToMessageId!);
+  if (parent == null) {
+    return;
+  }
+  final data = replyPreviewDataForMessage(
+    message: parent,
+    myUserId: myUserId,
+    apiBaseUrl: apiBaseUrl,
+    headerTitle: headerTitle,
+    conversationType: conversationType,
+    myDisplayName: myDisplayName,
+    userNameYou: userNameYou,
+    userFallback: userFallback,
+  );
+  metadata[kMetaReplyAuthor] = data.authorName;
+  metadata[kMetaReplySubtitle] = data.subtitle;
+  if (data.thumbnailUrl != null) {
+    metadata[kMetaReplyThumb] = data.thumbnailUrl;
+  }
+}
+
+ReplyPreviewData? replyPreviewDataFromMetadata(Map<String, dynamic>? metadata) {
+  if (metadata == null) {
+    return null;
+  }
+  final subtitle = metadata[kMetaReplySubtitle];
+  if (subtitle is! String || subtitle.isEmpty) {
+    return null;
+  }
+  return ReplyPreviewData(
+    authorName: metadata[kMetaReplyAuthor] as String? ?? '',
+    subtitle: subtitle,
+    thumbnailUrl: metadata[kMetaReplyThumb] as String?,
+  );
+}
+
 ReplyPreviewData replyPreviewDataForMessage({
   required LocalMessage message,
   required int myUserId,
   required String apiBaseUrl,
   required String? headerTitle,
   required String? conversationType,
+  required String? myDisplayName,
   required String userNameYou,
   required String Function(String) userFallback,
 }) {
@@ -119,6 +181,7 @@ ReplyPreviewData replyPreviewDataForMessage({
     myUserId: myUserId,
     headerTitle: headerTitle,
     conversationType: conversationType,
+    myDisplayName: myDisplayName,
     userNameYou: userNameYou,
     userFallback: userFallback,
   );
@@ -151,6 +214,7 @@ ReplyPreviewData? replyPreviewDataForId(
   required String apiBaseUrl,
   required String? headerTitle,
   required String? conversationType,
+  required String? myDisplayName,
   required String userNameYou,
   required String Function(String) userFallback,
 }) {
@@ -171,6 +235,7 @@ ReplyPreviewData? replyPreviewDataForId(
     apiBaseUrl: apiBaseUrl,
     headerTitle: headerTitle,
     conversationType: conversationType,
+    myDisplayName: myDisplayName,
     userNameYou: userNameYou,
     userFallback: userFallback,
   );
@@ -303,6 +368,7 @@ class ReplyQuote extends StatelessWidget {
     required this.accentColor,
     required this.textColor,
     required this.accessToken,
+    this.onPrimaryBubble = false,
   });
 
   final ReplyPreviewData data;
@@ -310,15 +376,27 @@ class ReplyQuote extends StatelessWidget {
   final Color textColor;
   final String accessToken;
 
+  /// True when the quote sits on the user's primary-colored sent bubble.
+  final bool onPrimaryBubble;
+
   @override
   Widget build(BuildContext context) {
+    final titleColor = onPrimaryBubble ? Colors.white : accentColor;
+    final subtitleColor = onPrimaryBubble
+        ? Colors.white.withValues(alpha: 0.92)
+        : textColor.withValues(alpha: 0.9);
+    final barColor = onPrimaryBubble ? Colors.white : accentColor;
+    final bgColor = onPrimaryBubble
+        ? Colors.black.withValues(alpha: 0.22)
+        : textColor.withValues(alpha: 0.12);
+
     return Container(
       width: double.infinity,
       margin: const EdgeInsets.only(bottom: 6),
       padding: const EdgeInsets.only(left: 8, top: 4, bottom: 4, right: 4),
       decoration: BoxDecoration(
-        border: Border(left: BorderSide(color: accentColor, width: 3)),
-        color: textColor.withValues(alpha: 0.12),
+        border: Border(left: BorderSide(color: barColor, width: 3)),
+        color: bgColor,
         borderRadius: const BorderRadius.horizontal(left: Radius.circular(4)),
       ),
       child: Row(
@@ -333,7 +411,7 @@ class ReplyQuote extends StatelessWidget {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
-                    color: accentColor,
+                    color: titleColor,
                     fontSize: 13,
                     fontWeight: FontWeight.w600,
                     height: 1.2,
@@ -345,7 +423,7 @@ class ReplyQuote extends StatelessWidget {
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
-                    color: textColor.withValues(alpha: 0.9),
+                    color: subtitleColor,
                     fontSize: 13,
                     fontWeight: FontWeight.w500,
                     height: 1.25,

@@ -53,6 +53,8 @@ int? _peerUserIdFromPeerJson(String? peerJson) {
   }
 }
 
+const _unsetReplyTo = Object();
+
 class ThreadState extends Equatable {
   const ThreadState({
     this.messages = const [],
@@ -64,6 +66,7 @@ class ThreadState extends Equatable {
     this.replyTo,
     this.readCursorByUserId = const {},
     this.headerTitle,
+    this.myDisplayName,
     this.dmPeerUserId,
     this.messageSearchQuery,
   });
@@ -85,6 +88,9 @@ class ThreadState extends Equatable {
   /// App bar title for private (peer name) or group (title); null → fallback `Thread #id`.
   final String? headerTitle;
 
+  /// Authenticated user's display name (for reply quotes to own messages).
+  final String? myDisplayName;
+
   /// Private DM: other participant's user id (for block-from-thread, etc.).
   final int? dmPeerUserId;
 
@@ -98,9 +104,10 @@ class ThreadState extends Equatable {
     bool? sending,
     String? error,
     Set<int>? typingUserIds,
-    LocalMessage? replyTo,
+    Object? replyTo = _unsetReplyTo,
     Map<int, int>? readCursorByUserId,
     String? headerTitle,
+    String? myDisplayName,
     int? dmPeerUserId,
     String? messageSearchQuery,
     bool clearMessageSearch = false,
@@ -112,9 +119,12 @@ class ThreadState extends Equatable {
         sending: sending ?? this.sending,
         error: error,
         typingUserIds: typingUserIds ?? this.typingUserIds,
-        replyTo: replyTo,
+        replyTo: identical(replyTo, _unsetReplyTo)
+            ? this.replyTo
+            : replyTo as LocalMessage?,
         readCursorByUserId: readCursorByUserId ?? this.readCursorByUserId,
         headerTitle: headerTitle ?? this.headerTitle,
+        myDisplayName: myDisplayName ?? this.myDisplayName,
         dmPeerUserId: dmPeerUserId ?? this.dmPeerUserId,
         messageSearchQuery:
             clearMessageSearch ? null : (messageSearchQuery ?? this.messageSearchQuery),
@@ -141,6 +151,7 @@ class ThreadState extends Equatable {
         replyTo,
         readCursorByUserId,
         headerTitle,
+        myDisplayName,
         dmPeerUserId,
         messageSearchQuery,
       ];
@@ -184,6 +195,7 @@ class ThreadCubit extends Cubit<ThreadState> {
     emit(state.copyWith(loading: true));
     unawaited(_hydrateHeader(prefetched: prefetchedConv));
     unawaited(_resolveDmPeerUserId(prefetched: prefetchedConv));
+    unawaited(_loadMyDisplayName());
     await _reloadMessagesFromRemote();
 
     // Watch outbox so the optimistic bubble appears immediately when [send]
@@ -304,6 +316,16 @@ class ThreadCubit extends Cubit<ThreadState> {
       if (id != null) {
         await _repo.upsertLocalConversationFromDto(raw);
         emit(state.copyWith(dmPeerUserId: id));
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _loadMyDisplayName() async {
+    try {
+      final me = await _repo.fetchMe();
+      final name = (me['display_name'] as String?)?.trim();
+      if (name != null && name.isNotEmpty) {
+        emit(state.copyWith(myDisplayName: name));
       }
     } catch (_) {}
   }

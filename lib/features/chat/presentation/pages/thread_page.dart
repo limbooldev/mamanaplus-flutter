@@ -144,7 +144,7 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
     final pendingParts = s.pending
         .map(
           (r) =>
-              'p:${r.localId}|${r.body}|${r.contentType}|${r.mediaPath}|${r.lastErrorAt}',
+              'p:${r.localId}|${r.body}|${r.contentType}|${r.replyToMessageId}|${r.mediaPath}|${r.lastErrorAt}',
         )
         .join('~');
     final reads =
@@ -152,18 +152,36 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
     return '$parts^$pendingParts#$reads';
   }
 
+  ReplyPreviewMapContext _replyPreviewMapContext(ThreadCubit cubit) {
+    final l10n = AppLocalizations.of(context)!;
+    return ReplyPreviewMapContext(
+      myUserId: widget.myUserId,
+      apiBaseUrl: widget.apiBaseUrl,
+      headerTitle: cubit.state.headerTitle,
+      conversationType: cubit.effectiveConversationType,
+      myDisplayName: cubit.state.myDisplayName,
+      userNameYou: l10n.userNameYou,
+      userFallback: l10n.userFallback,
+    );
+  }
+
   Future<void> _syncChatMessages(ThreadState state) async {
     if (!mounted) return;
-    final convType = context.read<ThreadCubit>().effectiveConversationType;
+    final cubit = context.read<ThreadCubit>();
+    final convType = cubit.effectiveConversationType;
+    final previewCtx = _replyPreviewMapContext(cubit);
     final delivered = mapLocalMessagesToChatMessages(
       state.messages,
       myUserId: widget.myUserId,
       readReceiptForOwn: (id) => state.readReceiptForOwnMessage(id, convType),
       apiBaseUrl: widget.apiBaseUrl,
+      replyPreview: previewCtx,
     );
     final pendingMapped = mapPendingOutboxToChatMessages(
       state.pending,
       myUserId: widget.myUserId,
+      allMessages: state.messages,
+      replyPreview: previewCtx,
     );
     // Pending bubbles always sit at the bottom (newest), keyed by 'pending_*'
     // so they never collide with server message ids during the diff.
@@ -201,31 +219,45 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
 
   ReplyPreviewData _replyPreviewForMessage(LocalMessage message) {
     final cubit = context.read<ThreadCubit>();
-    final l10n = AppLocalizations.of(context)!;
+    final ctx = _replyPreviewMapContext(cubit);
     return replyPreviewDataForMessage(
       message: message,
-      myUserId: widget.myUserId,
-      apiBaseUrl: widget.apiBaseUrl,
-      headerTitle: cubit.state.headerTitle,
-      conversationType: cubit.effectiveConversationType,
-      userNameYou: l10n.userNameYou,
-      userFallback: l10n.userFallback,
+      myUserId: ctx.myUserId,
+      apiBaseUrl: ctx.apiBaseUrl,
+      headerTitle: ctx.headerTitle,
+      conversationType: ctx.conversationType,
+      myDisplayName: ctx.myDisplayName,
+      userNameYou: ctx.userNameYou,
+      userFallback: ctx.userFallback,
     );
   }
 
   ReplyPreviewData? _replyPreviewForChatMessage(Message message) {
+    final fromMeta = replyPreviewDataFromMetadata(message.metadata);
+    if (fromMeta != null) {
+      return fromMeta;
+    }
     final cubit = context.read<ThreadCubit>();
-    final l10n = AppLocalizations.of(context)!;
+    final ctx = _replyPreviewMapContext(cubit);
     return replyPreviewDataForId(
       message.replyToMessageId,
       cubit.state.messages,
-      myUserId: widget.myUserId,
-      apiBaseUrl: widget.apiBaseUrl,
-      headerTitle: cubit.state.headerTitle,
-      conversationType: cubit.effectiveConversationType,
-      userNameYou: l10n.userNameYou,
-      userFallback: l10n.userFallback,
+      myUserId: ctx.myUserId,
+      apiBaseUrl: ctx.apiBaseUrl,
+      headerTitle: ctx.headerTitle,
+      conversationType: ctx.conversationType,
+      myDisplayName: ctx.myDisplayName,
+      userNameYou: ctx.userNameYou,
+      userFallback: ctx.userFallback,
     );
+  }
+
+  bool _hasReplyQuote(Message message) {
+    final id = message.replyToMessageId;
+    if (id != null && id.isNotEmpty) {
+      return true;
+    }
+    return replyPreviewDataFromMetadata(message.metadata) != null;
   }
 
   @override
@@ -546,6 +578,10 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
                           : theme.colors.onSurface;
                       final replyPreview =
                           _replyPreviewForChatMessage(message);
+                      final showReply =
+                          _hasReplyQuote(message) && replyPreview != null;
+                      final groupedFollowUp =
+                          groupStatus?.isFirst == false;
                       return Align(
                         alignment: isSentByMe
                             ? Alignment.centerRight
@@ -553,9 +589,11 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
                         child: ConstrainedBox(
                           constraints: BoxConstraints(maxWidth: maxBubbleW),
                           child: Container(
-                            margin: const EdgeInsets.symmetric(
-                              vertical: 4,
-                              horizontal: 8,
+                            margin: EdgeInsets.fromLTRB(
+                              8,
+                              showReply && groupedFollowUp ? 10 : 4,
+                              8,
+                              4,
                             ),
                             padding: const EdgeInsets.symmetric(
                               horizontal: 12,
@@ -571,14 +609,15 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
                               crossAxisAlignment: CrossAxisAlignment.end,
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                if (replyPreview != null)
+                                if (showReply)
                                   ReplyQuote(
-                                    data: replyPreview,
+                                    data: replyPreview!,
                                     accentColor: isSentByMe
                                         ? fg.withValues(alpha: 0.85)
                                         : AppColors.primary,
                                     textColor: fg,
                                     accessToken: widget.accessToken,
+                                    onPrimaryBubble: isSentByMe,
                                   ),
                                 Align(
                                   alignment: Alignment.centerLeft,
@@ -613,6 +652,8 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
                       final fg = isSentByMe ? theme.colors.onPrimary : theme.colors.onSurface;
                       final replyPreview =
                           _replyPreviewForChatMessage(message);
+                      final showReply =
+                          _hasReplyQuote(message) && replyPreview != null;
                       // Pending media bubbles render the local file directly via
                       // [Image.file] — `Image.network` chokes on a `file://` URI
                       // and bearer headers obviously don't apply.
@@ -688,14 +729,15 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
                             crossAxisAlignment: CrossAxisAlignment.end,
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              if (replyPreview != null)
+                              if (showReply)
                                 ReplyQuote(
-                                  data: replyPreview,
+                                  data: replyPreview!,
                                   accentColor: isSentByMe
                                       ? fg.withValues(alpha: 0.85)
                                       : AppColors.primary,
                                   textColor: fg,
                                   accessToken: widget.accessToken,
+                                  onPrimaryBubble: isSentByMe,
                                 ),
                               ClipRRect(
                                 borderRadius: BorderRadius.circular(8),
@@ -759,6 +801,8 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
                       final fg = isSentByMe ? theme.colors.onPrimary : theme.colors.onSurface;
                       final replyPreview =
                           _replyPreviewForChatMessage(message);
+                      final showReply =
+                          _hasReplyQuote(message) && replyPreview != null;
                       return Align(
                         alignment:
                             isSentByMe ? Alignment.centerRight : Alignment.centerLeft,
@@ -768,16 +812,17 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
                             crossAxisAlignment: CrossAxisAlignment.stretch,
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              if (replyPreview != null)
+                              if (showReply)
                                 Padding(
                                   padding: const EdgeInsets.fromLTRB(8, 4, 8, 0),
                                   child: ReplyQuote(
-                                    data: replyPreview,
+                                    data: replyPreview!,
                                     accentColor: isSentByMe
                                         ? fg.withValues(alpha: 0.85)
                                         : AppColors.primary,
                                     textColor: fg,
                                     accessToken: widget.accessToken,
+                                    onPrimaryBubble: isSentByMe,
                                   ),
                                 ),
                               ThreadAudioBubble(
@@ -1156,6 +1201,11 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
+            ListTile(
+              leading: const Icon(Icons.reply_rounded),
+              title: Text(l10n.actionReply),
+              onTap: () => Navigator.pop(ctx, 'reply'),
+            ),
             if (canCopy)
               ListTile(
                 leading: const Icon(Icons.copy_rounded),
@@ -1182,7 +1232,9 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
       ),
     );
     if (!context.mounted) return;
-    if (action == 'copy') {
+    if (action == 'reply') {
+      cubit.setReplyTo(m);
+    } else if (action == 'copy') {
       await Clipboard.setData(ClipboardData(text: m.body));
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

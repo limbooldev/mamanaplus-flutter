@@ -4,11 +4,58 @@ import 'package:flutter_chat_core/flutter_chat_core.dart';
 
 import '../../../../core/database/app_database.dart';
 import '../../media_constants.dart';
+import '../widgets/reply_quote.dart';
 
 /// Prefix on synthetic ids for outbox rows. Lets the chat list key pending
 /// bubbles separately from server messages and lets gesture handlers ignore
 /// taps on bubbles that don't yet have a server id.
 const String kPendingMessagePrefix = 'pending_';
+
+/// Context for baking reply preview into [Message.metadata] at map time.
+class ReplyPreviewMapContext {
+  const ReplyPreviewMapContext({
+    required this.myUserId,
+    required this.apiBaseUrl,
+    required this.headerTitle,
+    required this.conversationType,
+    required this.myDisplayName,
+    required this.userNameYou,
+    required this.userFallback,
+  });
+
+  final int myUserId;
+  final String apiBaseUrl;
+  final String? headerTitle;
+  final String? conversationType;
+  final String? myDisplayName;
+  final String userNameYou;
+  final String Function(String) userFallback;
+}
+
+Map<String, dynamic> _mergeReplyPreviewMetadata(
+  LocalMessage m,
+  List<LocalMessage> allMessages,
+  ReplyPreviewMapContext? ctx, {
+  Map<String, dynamic>? base,
+}) {
+  final meta = <String, dynamic>{...?base};
+  if (ctx == null) {
+    return meta;
+  }
+  attachReplyPreviewMetadata(
+    meta,
+    m,
+    allMessages,
+    myUserId: ctx.myUserId,
+    apiBaseUrl: ctx.apiBaseUrl,
+    headerTitle: ctx.headerTitle,
+    conversationType: ctx.conversationType,
+    myDisplayName: ctx.myDisplayName,
+    userNameYou: ctx.userNameYou,
+    userFallback: ctx.userFallback,
+  );
+  return meta;
+}
 
 bool _looksLikeImageUrl(LocalMessage m) {
   if (!m.contentType.toLowerCase().startsWith('image/')) return false;
@@ -30,6 +77,7 @@ List<Message> mapLocalMessagesToChatMessages(
   required int myUserId,
   required bool Function(int messageId) readReceiptForOwn,
   required String apiBaseUrl,
+  ReplyPreviewMapContext? replyPreview,
 }) {
   return newestFirst.reversed.map((m) {
     final mine = m.senderId == myUserId;
@@ -37,6 +85,11 @@ List<Message> mapLocalMessagesToChatMessages(
     final authorId = '${m.senderId}';
     final replyTo =
         m.replyToMessageId != null ? '${m.replyToMessageId}' : null;
+    final meta = _mergeReplyPreviewMetadata(
+      m,
+      newestFirst,
+      replyPreview,
+    );
     final MessageStatus? status;
     if (mine) {
       final seen = readReceiptForOwn(m.id) || m.receiptReadAt != null;
@@ -65,9 +118,10 @@ List<Message> mapLocalMessagesToChatMessages(
         createdAt: m.createdAt,
         replyToMessageId: replyTo,
         status: status,
-        metadata: <String, dynamic>{
+        metadata: {
           'mamanaStickerEmoji': emoji,
           if (sid != null) 'mamanaStickerId': sid,
+          ...meta,
         },
       );
     }
@@ -88,6 +142,7 @@ List<Message> mapLocalMessagesToChatMessages(
               createdAt: m.createdAt,
               replyToMessageId: replyTo,
               status: status,
+              metadata: meta.isEmpty ? null : meta,
             );
           case 'voice':
             return Message.audio(
@@ -98,6 +153,7 @@ List<Message> mapLocalMessagesToChatMessages(
               createdAt: m.createdAt,
               replyToMessageId: replyTo,
               status: status,
+              metadata: meta.isEmpty ? null : meta,
             );
           case 'sticker':
           case 'image':
@@ -109,6 +165,7 @@ List<Message> mapLocalMessagesToChatMessages(
               createdAt: m.createdAt,
               replyToMessageId: replyTo,
               status: status,
+              metadata: meta.isEmpty ? null : meta,
             );
         }
       } catch (_) {
@@ -119,6 +176,7 @@ List<Message> mapLocalMessagesToChatMessages(
           createdAt: m.createdAt,
           replyToMessageId: replyTo,
           status: status,
+          metadata: meta.isEmpty ? null : meta,
         );
       }
     }
@@ -131,6 +189,7 @@ List<Message> mapLocalMessagesToChatMessages(
         createdAt: m.createdAt,
         replyToMessageId: replyTo,
         status: status,
+        metadata: meta.isEmpty ? null : meta,
       );
     }
 
@@ -141,10 +200,11 @@ List<Message> mapLocalMessagesToChatMessages(
         createdAt: m.createdAt,
         replyToMessageId: replyTo,
         status: status,
-        metadata: <String, dynamic>{
+        metadata: {
           'mamanaStoryReply': true,
           'story_media_id': m.storyMediaId,
           'story_reply_text': m.body,
+          ...meta,
         },
       );
     }
@@ -156,6 +216,7 @@ List<Message> mapLocalMessagesToChatMessages(
       createdAt: m.createdAt,
       replyToMessageId: replyTo,
       status: status,
+      metadata: meta.isEmpty ? null : meta,
     );
   }).toList();
 }
@@ -169,6 +230,8 @@ List<Message> mapLocalMessagesToChatMessages(
 List<Message> mapPendingOutboxToChatMessages(
   List<MessageOutboxData> outbox, {
   required int myUserId,
+  List<LocalMessage> allMessages = const [],
+  ReplyPreviewMapContext? replyPreview,
 }) {
   return outbox.map((row) {
     final id = '$kPendingMessagePrefix${row.localId}';
@@ -176,6 +239,20 @@ List<Message> mapPendingOutboxToChatMessages(
     final replyTo =
         row.replyToMessageId != null ? '${row.replyToMessageId}' : null;
     const status = MessageStatus.sending;
+    final pendingAsLocal = LocalMessage(
+      id: -1,
+      conversationId: row.conversationId,
+      senderId: myUserId,
+      body: row.body,
+      contentType: row.contentType,
+      replyToMessageId: row.replyToMessageId,
+      createdAt: row.createdAt,
+    );
+    final meta = _mergeReplyPreviewMetadata(
+      pendingAsLocal,
+      allMessages,
+      replyPreview,
+    );
 
     if (row.contentType == kMamanaStickerContentType) {
       var emoji = '💬';
@@ -191,9 +268,10 @@ List<Message> mapPendingOutboxToChatMessages(
         createdAt: row.createdAt,
         replyToMessageId: replyTo,
         status: status,
-        metadata: <String, dynamic>{
+        metadata: {
           'mamanaStickerEmoji': emoji,
           if (sid != null) 'mamanaStickerId': sid,
+          ...meta,
         },
       );
     }
@@ -211,6 +289,7 @@ List<Message> mapPendingOutboxToChatMessages(
             createdAt: row.createdAt,
             replyToMessageId: replyTo,
             status: status,
+            metadata: meta.isEmpty ? null : meta,
           );
         case 'voice':
           return Message.audio(
@@ -221,6 +300,7 @@ List<Message> mapPendingOutboxToChatMessages(
             createdAt: row.createdAt,
             replyToMessageId: replyTo,
             status: status,
+            metadata: meta.isEmpty ? null : meta,
           );
         case 'sticker':
         case 'image':
@@ -232,6 +312,7 @@ List<Message> mapPendingOutboxToChatMessages(
             createdAt: row.createdAt,
             replyToMessageId: replyTo,
             status: status,
+            metadata: meta.isEmpty ? null : meta,
           );
       }
     }
@@ -243,6 +324,7 @@ List<Message> mapPendingOutboxToChatMessages(
       createdAt: row.createdAt,
       replyToMessageId: replyTo,
       status: status,
+      metadata: meta.isEmpty ? null : meta,
     );
   }).toList();
 }
