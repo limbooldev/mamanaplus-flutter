@@ -455,6 +455,35 @@ class ThreadCubit extends Cubit<ThreadState> {
     ));
   }
 
+  /// [kind] is `gif` or `sticker` (Giphy sticker pack).
+  Future<void> sendGif({
+    required String gifId,
+    required String url,
+    String? previewUrl,
+    int? width,
+    int? height,
+    required String kind,
+  }) async {
+    if (url.trim().isEmpty || gifId.trim().isEmpty) return;
+    final body = jsonEncode({
+      'gif_id': gifId,
+      'url': url,
+      if (previewUrl != null && previewUrl.isNotEmpty) 'preview_url': previewUrl,
+      if (width != null && width > 0) 'width': width,
+      if (height != null && height > 0) 'height': height,
+      'kind': kind,
+    });
+    final replyId = state.replyTo?.id;
+    emit(state.copyWith(replyTo: null, error: null));
+    unawaited(_repo.sendTextOptimistic(
+      localId: _newLocalId(),
+      conversationId: conversationId,
+      body: body,
+      contentType: kMamanaGifContentType,
+      replyToMessageId: replyId,
+    ));
+  }
+
   Future<void> editMessage(int messageId, String newBody) async {
     if (newBody.trim().isEmpty) return;
     try {

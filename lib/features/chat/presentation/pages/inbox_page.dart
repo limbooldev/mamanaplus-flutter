@@ -10,6 +10,7 @@ import '../../../../core/formatting/relative_message_time.dart';
 import '../../../../core/database/app_database.dart';
 import '../../../../core/jwt_util.dart';
 import '../../../../shared/ui/ui.dart';
+import '../../conversation_preview.dart';
 import '../../data/chat_repository.dart';
 import '../cubit/auth_cubit.dart';
 import '../cubit/inbox_cubit.dart';
@@ -205,8 +206,8 @@ class _ChatsTab extends StatelessWidget {
   }
 
   String _previewLine(LocalConversation c, bool isGroup) {
-    final preview = c.lastMessagePreview?.trim();
-    if (preview != null && preview.isNotEmpty) return preview;
+    final preview = normalizeConversationListPreview(c.lastMessagePreview);
+    if (preview.isNotEmpty) return preview;
     return isGroup ? 'Group' : 'Direct message';
   }
 

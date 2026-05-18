@@ -70,6 +70,16 @@ flutter run --flavor dev --dart-define=API_BASE_URL=https://mamana.getapi.cloud
 flutter build apk --flavor prod --dart-define=API_BASE_URL=http://10.0.2.2:8080
 ```
 
+## Giphy (chat GIF / sticker picker)
+
+Set at compile time (empty = picker disabled, rest of chat works):
+
+```bash
+flutter run --dart-define=GIPHY_API_KEY=your_giphy_api_key
+```
+
+**CI:** add repository secret `GIPHY_API_KEY` in GitHub Actions; release and profile Android workflows pass it via `--dart-define` when the secret is set.
+
 ## Cursor / AI rules
 
 Agent conventions live in [`.cursor/rules/`](.cursor/rules/). For **multi-root** development, add this repo and `mamanaplus-backend` as workspace folders; if you keep a local `MamanaPlus_v2` hub (legacy Android + shared rules), open `mamana_plus.code-workspace` from that folder.

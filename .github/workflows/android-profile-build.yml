@@ -7,6 +7,7 @@
 #   ASSETS_ENV                    — optional; appended to assets/.env
 #   FIREBASE_AUTH_TOKEN           — base64-encoded Google Cloud service account JSON (Firebase App Distribution)
 #   FIREBASE_ANDROID_PROFILE_APP_ID — Firebase Android app ID for the staging package (com.mamanaplus.android.profile)
+#   GIPHY_API_KEY                   — Giphy API key for chat GIF/sticker picker (compile-time dart-define)
 name: Build Android Profile APK
 
 on:
@@ -85,7 +86,14 @@ jobs:
           echo "${{ secrets.ASSETS_ENV }}" >> assets/.env
 
       - name: Build profile APK
-        run: flutter build apk --flavor staging --profile
+        env:
+          GIPHY_API_KEY: ${{ secrets.GIPHY_API_KEY }}
+        run: |
+          DART_DEFINES=()
+          if [ -n "$GIPHY_API_KEY" ]; then
+            DART_DEFINES+=(--dart-define=GIPHY_API_KEY="$GIPHY_API_KEY")
+          fi
+          flutter build apk --flavor staging --profile "${DART_DEFINES[@]}"
 
       - name: Set up Node (Firebase CLI)
         uses: actions/setup-node@v4

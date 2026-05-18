@@ -8,6 +8,7 @@
 #   FIREBASE_AUTH_TOKEN              — base64-encoded service account JSON (App Distribution)
 #   FIREBASE_ANDROID_APP_ID          — Firebase Android app ID for prod (com.mamanaplus.android)
 #   ANDROID_PLAY_STORE_SERVICE_ACCOUNT — base64-encoded Play Console JSON key (only if Play upload enabled)
+#   GIPHY_API_KEY                    — Giphy API key for chat GIF/sticker picker (compile-time dart-define)
 name: Build Android Release
 
 on:
@@ -97,9 +98,15 @@ jobs:
           echo "${{ secrets.ASSETS_ENV }}" >> assets/.env
 
       - name: Build release APK and AAB
+        env:
+          GIPHY_API_KEY: ${{ secrets.GIPHY_API_KEY }}
         run: |
-          flutter build apk --flavor prod --release
-          flutter build appbundle --flavor prod --release
+          DART_DEFINES=()
+          if [ -n "$GIPHY_API_KEY" ]; then
+            DART_DEFINES+=(--dart-define=GIPHY_API_KEY="$GIPHY_API_KEY")
+          fi
+          flutter build apk --flavor prod --release "${DART_DEFINES[@]}"
+          flutter build appbundle --flavor prod --release "${DART_DEFINES[@]}"
 
       - name: Set up Node (Firebase CLI)
         uses: actions/setup-node@v4

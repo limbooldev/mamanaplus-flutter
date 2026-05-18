@@ -8,6 +8,7 @@ import 'package:path_provider/path_provider.dart';
 
 import '../../../core/database/app_database.dart';
 import '../../../core/token_storage.dart';
+import '../conversation_preview.dart';
 import '../media_constants.dart';
 import 'chat_remote_datasource.dart';
 import 'chat_socket.dart';
@@ -308,7 +309,9 @@ class ChatRepository {
         if (m['peer'] != null) {
           peerJson = jsonEncode(m['peer']);
         }
-        final preview = m['last_message_preview'] as String?;
+        final preview = normalizeConversationListPreview(
+          m['last_message_preview'] as String?,
+        );
         final lastAtRaw = m['last_message_at'] as String?;
         final lastAt = DateTime.tryParse(lastAtRaw ?? '');
         final unread = _parseUnreadCount(m);
@@ -319,7 +322,7 @@ class ChatRepository {
             type: type,
             title: Value(title),
             peerJson: Value(peerJson),
-            lastMessagePreview: Value(preview),
+            lastMessagePreview: Value(preview.isEmpty ? null : preview),
             lastMessageAt: Value(lastAt),
             unreadCount: Value(unread),
             updatedAt: DateTime.now(),
@@ -402,6 +405,44 @@ class ChatRepository {
         );
       }
     });
+    await _touchConversationPreviewFromMessages(conversationId, items);
+  }
+
+  /// Updates inbox preview from the newest message in [items] (e.g. after send/WS).
+  Future<void> _touchConversationPreviewFromMessages(
+    int conversationId,
+    List<Map<String, dynamic>> items,
+  ) async {
+    if (items.isEmpty) return;
+    Map<String, dynamic>? newest;
+    DateTime? newestAt;
+    for (final m in items) {
+      final created =
+          DateTime.tryParse(m['created_at'] as String? ?? '') ?? DateTime.now();
+      if (newestAt == null || created.isAfter(newestAt)) {
+        newestAt = created;
+        newest = m;
+      }
+    }
+    if (newest == null) return;
+    final body = newest['body'] as String? ?? '';
+    final ct = newest['content_type'] as String? ?? 'text/plain';
+    final storyMid = newest['story_media_id'];
+    final storyId = storyMid == null ? null : (storyMid as num).toInt();
+    final preview = conversationPreviewForMessage(
+      body: body,
+      contentType: ct,
+      storyMediaId: storyId,
+    );
+    await (_db.update(_db.localConversations)
+          ..where((t) => t.id.equals(conversationId)))
+        .write(
+      LocalConversationsCompanion(
+        lastMessagePreview: Value(preview),
+        lastMessageAt: Value(newestAt),
+        updatedAt: Value(DateTime.now()),
+      ),
+    );
   }
 
   Future<List<LocalMessage>> loadMessagesLocal(int conversationId) {
@@ -440,7 +481,9 @@ class ChatRepository {
     if (m['peer'] != null) {
       peerJson = jsonEncode(m['peer']);
     }
-    final preview = m['last_message_preview'] as String?;
+    final preview = normalizeConversationListPreview(
+      m['last_message_preview'] as String?,
+    );
     final lastAtRaw = m['last_message_at'] as String?;
     final lastAt = DateTime.tryParse(lastAtRaw ?? '');
     final unread = _parseUnreadCount(m);
@@ -452,7 +495,7 @@ class ChatRepository {
             type: type,
             title: Value(title),
             peerJson: Value(peerJson),
-            lastMessagePreview: Value(preview),
+            lastMessagePreview: Value(preview.isEmpty ? null : preview),
             lastMessageAt: Value(lastAt),
             unreadCount: Value(unread),
             updatedAt: DateTime.now(),

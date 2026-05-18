@@ -104,6 +104,42 @@ List<Message> mapLocalMessagesToChatMessages(
       status = null;
     }
 
+    if (m.contentType == kMamanaGifContentType) {
+      try {
+        final map = jsonDecode(m.body) as Map<String, dynamic>;
+        final url = map['url'] as String? ?? '';
+        final preview = map['preview_url'] as String? ?? url;
+        final kind = map['kind'] as String? ?? 'gif';
+        final w = (map['width'] as num?)?.toInt() ?? 0;
+        final h = (map['height'] as num?)?.toInt() ?? 0;
+        return Message.custom(
+          id: id,
+          authorId: authorId,
+          createdAt: m.createdAt,
+          replyToMessageId: replyTo,
+          status: status,
+          metadata: {
+            'mamanaGifUrl': url,
+            'mamanaGifPreviewUrl': preview,
+            'mamanaGifKind': kind,
+            if (w > 0) 'mamanaGifWidth': w,
+            if (h > 0) 'mamanaGifHeight': h,
+            ...meta,
+          },
+        );
+      } catch (_) {
+        return Message.text(
+          id: id,
+          authorId: authorId,
+          text: '(gif)',
+          createdAt: m.createdAt,
+          replyToMessageId: replyTo,
+          status: status,
+          metadata: meta.isEmpty ? null : meta,
+        );
+      }
+    }
+
     if (m.contentType == kMamanaStickerContentType) {
       var emoji = '💬';
       String? sid;
@@ -253,6 +289,42 @@ List<Message> mapPendingOutboxToChatMessages(
       allMessages,
       replyPreview,
     );
+
+    if (row.contentType == kMamanaGifContentType) {
+      try {
+        final map = jsonDecode(row.body) as Map<String, dynamic>;
+        final url = map['url'] as String? ?? '';
+        final preview = map['preview_url'] as String? ?? url;
+        final kind = map['kind'] as String? ?? 'gif';
+        final w = (map['width'] as num?)?.toInt() ?? 0;
+        final h = (map['height'] as num?)?.toInt() ?? 0;
+        return Message.custom(
+          id: id,
+          authorId: authorId,
+          createdAt: row.createdAt,
+          replyToMessageId: replyTo,
+          status: status,
+          metadata: {
+            'mamanaGifUrl': url,
+            'mamanaGifPreviewUrl': preview,
+            'mamanaGifKind': kind,
+            if (w > 0) 'mamanaGifWidth': w,
+            if (h > 0) 'mamanaGifHeight': h,
+            ...meta,
+          },
+        );
+      } catch (_) {
+        return Message.text(
+          id: id,
+          authorId: authorId,
+          text: '(gif)',
+          createdAt: row.createdAt,
+          replyToMessageId: replyTo,
+          status: status,
+          metadata: meta.isEmpty ? null : meta,
+        );
+      }
+    }
 
     if (row.contentType == kMamanaStickerContentType) {
       var emoji = '💬';

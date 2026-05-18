@@ -12,9 +12,11 @@ import 'package:image_picker/image_picker.dart';
 import 'package:mamana_plus/l10n/app_localizations.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
+import 'package:giphy_get/giphy_get.dart';
 import 'package:record/record.dart';
 
 import '../../../../core/api_config.dart';
+import '../../../../core/giphy_config.dart';
 import '../../../../core/notification_dismiss.dart';
 import '../../../../core/database/app_database.dart';
 import '../../../../core/jwt_util.dart';
@@ -27,7 +29,9 @@ import '../mappers/local_message_to_chat_message.dart';
 import '../widgets/chat_image_editor_flow.dart';
 import '../widgets/chat_video_editor_flow.dart';
 import '../widgets/message_status_icon.dart';
+import '../widgets/mamana_gif_bubble.dart';
 import '../widgets/reply_quote.dart';
+import '../widgets/thread_composer_with_panel.dart';
 import '../widgets/thread_media_widgets.dart';
 import '../../../social/presentation/pages/user_profile_page.dart';
 
@@ -86,18 +90,92 @@ class _ThreadScaffold extends StatefulWidget {
 
 class _ThreadScaffoldState extends State<_ThreadScaffold> {
   final _composerController = TextEditingController();
+  final _composerFocusNode = FocusNode();
   late final InMemoryChatController _chatController;
   Timer? _typingIdleTimer;
   String _lastChatSyncSig = '';
   var _muteLoaded = false;
   var _muted = false;
+  var _showEmojiPanel = false;
+  var _emojiPanelTab = 0;
+  double _keyboardHeight = 280;
+  final _giphyApiKey = GiphyConfig.fromEnvironment().apiKey;
 
   @override
   void initState() {
     super.initState();
     _chatController = InMemoryChatController();
     _composerController.addListener(_handleComposerTextChanged);
+    _composerFocusNode.addListener(_onComposerFocusChanged);
     dismissConversationNotification(widget.conversationId);
+  }
+
+  void _onComposerFocusChanged() {
+    if (_composerFocusNode.hasFocus && _showEmojiPanel) {
+      setState(() => _showEmojiPanel = false);
+    }
+  }
+
+  void _captureKeyboardHeight(BuildContext context) {
+    final inset = MediaQuery.viewInsetsOf(context).bottom;
+    if (inset > 200 && (inset - _keyboardHeight).abs() > 1) {
+      _keyboardHeight = inset;
+    }
+  }
+
+  void _toggleEmojiPanel({int tab = 0}) {
+    if (_showEmojiPanel && _emojiPanelTab == tab) {
+      setState(() => _showEmojiPanel = false);
+      _composerFocusNode.requestFocus();
+      return;
+    }
+    _captureKeyboardHeight(context);
+    FocusScope.of(context).unfocus();
+    setState(() {
+      _showEmojiPanel = true;
+      _emojiPanelTab = tab;
+    });
+  }
+
+  void _insertEmoji(String emoji) {
+    final text = _composerController.text;
+    final sel = _composerController.selection;
+    final start = sel.start >= 0 ? sel.start : text.length;
+    final end = sel.end >= 0 ? sel.end : text.length;
+    final next = text.replaceRange(start, end, emoji);
+    _composerController.value = TextEditingValue(
+      text: next,
+      selection: TextSelection.collapsed(offset: start + emoji.length),
+    );
+  }
+
+  void _sendGiphySelection(GiphyGif gif, {required String kind}) {
+    final images = gif.images;
+    final url = images?.original?.url ??
+        images?.fixedWidth.url ??
+        gif.url ??
+        '';
+    final gifId = gif.id ?? '';
+    if (url.isEmpty || gifId.isEmpty) return;
+    final preview = images?.fixedWidth.url ??
+        images?.fixedWidthStill?.url ??
+        url;
+    int? w;
+    int? h;
+    final orig = images?.original;
+    if (orig != null) {
+      w = int.tryParse(orig.width);
+      h = int.tryParse(orig.height);
+    }
+    context.read<ThreadCubit>().sendGif(
+          gifId: gifId,
+          url: url,
+          previewUrl: preview,
+          width: w,
+          height: h,
+          kind: kind,
+        );
+    setState(() => _showEmojiPanel = false);
   }
 
   @override
@@ -113,7 +191,9 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
   void dispose() {
     _typingIdleTimer?.cancel();
     _composerController.removeListener(_handleComposerTextChanged);
+    _composerFocusNode.removeListener(_onComposerFocusChanged);
     _composerController.dispose();
+    _composerFocusNode.dispose();
     _chatController.dispose();
     super.dispose();
   }
@@ -435,6 +515,7 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
                 }
                 final typing = state.typingUserIds.isNotEmpty;
                 final isDark = theme.brightness == Brightness.dark;
+                _captureKeyboardHeight(context);
                 final chatTheme = _buildChatTheme(theme, isDark);
                 final maxBubbleW = math.min(340.0, MediaQuery.sizeOf(context).width * 0.78);
                 return Chat(
@@ -502,6 +583,22 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
                               ),
                             ),
                           ),
+                        );
+                      }
+                      final gifUrl = message.metadata?['mamanaGifUrl'] as String?;
+                      if (gifUrl != null && gifUrl.isNotEmpty) {
+                        final preview =
+                            message.metadata?['mamanaGifPreviewUrl'] as String? ?? gifUrl;
+                        final w = message.metadata?['mamanaGifWidth'] as int?;
+                        final h = message.metadata?['mamanaGifHeight'] as int?;
+                        return MamanaGifBubble(
+                          url: gifUrl,
+                          previewUrl: preview,
+                          isSentByMe: isSentByMe,
+                          width: w,
+                          height: h,
+                          maxWidth: maxBubbleW,
+                          onTap: () => _openGifFullscreen(context, gifUrl),
                         );
                       }
                       final emoji = message.metadata?['mamanaStickerEmoji'] as String?;
@@ -870,12 +967,20 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
                     // Positioned(bottom: 0). A raw Column here pins to the top — use
                     // [Composer.topWidget] so reply/search sits above the field but
                     // the bar stays at the bottom.
-                    composerBuilder: (ctx) => Composer(
+                    composerBuilder: (ctx) => ThreadComposerWithPanel(
                       textEditingController: _composerController,
+                      focusNode: _composerFocusNode,
                       hintText: l10n.composerHint,
-                      // Pending bubbles already convey progress; never block the
-                      // composer so users can keep typing/sending freely.
                       handleSafeArea: true,
+                      isDark: isDark,
+                      showEmojiPanel: _showEmojiPanel,
+                      panelHeight: _keyboardHeight,
+                      panelInitialTab: _emojiPanelTab,
+                      giphyApiKey: _giphyApiKey,
+                      onToggleEmojiPanel: () => _toggleEmojiPanel(),
+                      onEmojiSelected: _insertEmoji,
+                      onGifSelected: (gif) => _sendGiphySelection(gif, kind: 'gif'),
+                      onStickerSelected: (gif) => _sendGiphySelection(gif, kind: 'sticker'),
                       topWidget: BlocBuilder<ThreadCubit, ThreadState>(
                         buildWhen: (a, b) =>
                             a.replyTo != b.replyTo || a.messageSearchQuery != b.messageSearchQuery,
@@ -988,44 +1093,29 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
     await context.read<ThreadCubit>().setMessageSearchQuery(q);
   }
 
-  Future<void> _openStickerPicker(BuildContext context) async {
-    List<Map<String, dynamic>> items = [];
-    try {
-      items = await context.read<ChatRepository>().listStickers();
-    } catch (_) {
-      items = [
-        {'id': 'wave', 'emoji': '👋'},
-        {'id': 'heart', 'emoji': '❤️'},
-      ];
-    }
-    if (!context.mounted) return;
-    await showModalBottomSheet<void>(
+  void _openGifFullscreen(BuildContext context, String url) {
+    showDialog<void>(
       context: context,
-      builder: (ctx) {
-        return SafeArea(
-          child: GridView.builder(
-            padding: const EdgeInsets.all(12),
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 5,
-              mainAxisSpacing: 8,
-              crossAxisSpacing: 8,
+      builder: (ctx) => Dialog(
+        backgroundColor: Colors.black,
+        insetPadding: const EdgeInsets.all(16),
+        child: Stack(
+          alignment: Alignment.center,
+          children: [
+            InteractiveViewer(
+              child: Image.network(url, fit: BoxFit.contain),
             ),
-            itemCount: items.length,
-            itemBuilder: (ctx, i) {
-              final row = items[i];
-              final emoji = row['emoji'] as String? ?? '💬';
-              final id = row['id'] as String? ?? '$i';
-              return InkWell(
-                onTap: () {
-                  Navigator.pop(ctx);
-                  context.read<ThreadCubit>().sendSticker(stickerId: id, emoji: emoji);
-                },
-                child: Center(child: Text(emoji, style: const TextStyle(fontSize: 36))),
-              );
-            },
-          ),
-        );
-      },
+            Positioned(
+              top: 8,
+              right: 8,
+              child: IconButton(
+                icon: const Icon(Icons.close, color: Colors.white),
+                onPressed: () => Navigator.pop(ctx),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -1036,11 +1126,6 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            ListTile(
-              leading: const Icon(Icons.emoji_emotions_outlined),
-              title: const Text('Stickers'),
-              onTap: () => Navigator.pop(ctx, 'stickers'),
-            ),
             ListTile(
               leading: const Icon(Icons.insert_emoticon_outlined),
               title: const Text('Sticker from photo'),
@@ -1074,9 +1159,6 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
     final cubit = context.read<ThreadCubit>();
     final picker = ImagePicker();
     switch (picked) {
-      case 'stickers':
-        await _openStickerPicker(context);
-        break;
       case 'sticker_image':
         final x = await picker.pickImage(source: ImageSource.gallery);
         if (x != null && context.mounted) {

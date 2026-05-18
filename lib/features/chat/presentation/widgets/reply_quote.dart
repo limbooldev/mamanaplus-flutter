@@ -5,6 +5,7 @@ import 'package:google_fonts/google_fonts.dart';
 
 import '../../../../core/database/app_database.dart';
 import '../../../../shared/ui/ui.dart';
+import '../../conversation_preview.dart';
 import '../../media_constants.dart';
 
 /// Parsed media envelope from a [LocalMessage] body.
@@ -83,35 +84,11 @@ String authorDisplayNameForMessage({
 
 /// Subtitle line under the author (text preview, Photo, Video, Voice message, …).
 String subtitleForLocalMessage(LocalMessage m) {
-  final media = parseMediaBody(m);
-  if (media != null) {
-    return switch (media.kind) {
-      'image' => 'Photo',
-      'voice' => 'Voice message',
-      'video' => 'Video',
-      'sticker' => 'Sticker',
-      _ => 'Message',
-    };
+  final preview = conversationPreviewForLocalMessage(m);
+  if (preview.length > 80) {
+    return '${preview.substring(0, 80)}…';
   }
-  if (m.contentType == kMamanaStickerContentType) {
-    try {
-      final map = jsonDecode(m.body) as Map<String, dynamic>;
-      return map['emoji'] as String? ?? 'Sticker';
-    } catch (_) {
-      return 'Sticker';
-    }
-  }
-  if (m.storyMediaId != null) {
-    return 'Story';
-  }
-  final t = m.body.trim();
-  if (t.isEmpty) {
-    return 'Message';
-  }
-  if (t.length > 80) {
-    return '${t.substring(0, 80)}…';
-  }
-  return t;
+  return preview;
 }
 
 /// Bakes reply preview fields into [metadata] so bubbles keep quotes after sync.

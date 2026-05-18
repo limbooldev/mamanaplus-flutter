@@ -3,3 +3,6 @@ const String kMamanaMediaContentType = 'application/vnd.mamana.media+json';
 
 /// Matches backend [chat.ContentTypeMamanaSticker].
 const String kMamanaStickerContentType = 'application/vnd.mamana.sticker+json';
+
+/// Matches backend [chat.ContentTypeMamanaGif] (Giphy GIF / sticker URLs).
+const String kMamanaGifContentType = 'application/vnd.mamana.gif+json';
