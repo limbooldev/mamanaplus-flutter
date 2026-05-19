@@ -357,19 +357,10 @@ class _SocialFeedPostCardState extends State<SocialFeedPostCard> {
                   borderRadius: BorderRadius.circular(8),
                   child: Row(
                     children: [
-                      CircleAvatar(
-                        radius: 18,
-                        backgroundColor: AppColors.primary.withValues(alpha: 0.25),
-                        child: Text(
-                          post.authorName.isNotEmpty
-                              ? post.authorName[0].toUpperCase()
-                              : '?',
-                          style: GoogleFonts.inter(
-                            fontSize: 15,
-                            fontWeight: FontWeight.w600,
-                            color: onSurface,
-                          ),
-                        ),
+                      UserAvatar(
+                        displayName: post.authorName,
+                        avatarMediaKey: post.authorAvatarMediaKey,
+                        size: 36,
                       ),
                       const SizedBox(width: 10),
                       Expanded(

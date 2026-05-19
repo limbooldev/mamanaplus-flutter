@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../../domain/social_models.dart';
+import 'social_media_widgets.dart';
 
 class SocialPostCommentTile extends StatelessWidget {
   const SocialPostCommentTile({
@@ -17,6 +18,11 @@ class SocialPostCommentTile extends StatelessWidget {
   Widget build(BuildContext context) {
     return ListTile(
       contentPadding: EdgeInsets.zero,
+      leading: UserAvatar(
+        displayName: comment.userName,
+        avatarMediaKey: comment.userAvatarMediaKey,
+        size: 36,
+      ),
       title: Text(
         comment.userName,
         style: GoogleFonts.inter(fontWeight: FontWeight.w600, fontSize: 13),

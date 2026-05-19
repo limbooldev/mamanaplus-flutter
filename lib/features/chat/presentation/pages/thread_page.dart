@@ -34,6 +34,7 @@ import '../widgets/reply_quote.dart';
 import '../widgets/thread_composer_with_panel.dart';
 import '../widgets/thread_media_widgets.dart';
 import '../../../social/presentation/pages/user_profile_page.dart';
+import '../../../social/presentation/widgets/social_media_widgets.dart';
 
 class ThreadPage extends StatelessWidget {
   const ThreadPage({
@@ -419,6 +420,7 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
         title: BlocBuilder<ThreadCubit, ThreadState>(
           buildWhen: (a, b) =>
               a.headerTitle != b.headerTitle ||
+              a.peerAvatarMediaKey != b.peerAvatarMediaKey ||
               a.loading != b.loading ||
               a.dmPeerUserId != b.dmPeerUserId,
           builder: (context, state) {
@@ -426,37 +428,18 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
                 context.read<ThreadCubit>().effectiveConversationType == 'group';
             final title = state.headerTitle?.trim();
             final String titleText;
-            final String initial;
             if (title != null && title.isNotEmpty) {
               titleText = title;
-              initial = title[0].toUpperCase();
             } else {
               titleText = l10n.threadTitle(widget.conversationId);
-              initial = '#';
             }
             final titleRow = Row(
               children: [
-                Container(
-                  width: 36,
-                  height: 36,
-                  decoration: const BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: [AppColors.primary, AppColors.primaryDeep],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                    ),
-                    shape: BoxShape.circle,
-                  ),
-                  child: Center(
-                    child: Text(
-                      initial,
-                      style: GoogleFonts.inter(
-                        color: Colors.white,
-                        fontWeight: FontWeight.w700,
-                        fontSize: 16,
-                      ),
-                    ),
-                  ),
+                UserAvatar(
+                  displayName: titleText,
+                  avatarMediaKey: isGroup ? null : state.peerAvatarMediaKey,
+                  size: 36,
+                  isGroup: isGroup,
                 ),
                 const SizedBox(width: 10),
                 Expanded(
@@ -586,10 +569,25 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
                 final maxBubbleW = math.min(340.0, MediaQuery.sizeOf(context).width * 0.78);
                 return Chat(
                   currentUserId: '${widget.myUserId}',
-                  resolveUser: (id) async => User(
-                    id: id,
-                    name: id == '${widget.myUserId}' ? l10n.userNameYou : l10n.userFallback(id),
-                  ),
+                  resolveUser: (id) async {
+                    final cubit = context.read<ThreadCubit>();
+                    final s = cubit.state;
+                    final isMe = id == '${widget.myUserId}';
+                    String? imageSource;
+                    final key = isMe
+                        ? s.myAvatarMediaKey
+                        : (s.dmPeerUserId?.toString() == id
+                            ? s.peerAvatarMediaKey
+                            : null);
+                    if (key != null && key.isNotEmpty) {
+                      imageSource = socialMediaResolveUrl(widget.apiBaseUrl, key);
+                    }
+                    return User(
+                      id: id,
+                      name: isMe ? l10n.userNameYou : l10n.userFallback(id),
+                      imageSource: imageSource,
+                    );
+                  },
                   chatController: _chatController,
                   theme: chatTheme,
                   backgroundColor: isDark ? AppColors.backgroundDark : AppColors.backgroundLight,

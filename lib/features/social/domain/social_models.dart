@@ -3,6 +3,7 @@ class SocialPost {
     required this.id,
     required this.authorId,
     required this.authorName,
+    this.authorAvatarMediaKey,
     required this.title,
     required this.content,
     required this.postType,
@@ -18,6 +19,7 @@ class SocialPost {
   final int id;
   final int authorId;
   final String authorName;
+  final String? authorAvatarMediaKey;
   final String title;
   final String content;
   final String postType;
@@ -33,6 +35,7 @@ class SocialPost {
     int? id,
     int? authorId,
     String? authorName,
+    String? authorAvatarMediaKey,
     String? title,
     String? content,
     String? postType,
@@ -48,6 +51,7 @@ class SocialPost {
       id: id ?? this.id,
       authorId: authorId ?? this.authorId,
       authorName: authorName ?? this.authorName,
+      authorAvatarMediaKey: authorAvatarMediaKey ?? this.authorAvatarMediaKey,
       title: title ?? this.title,
       content: content ?? this.content,
       postType: postType ?? this.postType,
@@ -66,6 +70,7 @@ class SocialPost {
       id: (j['id'] as num).toInt(),
       authorId: (j['author_id'] as num).toInt(),
       authorName: j['author_name'] as String? ?? '',
+      authorAvatarMediaKey: j['author_avatar_media_key'] as String?,
       title: j['title'] as String? ?? '',
       content: j['content'] as String? ?? '',
       postType: j['post_type'] as String? ?? 'image',
@@ -87,6 +92,7 @@ class SocialComment {
     required this.postId,
     required this.userId,
     required this.userName,
+    this.userAvatarMediaKey,
     this.parentId,
     required this.body,
     required this.createdAt,
@@ -96,6 +102,7 @@ class SocialComment {
   final int postId;
   final int userId;
   final String userName;
+  final String? userAvatarMediaKey;
   final int? parentId;
   final String body;
   final DateTime createdAt;
@@ -106,6 +113,7 @@ class SocialComment {
       postId: (j['post_id'] as num).toInt(),
       userId: (j['user_id'] as num).toInt(),
       userName: j['user_name'] as String? ?? '',
+      userAvatarMediaKey: j['user_avatar_media_key'] as String?,
       parentId: (j['parent_id'] as num?)?.toInt(),
       body: j['body'] as String? ?? '',
       createdAt: DateTime.tryParse(j['created_at'] as String? ?? '') ??

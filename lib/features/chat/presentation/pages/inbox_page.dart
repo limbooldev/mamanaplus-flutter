@@ -15,6 +15,7 @@ import '../../data/chat_repository.dart';
 import '../cubit/auth_cubit.dart';
 import '../cubit/inbox_cubit.dart';
 import '../cubit/public_groups_cubit.dart';
+import '../../../social/presentation/widgets/social_media_widgets.dart';
 
 class InboxPage extends StatelessWidget {
   const InboxPage({super.key});
@@ -183,6 +184,7 @@ class _ChatsTab extends StatelessWidget {
               final isGroup = c.type == 'group';
               return _ConversationTile(
                 title: title,
+                avatarMediaKey: _avatarKeyFor(c),
                 previewLine: _previewLine(c, isGroup),
                 timeLabel: _timeLabel(context, c),
                 isGroup: isGroup,
@@ -230,6 +232,16 @@ class _ChatsTab extends StatelessWidget {
     }
     return l10n.chatFallbackId(c.id);
   }
+
+  String? _avatarKeyFor(LocalConversation c) {
+    if (c.peerJson == null) return null;
+    try {
+      final m = jsonDecode(c.peerJson!) as Map<String, dynamic>;
+      final k = (m['avatar_media_key'] as String?)?.trim();
+      if (k != null && k.isNotEmpty) return k;
+    } catch (_) {}
+    return null;
+  }
 }
 
 // ─── Conversation tile ────────────────────────────────────────────────────────
@@ -237,6 +249,7 @@ class _ChatsTab extends StatelessWidget {
 class _ConversationTile extends StatelessWidget {
   const _ConversationTile({
     required this.title,
+    this.avatarMediaKey,
     required this.previewLine,
     required this.timeLabel,
     required this.isGroup,
@@ -246,6 +259,7 @@ class _ConversationTile extends StatelessWidget {
   });
 
   final String title;
+  final String? avatarMediaKey;
   /// Last message preview or placeholder (no timestamp).
   final String previewLine;
   final String? timeLabel;
@@ -257,7 +271,6 @@ class _ConversationTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final initials = title.isNotEmpty ? title[0].toUpperCase() : '?';
     final titleColor = isDark
         ? AppColors.onBackgroundDark
         : AppColors.onBackgroundLight;
@@ -269,7 +282,11 @@ class _ConversationTile extends StatelessWidget {
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _Avatar(initials: initials, isGroup: isGroup),
+            UserAvatar(
+              displayName: title,
+              avatarMediaKey: avatarMediaKey,
+              isGroup: isGroup,
+            ),
             const SizedBox(width: 12),
             Expanded(
               child: Column(
@@ -364,42 +381,6 @@ class _UnreadBadge extends StatelessWidget {
   }
 }
 
-// ─── Avatar widget ────────────────────────────────────────────────────────────
-
-class _Avatar extends StatelessWidget {
-  const _Avatar({required this.initials, required this.isGroup});
-  final String initials;
-  final bool isGroup;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: 48,
-      height: 48,
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: isGroup
-              ? [AppColors.primaryDeep, AppColors.primary]
-              : [AppColors.primary, AppColors.primary.withValues(alpha: 0.75)],
-        ),
-        shape: BoxShape.circle,
-      ),
-      child: Center(
-        child: Text(
-          initials,
-          style: GoogleFonts.inter(
-            fontSize: 18,
-            fontWeight: FontWeight.w700,
-            color: Colors.white,
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 // ─── Public Groups tab ────────────────────────────────────────────────────────
 
 class _PublicGroupsTab extends StatelessWidget {
@@ -453,15 +434,12 @@ class _PublicGroupTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final initials =
-        group.title.isNotEmpty ? group.title[0].toUpperCase() : 'G';
-
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _Avatar(initials: initials, isGroup: true),
+          UserAvatar(displayName: group.title, isGroup: true),
           const SizedBox(width: 12),
           Expanded(
             child: Column(

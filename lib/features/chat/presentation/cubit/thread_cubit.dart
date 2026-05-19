@@ -27,6 +27,23 @@ String? _peerDisplayNameFromPeerJson(String? peerJson) {
   }
 }
 
+String? _peerAvatarMediaKeyFromPeerJson(String? peerJson) {
+  if (peerJson == null) return null;
+  try {
+    final m = jsonDecode(peerJson) as Map<String, dynamic>;
+    final k = (m['avatar_media_key'] as String?)?.trim();
+    if (k != null && k.isNotEmpty) return k;
+  } catch (_) {}
+  return null;
+}
+
+String? _peerAvatarMediaKeyFromPeerField(dynamic peer) {
+  if (peer is! Map) return null;
+  final k = (peer['avatar_media_key'] as String?)?.trim();
+  if (k != null && k.isNotEmpty) return k;
+  return null;
+}
+
 String? _peerDisplayNameFromPeerField(dynamic peer) {
   if (peer is! Map) return null;
   return (peer['display_name'] as String?)?.trim();
@@ -66,7 +83,9 @@ class ThreadState extends Equatable {
     this.replyTo,
     this.readCursorByUserId = const {},
     this.headerTitle,
+    this.peerAvatarMediaKey,
     this.myDisplayName,
+    this.myAvatarMediaKey,
     this.dmPeerUserId,
     this.messageSearchQuery,
   });
@@ -88,8 +107,14 @@ class ThreadState extends Equatable {
   /// App bar title for private (peer name) or group (title); null → fallback `Thread #id`.
   final String? headerTitle;
 
+  /// Private DM: peer profile photo object key.
+  final String? peerAvatarMediaKey;
+
   /// Authenticated user's display name (for reply quotes to own messages).
   final String? myDisplayName;
+
+  /// Authenticated user's profile photo object key.
+  final String? myAvatarMediaKey;
 
   /// Private DM: other participant's user id (for block-from-thread, etc.).
   final int? dmPeerUserId;
@@ -107,7 +132,9 @@ class ThreadState extends Equatable {
     Object? replyTo = _unsetReplyTo,
     Map<int, int>? readCursorByUserId,
     String? headerTitle,
+    String? peerAvatarMediaKey,
     String? myDisplayName,
+    String? myAvatarMediaKey,
     int? dmPeerUserId,
     String? messageSearchQuery,
     bool clearMessageSearch = false,
@@ -124,7 +151,9 @@ class ThreadState extends Equatable {
             : replyTo as LocalMessage?,
         readCursorByUserId: readCursorByUserId ?? this.readCursorByUserId,
         headerTitle: headerTitle ?? this.headerTitle,
+        peerAvatarMediaKey: peerAvatarMediaKey ?? this.peerAvatarMediaKey,
         myDisplayName: myDisplayName ?? this.myDisplayName,
+        myAvatarMediaKey: myAvatarMediaKey ?? this.myAvatarMediaKey,
         dmPeerUserId: dmPeerUserId ?? this.dmPeerUserId,
         messageSearchQuery:
             clearMessageSearch ? null : (messageSearchQuery ?? this.messageSearchQuery),
@@ -151,7 +180,9 @@ class ThreadState extends Equatable {
         replyTo,
         readCursorByUserId,
         headerTitle,
+        peerAvatarMediaKey,
         myDisplayName,
+        myAvatarMediaKey,
         dmPeerUserId,
         messageSearchQuery,
       ];
@@ -324,9 +355,11 @@ class ThreadCubit extends Cubit<ThreadState> {
     try {
       final me = await _repo.fetchMe();
       final name = (me['display_name'] as String?)?.trim();
-      if (name != null && name.isNotEmpty) {
-        emit(state.copyWith(myDisplayName: name));
-      }
+      final avatar = (me['avatar_media_key'] as String?)?.trim();
+      emit(state.copyWith(
+        myDisplayName: (name != null && name.isNotEmpty) ? name : null,
+        myAvatarMediaKey: (avatar != null && avatar.isNotEmpty) ? avatar : null,
+      ));
     } catch (_) {}
   }
 
@@ -346,8 +379,10 @@ class ThreadCubit extends Cubit<ThreadState> {
     if (type != 'private') return;
 
     var name = _peerDisplayNameFromPeerJson(local?.peerJson);
+    var avatar = _peerAvatarMediaKeyFromPeerJson(local?.peerJson);
     if ((name == null || name.isEmpty) && prefetched != null) {
       name = _peerDisplayNameFromPeerField(prefetched['peer']);
+      avatar ??= _peerAvatarMediaKeyFromPeerField(prefetched['peer']);
       if (name != null && name.isNotEmpty) {
         await _repo.upsertLocalConversationFromDto(prefetched);
       }
@@ -357,10 +392,13 @@ class ThreadCubit extends Cubit<ThreadState> {
         final raw = prefetched ?? await _repo.fetchConversation(conversationId);
         await _repo.upsertLocalConversationFromDto(raw);
         name = _peerDisplayNameFromPeerField(raw['peer']);
+        avatar ??= _peerAvatarMediaKeyFromPeerField(raw['peer']);
       } catch (_) {}
     }
     if (name != null && name.isNotEmpty) {
-      emit(state.copyWith(headerTitle: name));
+      emit(state.copyWith(headerTitle: name, peerAvatarMediaKey: avatar));
+    } else if (avatar != null) {
+      emit(state.copyWith(peerAvatarMediaKey: avatar));
     }
   }
 

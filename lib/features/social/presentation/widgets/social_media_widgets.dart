@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import 'package:video_player/video_player.dart';
 
 import '../../../../core/api_config.dart';
+import '../../../../shared/ui/ui.dart';
 import '../../../chat/presentation/cubit/auth_cubit.dart';
 
 /// Returns true when [ref] is an absolute HTTP(S) URL (legacy / external media).
@@ -205,6 +207,67 @@ class _SocialPostVideoState extends State<SocialPostVideo> {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Circular profile photo with initials fallback (object key or remote URL).
+class UserAvatar extends StatelessWidget {
+  const UserAvatar({
+    super.key,
+    required this.displayName,
+    this.avatarMediaKey,
+    this.size = 48,
+    this.isGroup = false,
+  });
+
+  final String displayName;
+  final String? avatarMediaKey;
+  final double size;
+  final bool isGroup;
+
+  String get _initial {
+    final t = displayName.trim();
+    if (t.isEmpty) return '?';
+    return t[0].toUpperCase();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final key = avatarMediaKey?.trim();
+    if (key != null && key.isNotEmpty) {
+      return ClipOval(
+        child: SizedBox(
+          width: size,
+          height: size,
+          child: SocialPostImage(mediaRef: key, fit: BoxFit.cover),
+        ),
+      );
+    }
+    final fontSize = size * 0.375;
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: isGroup
+              ? [AppColors.primaryDeep, AppColors.primary]
+              : [AppColors.primary, AppColors.primary.withValues(alpha: 0.75)],
+        ),
+        shape: BoxShape.circle,
+      ),
+      child: Center(
+        child: Text(
+          _initial,
+          style: GoogleFonts.inter(
+            fontSize: fontSize,
+            fontWeight: FontWeight.w700,
+            color: Colors.white,
+          ),
+        ),
       ),
     );
   }
