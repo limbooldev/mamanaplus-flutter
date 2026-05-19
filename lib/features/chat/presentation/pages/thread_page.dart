@@ -340,15 +340,35 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
     return replyPreviewDataFromMetadata(message.metadata) != null;
   }
 
+  void _closeEmojiPanel() {
+    if (!_showEmojiPanel) return;
+    setState(() => _showEmojiPanel = false);
+  }
+
+  void _handleThreadBack() {
+    if (_showEmojiPanel) {
+      _closeEmojiPanel();
+      return;
+    }
+    Navigator.of(context).pop();
+  }
+
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
     final theme = Theme.of(context);
-    return Scaffold(
+    return PopScope(
+      canPop: !_showEmojiPanel,
+      onPopInvokedWithResult: (didPop, result) {
+        if (!didPop && _showEmojiPanel) {
+          _closeEmojiPanel();
+        }
+      },
+      child: Scaffold(
       appBar: AppBar(
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_ios_new_rounded),
-          onPressed: () => Navigator.of(context).pop(),
+          onPressed: _handleThreadBack,
         ),
         title: BlocBuilder<ThreadCubit, ThreadState>(
           buildWhen: (a, b) =>
@@ -1051,6 +1071,7 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
             ),
           ),
         ],
+      ),
       ),
     );
   }

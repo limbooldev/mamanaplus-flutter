@@ -88,6 +88,7 @@ class _EmojiStickerGifPanelState extends State<EmojiStickerGifPanel>
               labelColor: indicator,
               unselectedLabelColor: indicator.withValues(alpha: 0.5),
               indicatorColor: Theme.of(context).colorScheme.primary,
+              dividerHeight: 0,
               tabs: const [
                 Tab(text: 'Emoji'),
                 Tab(text: 'Sticker'),

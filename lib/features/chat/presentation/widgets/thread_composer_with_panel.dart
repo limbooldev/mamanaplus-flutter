@@ -77,6 +77,9 @@ class _ThreadComposerWithPanelState extends State<ThreadComposerWithPanel> {
     final theme = context.read<ChatTheme>();
     final onAttachmentTap = context.read<OnAttachmentTapCallback?>();
 
+    // Safe area belongs under the emoji panel, not between composer and tabs.
+    final composerBottomPad = widget.showEmojiPanel ? 8.0 : 8.0 + bottomSafe;
+
     final bar = Material(
       color: widget.isDark ? const Color(0xFF1C1C1E) : const Color(0xFFF2F2F7),
       child: Column(
@@ -84,7 +87,7 @@ class _ThreadComposerWithPanelState extends State<ThreadComposerWithPanel> {
         children: [
           widget.topWidget,
           Padding(
-            padding: EdgeInsets.fromLTRB(8, 8, 8, 8 + bottomSafe),
+            padding: EdgeInsets.fromLTRB(8, 8, 8, composerBottomPad),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
@@ -162,14 +165,17 @@ class _ThreadComposerWithPanelState extends State<ThreadComposerWithPanel> {
       children: [
         bar,
         if (widget.showEmojiPanel)
-          EmojiStickerGifPanel(
-            height: widget.panelHeight,
-            giphyApiKey: widget.giphyApiKey,
-            initialTabIndex: widget.panelInitialTab,
-            isDark: widget.isDark,
-            onEmojiSelected: widget.onEmojiSelected,
-            onGifSelected: widget.onGifSelected,
-            onStickerSelected: widget.onStickerSelected,
+          Padding(
+            padding: EdgeInsets.only(bottom: bottomSafe),
+            child: EmojiStickerGifPanel(
+              height: widget.panelHeight,
+              giphyApiKey: widget.giphyApiKey,
+              initialTabIndex: widget.panelInitialTab,
+              isDark: widget.isDark,
+              onEmojiSelected: widget.onEmojiSelected,
+              onGifSelected: widget.onGifSelected,
+              onStickerSelected: widget.onStickerSelected,
+            ),
           ),
       ],
     );
