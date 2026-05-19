@@ -346,6 +346,7 @@ class ReplyQuote extends StatelessWidget {
     required this.textColor,
     required this.accessToken,
     this.onPrimaryBubble = false,
+    this.onTap,
   });
 
   final ReplyPreviewData data;
@@ -355,6 +356,9 @@ class ReplyQuote extends StatelessWidget {
 
   /// True when the quote sits on the user's primary-colored sent bubble.
   final bool onPrimaryBubble;
+
+  /// Scroll to the quoted message when set (Telegram-style).
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -367,7 +371,7 @@ class ReplyQuote extends StatelessWidget {
         ? Colors.black.withValues(alpha: 0.22)
         : textColor.withValues(alpha: 0.12);
 
-    return Container(
+    final quote = Container(
       width: double.infinity,
       margin: const EdgeInsets.only(bottom: 6),
       padding: const EdgeInsets.only(left: 8, top: 4, bottom: 4, right: 4),
@@ -414,6 +418,17 @@ class ReplyQuote extends StatelessWidget {
             _ReplyThumbnail(url: data.thumbnailUrl!, accessToken: accessToken),
           ],
         ],
+      ),
+    );
+
+    if (onTap == null) return quote;
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: const BorderRadius.horizontal(left: Radius.circular(4)),
+        child: quote,
       ),
     );
   }

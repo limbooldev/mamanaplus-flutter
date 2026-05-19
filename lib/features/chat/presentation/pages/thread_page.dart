@@ -353,6 +353,52 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
     Navigator.of(context).pop();
   }
 
+  VoidCallback? _replyQuoteTapHandler(BuildContext chatContext, Message message) {
+    final replyId = message.replyToMessageId;
+    if (replyId == null || replyId.isEmpty) return null;
+    return () => unawaited(_scrollToRepliedMessage(chatContext, replyId));
+  }
+
+  Future<void> _scrollToRepliedMessage(
+    BuildContext chatContext,
+    String messageId,
+  ) async {
+    _closeEmojiPanel();
+    if (!mounted) return;
+
+    final found = _chatController.messages.any((m) => m.id == messageId);
+    if (!found) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Original message is not in this thread')),
+      );
+      return;
+    }
+
+    double bottomReserve = 96;
+    try {
+      final composerH = chatContext.read<ComposerHeightNotifier>().height;
+      final safeBottom = MediaQuery.paddingOf(chatContext).bottom;
+      bottomReserve = (composerH + safeBottom + 24).clamp(72.0, 220.0);
+    } catch (_) {
+      // chatContext must be from inside [Chat]; fallback if provider is missing.
+    }
+
+    try {
+      await _chatController.scrollToMessage(
+        messageId,
+        duration: const Duration(milliseconds: 300),
+        alignment: 0.25,
+        offset: bottomReserve,
+      );
+    } catch (_) {
+      await _chatController.scrollToMessage(
+        messageId,
+        duration: const Duration(milliseconds: 300),
+        alignment: 0.25,
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
@@ -735,6 +781,7 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
                                     textColor: fg,
                                     accessToken: widget.accessToken,
                                     onPrimaryBubble: isSentByMe,
+                                    onTap: _replyQuoteTapHandler(context, message),
                                   ),
                                 Align(
                                   alignment: Alignment.centerLeft,
@@ -855,6 +902,7 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
                                   textColor: fg,
                                   accessToken: widget.accessToken,
                                   onPrimaryBubble: isSentByMe,
+                                  onTap: _replyQuoteTapHandler(context, message),
                                 ),
                               ClipRRect(
                                 borderRadius: BorderRadius.circular(8),
@@ -940,6 +988,7 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
                                     textColor: fg,
                                     accessToken: widget.accessToken,
                                     onPrimaryBubble: isSentByMe,
+                                    onTap: _replyQuoteTapHandler(context, message),
                                   ),
                                 ),
                               ThreadAudioBubble(
