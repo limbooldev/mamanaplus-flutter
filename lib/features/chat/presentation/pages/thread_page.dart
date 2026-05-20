@@ -31,6 +31,7 @@ import '../widgets/chat_video_editor_flow.dart';
 import '../widgets/message_status_icon.dart';
 import '../widgets/mamana_gif_bubble.dart';
 import '../widgets/reply_quote.dart';
+import '../widgets/scroll_target_highlight.dart';
 import '../widgets/thread_composer_with_panel.dart';
 import '../widgets/thread_media_widgets.dart';
 import '../../../social/presentation/pages/user_profile_page.dart';
@@ -101,6 +102,8 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
   var _emojiPanelTab = 0;
   double _keyboardHeight = 280;
   final _giphyApiKey = GiphyConfig.fromEnvironment().apiKey;
+  String? _scrollHighlightMessageId;
+  Timer? _scrollHighlightTimer;
 
   @override
   void initState() {
@@ -190,6 +193,7 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
 
   @override
   void dispose() {
+    _scrollHighlightTimer?.cancel();
     _typingIdleTimer?.cancel();
     _composerController.removeListener(_handleComposerTextChanged);
     _composerFocusNode.removeListener(_onComposerFocusChanged);
@@ -357,7 +361,27 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
   VoidCallback? _replyQuoteTapHandler(BuildContext chatContext, Message message) {
     final replyId = message.replyToMessageId;
     if (replyId == null || replyId.isEmpty) return null;
-    return () => unawaited(_scrollToRepliedMessage(chatContext, replyId));
+    return () {
+      HapticFeedback.selectionClick();
+      unawaited(_scrollToRepliedMessage(chatContext, replyId));
+    };
+  }
+
+  void _pulseScrollTarget(String messageId) {
+    _scrollHighlightTimer?.cancel();
+    setState(() => _scrollHighlightMessageId = messageId);
+    _scrollHighlightTimer = Timer(const Duration(milliseconds: 900), () {
+      if (mounted) {
+        setState(() => _scrollHighlightMessageId = null);
+      }
+    });
+  }
+
+  Widget _wrapScrollTargetHighlight(String messageId, Widget child) {
+    return ScrollTargetHighlight(
+      active: _scrollHighlightMessageId == messageId,
+      child: child,
+    );
   }
 
   Future<void> _scrollToRepliedMessage(
@@ -384,19 +408,28 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
       // chatContext must be from inside [Chat]; fallback if provider is missing.
     }
 
+    const scrollDuration = Duration(milliseconds: 500);
+    const scrollCurve = Curves.easeInOutCubic;
+
     try {
       await _chatController.scrollToMessage(
         messageId,
-        duration: const Duration(milliseconds: 300),
+        duration: scrollDuration,
+        curve: scrollCurve,
         alignment: 0.25,
         offset: bottomReserve,
       );
     } catch (_) {
       await _chatController.scrollToMessage(
         messageId,
-        duration: const Duration(milliseconds: 300),
+        duration: scrollDuration,
+        curve: scrollCurve,
         alignment: 0.25,
       );
+    }
+
+    if (mounted) {
+      _pulseScrollTarget(messageId);
     }
   }
 
@@ -707,18 +740,22 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
                               : Alignment.centerLeft,
                           child: ConstrainedBox(
                             constraints: BoxConstraints(maxWidth: maxBubbleW),
-                            child: _SwipeReplyDetector(
-                              isSentByMe: isSentByMe,
-                              onSwipeReply: () {
-                                final id = int.tryParse(message.id);
-                                if (id == null) return;
-                                final cubit = context.read<ThreadCubit>();
-                                final local = _localById(cubit.state.messages, id);
-                                if (local == null) return;
-                                HapticFeedback.selectionClick();
-                                cubit.setReplyTo(local);
-                              },
-                              child: child,
+                            child: _wrapScrollTargetHighlight(
+                              message.id,
+                              _SwipeReplyDetector(
+                                isSentByMe: isSentByMe,
+                                onSwipeReply: () {
+                                  final id = int.tryParse(message.id);
+                                  if (id == null) return;
+                                  final cubit = context.read<ThreadCubit>();
+                                  final local =
+                                      _localById(cubit.state.messages, id);
+                                  if (local == null) return;
+                                  HapticFeedback.selectionClick();
+                                  cubit.setReplyTo(local);
+                                },
+                                child: child,
+                              ),
                             ),
                           ),
                         ),
