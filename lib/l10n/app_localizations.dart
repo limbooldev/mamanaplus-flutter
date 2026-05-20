@@ -364,6 +364,42 @@ abstract class AppLocalizations {
   /// **'Someone is typing…'**
   String get typingIndicator;
 
+  /// No description provided for @chatStatusTyping.
+  ///
+  /// In en, this message translates to:
+  /// **'is typing'**
+  String get chatStatusTyping;
+
+  /// No description provided for @chatStatusOnline.
+  ///
+  /// In en, this message translates to:
+  /// **'Online'**
+  String get chatStatusOnline;
+
+  /// No description provided for @chatStatusLastSeen.
+  ///
+  /// In en, this message translates to:
+  /// **'Last seen {time}'**
+  String chatStatusLastSeen(String time);
+
+  /// No description provided for @chatStatusOneTyping.
+  ///
+  /// In en, this message translates to:
+  /// **'{name} is typing'**
+  String chatStatusOneTyping(String name);
+
+  /// No description provided for @chatStatusManyTyping.
+  ///
+  /// In en, this message translates to:
+  /// **'{count} people are typing'**
+  String chatStatusManyTyping(int count);
+
+  /// No description provided for @chatStatusMembersOnline.
+  ///
+  /// In en, this message translates to:
+  /// **'{members} members, {online} online'**
+  String chatStatusMembersOnline(int members, int online);
+
   /// No description provided for @composerHint.
   ///
   /// In en, this message translates to:

@@ -163,6 +163,32 @@ class AppLocalizationsEn extends AppLocalizations {
   String get typingIndicator => 'Someone is typing…';
 
   @override
+  String get chatStatusTyping => 'is typing';
+
+  @override
+  String get chatStatusOnline => 'Online';
+
+  @override
+  String chatStatusLastSeen(String time) {
+    return 'Last seen $time';
+  }
+
+  @override
+  String chatStatusOneTyping(String name) {
+    return '$name is typing';
+  }
+
+  @override
+  String chatStatusManyTyping(int count) {
+    return '$count people are typing';
+  }
+
+  @override
+  String chatStatusMembersOnline(int members, int online) {
+    return '$members members, $online online';
+  }
+
+  @override
   String get composerHint => 'Message';
 
   @override

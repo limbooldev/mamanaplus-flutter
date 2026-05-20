@@ -97,6 +97,33 @@
   },
   "userNameYou": "You",
   "typingIndicator": "Someone is typing\u2026",
+  "chatStatusTyping": "is typing",
+  "chatStatusOnline": "Online",
+  "chatStatusLastSeen": "Last seen {time}",
+  "@chatStatusLastSeen": {
+    "placeholders": {
+      "time": {"type": "String"}
+    }
+  },
+  "chatStatusOneTyping": "{name} is typing",
+  "@chatStatusOneTyping": {
+    "placeholders": {
+      "name": {"type": "String"}
+    }
+  },
+  "chatStatusManyTyping": "{count} people are typing",
+  "@chatStatusManyTyping": {
+    "placeholders": {
+      "count": {"type": "int"}
+    }
+  },
+  "chatStatusMembersOnline": "{members} members, {online} online",
+  "@chatStatusMembersOnline": {
+    "placeholders": {
+      "members": {"type": "int"},
+      "online": {"type": "int"}
+    }
+  },
   "composerHint": "Message",
   "actionReply": "Reply",
   "actionCopy": "Copy",

@@ -7,6 +7,7 @@ import 'package:mime/mime.dart';
 
 import '../../../../core/database/app_database.dart';
 import '../../data/chat_repository.dart';
+import '../../domain/member_presence.dart';
 import '../../media_constants.dart';
 
 int? _jsonInt(dynamic v) {
@@ -70,6 +71,53 @@ int? _peerUserIdFromPeerJson(String? peerJson) {
   }
 }
 
+bool? _peerOnlineFromPeer(dynamic peer) {
+  if (peer is! Map) return null;
+  final v = peer['online'];
+  if (v is bool) return v;
+  return null;
+}
+
+bool? _peerOnlineFromPeerJson(String? peerJson) {
+  if (peerJson == null) return null;
+  try {
+    final m = jsonDecode(peerJson) as Map<String, dynamic>;
+    final v = m['online'];
+    if (v is bool) return v;
+  } catch (_) {}
+  return null;
+}
+
+DateTime? _parseLastSeenAt(dynamic v) {
+  if (v is! String || v.isEmpty) return null;
+  return DateTime.tryParse(v);
+}
+
+DateTime? _peerLastSeenFromPeer(dynamic peer) {
+  if (peer is! Map) return null;
+  return _parseLastSeenAt(peer['last_seen_at']);
+}
+
+DateTime? _peerLastSeenFromPeerJson(String? peerJson) {
+  if (peerJson == null) return null;
+  try {
+    final m = jsonDecode(peerJson) as Map<String, dynamic>;
+    return _parseLastSeenAt(m['last_seen_at']);
+  } catch (_) {}
+  return null;
+}
+
+MemberPresence? _memberPresenceFromUserMap(dynamic user) {
+  if (user is! Map) return null;
+  final id = _jsonInt(user['id']);
+  if (id == null) return null;
+  return MemberPresence(
+    online: user['online'] == true,
+    lastSeenAt: _parseLastSeenAt(user['last_seen_at']),
+    displayName: (user['display_name'] as String?)?.trim(),
+  );
+}
+
 const _unsetReplyTo = Object();
 
 class ThreadState extends Equatable {
@@ -87,6 +135,9 @@ class ThreadState extends Equatable {
     this.myDisplayName,
     this.myAvatarMediaKey,
     this.dmPeerUserId,
+    this.peerOnline,
+    this.peerLastSeenAt,
+    this.memberPresence = const {},
     this.messageSearchQuery,
   });
 
@@ -119,6 +170,13 @@ class ThreadState extends Equatable {
   /// Private DM: other participant's user id (for block-from-thread, etc.).
   final int? dmPeerUserId;
 
+  /// Private DM: peer presence from API / WebSocket `presence` events.
+  final bool? peerOnline;
+  final DateTime? peerLastSeenAt;
+
+  /// Group: member id → presence (from `GET /v1/groups/{id}` + `presence` events).
+  final Map<int, MemberPresence> memberPresence;
+
   /// Group in-thread search (server `q`); null when inactive.
   final String? messageSearchQuery;
 
@@ -136,6 +194,9 @@ class ThreadState extends Equatable {
     String? myDisplayName,
     String? myAvatarMediaKey,
     int? dmPeerUserId,
+    bool? peerOnline,
+    DateTime? peerLastSeenAt,
+    Map<int, MemberPresence>? memberPresence,
     String? messageSearchQuery,
     bool clearMessageSearch = false,
   }) =>
@@ -155,6 +216,9 @@ class ThreadState extends Equatable {
         myDisplayName: myDisplayName ?? this.myDisplayName,
         myAvatarMediaKey: myAvatarMediaKey ?? this.myAvatarMediaKey,
         dmPeerUserId: dmPeerUserId ?? this.dmPeerUserId,
+        peerOnline: peerOnline ?? this.peerOnline,
+        peerLastSeenAt: peerLastSeenAt ?? this.peerLastSeenAt,
+        memberPresence: memberPresence ?? this.memberPresence,
         messageSearchQuery:
             clearMessageSearch ? null : (messageSearchQuery ?? this.messageSearchQuery),
       );
@@ -184,6 +248,9 @@ class ThreadState extends Equatable {
         myDisplayName,
         myAvatarMediaKey,
         dmPeerUserId,
+        peerOnline,
+        peerLastSeenAt,
+        memberPresence,
         messageSearchQuery,
       ];
 }
@@ -227,6 +294,9 @@ class ThreadCubit extends Cubit<ThreadState> {
     unawaited(_hydrateHeader(prefetched: prefetchedConv));
     unawaited(_resolveDmPeerUserId(prefetched: prefetchedConv));
     unawaited(_loadMyDisplayName());
+    if (_resolvedConversationType == 'group') {
+      unawaited(_loadGroupPresence());
+    }
     await _reloadMessagesFromRemote();
 
     // Watch outbox so the optimistic bubble appears immediately when [send]
@@ -280,6 +350,27 @@ class ThreadCubit extends Cubit<ThreadState> {
           next.remove(uid);
         }
         emit(state.copyWith(typingUserIds: next));
+      } else if (type == 'presence' && payload is Map<String, dynamic>) {
+        final uid = _jsonInt(payload['user_id']);
+        if (uid == null || uid == myUserId) return;
+        final online = payload['online'] == true;
+        final lastSeen = _parseLastSeenAt(payload['last_seen_at']);
+        if (effectiveConversationType == 'private' &&
+            uid == state.dmPeerUserId) {
+          emit(state.copyWith(
+            peerOnline: online,
+            peerLastSeenAt: lastSeen ?? state.peerLastSeenAt,
+          ));
+        } else if (effectiveConversationType == 'group') {
+          final prev = state.memberPresence[uid];
+          final next = Map<int, MemberPresence>.from(state.memberPresence);
+          next[uid] = MemberPresence(
+            online: online,
+            lastSeenAt: lastSeen ?? prev?.lastSeenAt,
+            displayName: prev?.displayName,
+          );
+          emit(state.copyWith(memberPresence: next));
+        }
       } else if (type == 'receipt_update' && payload is Map<String, dynamic>) {
         final cid = _jsonInt(payload['conversation_id']);
         if (cid != conversationId) return;
@@ -373,6 +464,7 @@ class ThreadCubit extends Cubit<ThreadState> {
       if (t != null && t.isNotEmpty) {
         emit(state.copyWith(headerTitle: t));
       }
+      unawaited(_loadGroupPresence());
       return;
     }
 
@@ -380,9 +472,13 @@ class ThreadCubit extends Cubit<ThreadState> {
 
     var name = _peerDisplayNameFromPeerJson(local?.peerJson);
     var avatar = _peerAvatarMediaKeyFromPeerJson(local?.peerJson);
+    var online = _peerOnlineFromPeerJson(local?.peerJson);
+    var lastSeen = _peerLastSeenFromPeerJson(local?.peerJson);
     if ((name == null || name.isEmpty) && prefetched != null) {
       name = _peerDisplayNameFromPeerField(prefetched['peer']);
       avatar ??= _peerAvatarMediaKeyFromPeerField(prefetched['peer']);
+      online ??= _peerOnlineFromPeer(prefetched['peer']);
+      lastSeen ??= _peerLastSeenFromPeer(prefetched['peer']);
       if (name != null && name.isNotEmpty) {
         await _repo.upsertLocalConversationFromDto(prefetched);
       }
@@ -393,13 +489,37 @@ class ThreadCubit extends Cubit<ThreadState> {
         await _repo.upsertLocalConversationFromDto(raw);
         name = _peerDisplayNameFromPeerField(raw['peer']);
         avatar ??= _peerAvatarMediaKeyFromPeerField(raw['peer']);
+        online ??= _peerOnlineFromPeer(raw['peer']);
+        lastSeen ??= _peerLastSeenFromPeer(raw['peer']);
       } catch (_) {}
     }
-    if (name != null && name.isNotEmpty) {
-      emit(state.copyWith(headerTitle: name, peerAvatarMediaKey: avatar));
-    } else if (avatar != null) {
-      emit(state.copyWith(peerAvatarMediaKey: avatar));
-    }
+    emit(state.copyWith(
+      headerTitle: (name != null && name.isNotEmpty) ? name : state.headerTitle,
+      peerAvatarMediaKey: avatar ?? state.peerAvatarMediaKey,
+      peerOnline: online,
+      peerLastSeenAt: lastSeen,
+    ));
+  }
+
+  Future<void> _loadGroupPresence() async {
+    if (effectiveConversationType != 'group') return;
+    try {
+      final d = await _repo.getGroup(conversationId);
+      final members = d['members'] as List<dynamic>? ?? [];
+      final map = <int, MemberPresence>{};
+      for (final raw in members) {
+        if (raw is! Map) continue;
+        final user = raw['user'];
+        final p = _memberPresenceFromUserMap(user);
+        if (p == null) continue;
+        final id = _jsonInt((user as Map)['id']);
+        if (id == null) continue;
+        map[id] = p;
+      }
+      if (map.isNotEmpty) {
+        emit(state.copyWith(memberPresence: map));
+      }
+    } catch (_) {}
   }
 
   Future<void> _reloadLocal() async {

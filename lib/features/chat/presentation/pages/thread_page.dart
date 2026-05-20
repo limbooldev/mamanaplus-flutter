@@ -32,6 +32,7 @@ import '../widgets/message_status_icon.dart';
 import '../widgets/mamana_gif_bubble.dart';
 import '../widgets/reply_quote.dart';
 import '../widgets/scroll_target_highlight.dart';
+import '../widgets/thread_app_bar_status.dart';
 import '../widgets/thread_composer_with_panel.dart';
 import '../widgets/thread_media_widgets.dart';
 import '../../../social/presentation/pages/user_profile_page.dart';
@@ -455,7 +456,11 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
               a.headerTitle != b.headerTitle ||
               a.peerAvatarMediaKey != b.peerAvatarMediaKey ||
               a.loading != b.loading ||
-              a.dmPeerUserId != b.dmPeerUserId,
+              a.dmPeerUserId != b.dmPeerUserId ||
+              a.typingUserIds != b.typingUserIds ||
+              a.peerOnline != b.peerOnline ||
+              a.peerLastSeenAt != b.peerLastSeenAt ||
+              a.memberPresence != b.memberPresence,
           builder: (context, state) {
             final isGroup =
                 context.read<ThreadCubit>().effectiveConversationType == 'group';
@@ -466,6 +471,16 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
             } else {
               titleText = l10n.threadTitle(widget.conversationId);
             }
+            final isDark = theme.brightness == Brightness.dark;
+            final subtitleColor =
+                isDark ? AppColors.subtitleDark : AppColors.subtitleLight;
+            final titleStyle = GoogleFonts.inter(
+              fontSize: 16,
+              fontWeight: FontWeight.w600,
+              color: isDark
+                  ? AppColors.onBackgroundDark
+                  : AppColors.onBackgroundLight,
+            );
             final titleRow = Row(
               children: [
                 UserAvatar(
@@ -476,9 +491,27 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
                 ),
                 const SizedBox(width: 10),
                 Expanded(
-                  child: Text(
-                    titleText,
-                    overflow: TextOverflow.ellipsis,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        titleText,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: titleStyle,
+                      ),
+                      ThreadAppBarStatus(
+                        isGroup: isGroup,
+                        typingUserIds: state.typingUserIds,
+                        myUserId: widget.myUserId,
+                        dmPeerUserId: state.dmPeerUserId,
+                        peerOnline: state.peerOnline,
+                        peerLastSeenAt: state.peerLastSeenAt,
+                        memberPresence: state.memberPresence,
+                        subtitleColor: subtitleColor,
+                      ),
+                    ],
                   ),
                 ),
               ],
@@ -595,7 +628,6 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
                     }
                   });
                 }
-                final typing = state.typingUserIds.isNotEmpty;
                 final isDark = theme.brightness == Brightness.dark;
                 _captureKeyboardHeight(context);
                 final chatTheme = _buildChatTheme(theme, isDark);
@@ -1045,26 +1077,6 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
                       // SliverAnimatedList child-order assertions.
                       return ChatAnimatedList(
                         itemBuilder: itemBuilder,
-                        bottomSliver: typing
-                            ? SliverToBoxAdapter(
-                                child: Padding(
-                                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
-                                  child: Row(
-                                    children: [
-                                      const IsTypingIndicator(),
-                                      const SizedBox(width: 8),
-                                      Text(
-                                        l10n.typingIndicator,
-                                        style: theme.textTheme.bodySmall?.copyWith(
-                                          fontStyle: FontStyle.italic,
-                                          color: theme.colorScheme.onSurfaceVariant,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              )
-                            : null,
                       );
                     },
                     // Chat overlays the composer on a Stack; [Composer] uses
