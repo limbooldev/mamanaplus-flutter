@@ -129,6 +129,27 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String get groupAddMembers => 'Add members';
+
+  @override
+  String get groupEditName => 'Edit group name';
+
+  @override
+  String get groupChangePhoto => 'Change group photo';
+
+  @override
+  String get groupNameUpdated => 'Group name updated';
+
+  @override
+  String get groupPhotoUpdated => 'Group photo updated';
+
+  @override
+  String get groupMembersAdded => 'Members added';
+
+  @override
+  String get groupEditNameHint => 'Group name';
+
+  @override
   String groupFallbackTitle(int id) {
     return 'Group #$id';
   }

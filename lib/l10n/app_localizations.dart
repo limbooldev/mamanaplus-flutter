@@ -316,6 +316,48 @@ abstract class AppLocalizations {
   /// **'{count} online now'**
   String groupOnlineNow(int count);
 
+  /// No description provided for @groupAddMembers.
+  ///
+  /// In en, this message translates to:
+  /// **'Add members'**
+  String get groupAddMembers;
+
+  /// No description provided for @groupEditName.
+  ///
+  /// In en, this message translates to:
+  /// **'Edit group name'**
+  String get groupEditName;
+
+  /// No description provided for @groupChangePhoto.
+  ///
+  /// In en, this message translates to:
+  /// **'Change group photo'**
+  String get groupChangePhoto;
+
+  /// No description provided for @groupNameUpdated.
+  ///
+  /// In en, this message translates to:
+  /// **'Group name updated'**
+  String get groupNameUpdated;
+
+  /// No description provided for @groupPhotoUpdated.
+  ///
+  /// In en, this message translates to:
+  /// **'Group photo updated'**
+  String get groupPhotoUpdated;
+
+  /// No description provided for @groupMembersAdded.
+  ///
+  /// In en, this message translates to:
+  /// **'Members added'**
+  String get groupMembersAdded;
+
+  /// No description provided for @groupEditNameHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Group name'**
+  String get groupEditNameHint;
+
   /// No description provided for @groupFallbackTitle.
   ///
   /// In en, this message translates to:

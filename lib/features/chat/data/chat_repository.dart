@@ -580,6 +580,60 @@ class ChatRepository {
     )..where((t) => t.id.equals(conversationId))).go();
   }
 
+  Future<void> addGroupMember(int groupId, int userId) =>
+      _remote.addGroupMember(groupId, userId);
+
+  Future<Map<String, dynamic>> patchGroup(
+    int groupId, {
+    String? title,
+    String? avatarMediaKey,
+  }) async {
+    final data = await _remote.patchGroup(
+      groupId,
+      title: title,
+      avatarMediaKey: avatarMediaKey,
+    );
+    final conv = data['conversation'] as Map<String, dynamic>?;
+    if (conv != null) {
+      await upsertLocalConversationFromDto(conv);
+    }
+    return data;
+  }
+
+  /// Upload a group avatar image; returns the object key for [patchGroup].
+  Future<String> uploadGroupAvatarBytes({
+    required int conversationId,
+    required List<int> bytes,
+    required String mimeType,
+  }) async {
+    final presign = await _remote.presignMedia(
+      contentType: mimeType,
+      byteSize: bytes.length,
+      conversationId: conversationId,
+    );
+    final uploadUrl = presign['upload_url'] as String;
+    final headers = Map<String, String>.from(
+      (presign['headers'] as Map?)?.map((k, v) => MapEntry('$k', '$v')) ??
+          const <String, String>{},
+    );
+    final objectKey = presign['object_key'] as String;
+    final isLocal = presign.containsKey('upload_token');
+    final access = isLocal ? await _tokens?.getAccessToken() : null;
+    if (isLocal && (access == null || access.isEmpty)) {
+      throw StateError('Not authenticated: cannot upload media');
+    }
+    await _remote.uploadMediaPut(
+      uploadUrl: uploadUrl,
+      headers: headers,
+      bytes: bytes,
+      bearerToken: access,
+    );
+    if (!isLocal) {
+      await _remote.completeMediaUpload(objectKey: objectKey);
+    }
+    return objectKey;
+  }
+
   Future<void> removeGroupMember(int groupId, int userId) =>
       _remote.removeGroupMember(groupId, userId);
 

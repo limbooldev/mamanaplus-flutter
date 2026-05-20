@@ -63,6 +63,13 @@
       "count": {"type": "int"}
     }
   },
+  "groupAddMembers": "Add members",
+  "groupEditName": "Edit group name",
+  "groupChangePhoto": "Change group photo",
+  "groupNameUpdated": "Group name updated",
+  "groupPhotoUpdated": "Group photo updated",
+  "groupMembersAdded": "Members added",
+  "groupEditNameHint": "Group name",
   "groupFallbackTitle": "Group #{id}",
   "@groupFallbackTitle": {
     "placeholders": {

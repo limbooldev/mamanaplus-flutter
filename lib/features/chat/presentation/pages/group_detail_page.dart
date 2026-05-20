@@ -1,10 +1,16 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:mamana_plus/l10n/app_localizations.dart';
+import 'package:mime/mime.dart';
 
+import '../../../../router/app_routes.dart';
 import '../../../../shared/ui/ui.dart';
 import '../../data/chat_repository.dart';
+import '../../../social/presentation/widgets/social_media_widgets.dart';
 
 /// Loads `GET /v1/groups/{id}` (conversation + members).
 class GroupDetailPage extends StatefulWidget {
@@ -22,6 +28,7 @@ class _GroupDetailPageState extends State<GroupDetailPage> {
   Object? _error;
   var _loading = true;
   var _leaving = false;
+  var _uploadingPhoto = false;
   int? _myUserId;
   String? _myRole;
 
@@ -201,6 +208,129 @@ class _GroupDetailPageState extends State<GroupDetailPage> {
     }
   }
 
+  Set<int> _memberUserIds() {
+    final members = _data?['members'] as List<dynamic>? ?? [];
+    final ids = <int>{};
+    for (final raw in members) {
+      final m = raw as Map<String, dynamic>;
+      final u = m['user'] as Map<String, dynamic>? ?? {};
+      final id = (u['id'] as num?)?.toInt();
+      if (id != null) ids.add(id);
+    }
+    return ids;
+  }
+
+  Future<void> _addMembers(AppLocalizations l10n) async {
+    final repo = context.read<ChatRepository>();
+    final existing = _memberUserIds();
+    final exclude = <int>{...existing};
+    if (_myUserId != null) exclude.add(_myUserId!);
+    final picked = await context.pushPickUsersMulti(
+      initialSelectedIds: const [],
+      excludeUserIds: exclude.toList(),
+    );
+    if (picked == null || picked.isEmpty || !mounted) return;
+    try {
+      for (final uid in picked) {
+        await repo.addGroupMember(widget.conversationId, uid);
+      }
+      await _load();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(l10n.groupMembersAdded)),
+        );
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(l10n.groupModerationFailed)),
+        );
+      }
+    }
+  }
+
+  Future<void> _editGroupName(AppLocalizations l10n) async {
+    final conv = _data?['conversation'] as Map<String, dynamic>?;
+    final current = (conv?['title'] as String?)?.trim() ?? '';
+    final ctrl = TextEditingController(text: current);
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(l10n.groupEditName),
+        content: TextField(
+          controller: ctrl,
+          decoration: InputDecoration(hintText: l10n.groupEditNameHint),
+          autofocus: true,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text(l10n.buttonCancel),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text(l10n.buttonSave),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    final name = ctrl.text.trim();
+    if (name.isEmpty) return;
+    try {
+      final data = await context.read<ChatRepository>().patchGroup(
+        widget.conversationId,
+        title: name,
+      );
+      setState(() => _data = data);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(l10n.groupNameUpdated)),
+        );
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(l10n.groupModerationFailed)),
+        );
+      }
+    }
+  }
+
+  Future<void> _changeGroupPhoto(AppLocalizations l10n) async {
+    final picker = ImagePicker();
+    final x = await picker.pickImage(
+      source: ImageSource.gallery,
+      maxWidth: 1600,
+    );
+    if (x == null || !mounted) return;
+    setState(() => _uploadingPhoto = true);
+    final messenger = ScaffoldMessenger.of(context);
+    final repo = context.read<ChatRepository>();
+    try {
+      final bytes = await File(x.path).readAsBytes();
+      final ct = lookupMimeType(x.path) ?? 'image/jpeg';
+      final key = await repo.uploadGroupAvatarBytes(
+        conversationId: widget.conversationId,
+        bytes: bytes,
+        mimeType: ct,
+      );
+      final data = await repo.patchGroup(
+        widget.conversationId,
+        avatarMediaKey: key,
+      );
+      if (!mounted) return;
+      setState(() {
+        _data = data;
+        _uploadingPhoto = false;
+      });
+      messenger.showSnackBar(SnackBar(content: Text(l10n.groupPhotoUpdated)));
+    } catch (e) {
+      if (mounted) setState(() => _uploadingPhoto = false);
+      messenger.showSnackBar(SnackBar(content: Text(e.toString())));
+    }
+  }
+
   Future<void> _unban(AppLocalizations l10n, ChatRepository repo, int userId) async {
     try {
       await repo.unbanGroupMember(widget.conversationId, userId);
@@ -259,17 +389,24 @@ class _GroupDetailPageState extends State<GroupDetailPage> {
     final members = _data?['members'] as List<dynamic>? ?? [];
     final title =
         conv?['title'] as String? ?? l10n.groupFallbackTitle(widget.conversationId);
+    final avatarKey = (conv?['avatar_media_key'] as String?)?.trim();
     final repo = context.read<ChatRepository>();
     final desc = (conv?['description'] as String?)?.trim();
     final online = (_data?['online_count'] as num?)?.toInt();
+    final canEdit = _isModerator;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         _GroupHeader(
           title: title,
+          avatarMediaKey: avatarKey != null && avatarKey.isNotEmpty ? avatarKey : null,
           memberCountLabel: l10n.membersCount(members.length),
           isDark: isDark,
+          canEdit: canEdit,
+          uploadingPhoto: _uploadingPhoto,
+          onEditName: canEdit ? () => _editGroupName(l10n) : null,
+          onChangePhoto: canEdit ? () => _changeGroupPhoto(l10n) : null,
         ),
         if (desc != null && desc.isNotEmpty)
           Padding(
@@ -302,6 +439,21 @@ class _GroupDetailPageState extends State<GroupDetailPage> {
         Expanded(
           child: ListView(
             children: [
+              if (_isModerator)
+                ListTile(
+                  leading: CircleAvatar(
+                    backgroundColor: AppColors.primary.withValues(alpha: 0.15),
+                    child: const Icon(
+                      Icons.person_add_alt_1_rounded,
+                      color: AppColors.primary,
+                    ),
+                  ),
+                  title: Text(
+                    l10n.groupAddMembers,
+                    style: GoogleFonts.inter(fontWeight: FontWeight.w600),
+                  ),
+                  onTap: () => _addMembers(l10n),
+                ),
               ...members.asMap().entries.map((e) {
                 final i = e.key;
                 final m = e.value as Map<String, dynamic>;
@@ -311,7 +463,8 @@ class _GroupDetailPageState extends State<GroupDetailPage> {
                     l10n.userFallback('$userId');
                 final role = m['role'] as String? ?? 'member';
                 final isAdmin = role == 'admin' || role == 'owner';
-                final initials = name.isNotEmpty ? name[0].toUpperCase() : '?';
+                final memberAvatar =
+                    (u['avatar_media_key'] as String?)?.trim();
                 final myId = _myUserId;
                 final canModerate = _isModerator &&
                     myId != null &&
@@ -337,36 +490,14 @@ class _GroupDetailPageState extends State<GroupDetailPage> {
                         children: [
                           Padding(
                             padding: const EdgeInsets.only(left: 8, right: 4),
-                            child: Container(
-                              width: 44,
-                              height: 44,
-                              decoration: BoxDecoration(
-                                gradient: LinearGradient(
-                                  colors: isAdmin
-                                      ? [
-                                          AppColors.primaryDeep,
-                                          AppColors.primary,
-                                        ]
-                                      : [
-                                          AppColors.primary,
-                                          AppColors.primary
-                                              .withValues(alpha: 0.7),
-                                        ],
-                                  begin: Alignment.topLeft,
-                                  end: Alignment.bottomRight,
-                                ),
-                                shape: BoxShape.circle,
-                              ),
-                              child: Center(
-                                child: Text(
-                                  initials,
-                                  style: GoogleFonts.inter(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.w700,
-                                    color: Colors.white,
-                                  ),
-                                ),
-                              ),
+                            child: UserAvatar(
+                              displayName: name,
+                              avatarMediaKey: memberAvatar != null &&
+                                      memberAvatar.isNotEmpty
+                                  ? memberAvatar
+                                  : null,
+                              size: 44,
+                              isGroup: false,
                             ),
                           ),
                           Expanded(
@@ -509,54 +640,96 @@ class _GroupHeader extends StatelessWidget {
     required this.title,
     required this.memberCountLabel,
     required this.isDark,
+    this.avatarMediaKey,
+    this.canEdit = false,
+    this.uploadingPhoto = false,
+    this.onEditName,
+    this.onChangePhoto,
   });
   final String title;
+  final String? avatarMediaKey;
   final String memberCountLabel;
   final bool isDark;
+  final bool canEdit;
+  final bool uploadingPhoto;
+  final VoidCallback? onEditName;
+  final VoidCallback? onChangePhoto;
 
   @override
   Widget build(BuildContext context) {
-    final initials = title.isNotEmpty ? title[0].toUpperCase() : 'G';
+    final l10n = AppLocalizations.of(context)!;
+    Widget avatar = UserAvatar(
+      displayName: title,
+      avatarMediaKey: avatarMediaKey,
+      size: 60,
+      isGroup: true,
+    );
+    if (uploadingPhoto) {
+      avatar = Stack(
+        alignment: Alignment.center,
+        children: [
+          avatar,
+          const SizedBox(
+            width: 60,
+            height: 60,
+            child: CircularProgressIndicator(strokeWidth: 2),
+          ),
+        ],
+      );
+    } else if (canEdit && onChangePhoto != null) {
+      avatar = GestureDetector(
+        onTap: onChangePhoto,
+        child: Stack(
+          clipBehavior: Clip.none,
+          children: [
+            avatar,
+            Positioned(
+              right: -2,
+              bottom: -2,
+              child: CircleAvatar(
+                radius: 12,
+                backgroundColor: AppColors.primary,
+                child: const Icon(Icons.camera_alt, size: 14, color: Colors.white),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
     return Padding(
       padding: const EdgeInsets.all(20),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            width: 60,
-            height: 60,
-            decoration: const BoxDecoration(
-              gradient: LinearGradient(
-                colors: [AppColors.primaryDeep, AppColors.primary],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
-              shape: BoxShape.circle,
-            ),
-            child: Center(
-              child: Text(
-                initials,
-                style: GoogleFonts.inter(
-                  fontSize: 24,
-                  fontWeight: FontWeight.w700,
-                  color: Colors.white,
-                ),
-              ),
-            ),
-          ),
+          avatar,
           const SizedBox(width: 14),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  title,
-                  style: GoogleFonts.inter(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w700,
-                    color: isDark
-                        ? AppColors.onBackgroundDark
-                        : AppColors.onBackgroundLight,
-                  ),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        title,
+                        style: GoogleFonts.inter(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w700,
+                          color: isDark
+                              ? AppColors.onBackgroundDark
+                              : AppColors.onBackgroundLight,
+                        ),
+                      ),
+                    ),
+                    if (canEdit && onEditName != null)
+                      IconButton(
+                        visualDensity: VisualDensity.compact,
+                        icon: const Icon(Icons.edit_outlined, size: 20),
+                        tooltip: l10n.groupEditName,
+                        onPressed: onEditName,
+                      ),
+                  ],
                 ),
                 const SizedBox(height: 4),
                 Row(
@@ -576,6 +749,25 @@ class _GroupHeader extends StatelessWidget {
                     ),
                   ],
                 ),
+                if (canEdit && onChangePhoto != null) ...[
+                  const SizedBox(height: 6),
+                  TextButton(
+                    style: TextButton.styleFrom(
+                      padding: EdgeInsets.zero,
+                      minimumSize: Size.zero,
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    ),
+                    onPressed: onChangePhoto,
+                    child: Text(
+                      l10n.groupChangePhoto,
+                      style: GoogleFonts.inter(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.primary,
+                      ),
+                    ),
+                  ),
+                ],
               ],
             ),
           ),

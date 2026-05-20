@@ -133,6 +133,32 @@ class ChatRemoteDataSource {
     await _dio.delete<void>('/v1/groups/$conversationId');
   }
 
+  Future<void> addGroupMember(int groupId, int userId) async {
+    await _dio.post<void>(
+      '/v1/groups/$groupId/members',
+      data: {'user_id': userId},
+    );
+  }
+
+  Future<Map<String, dynamic>> patchGroup(
+    int groupId, {
+    String? title,
+    String? avatarMediaKey,
+  }) async {
+    final data = <String, dynamic>{};
+    if (title != null) {
+      data['title'] = title;
+    }
+    if (avatarMediaKey != null) {
+      data['avatar_media_key'] = avatarMediaKey;
+    }
+    final res = await _dio.patch<Map<String, dynamic>>(
+      '/v1/groups/$groupId',
+      data: data,
+    );
+    return res.data!;
+  }
+
   Future<void> removeGroupMember(int groupId, int userId) async {
     await _dio.delete<void>(
       '/v1/groups/$groupId/members',
