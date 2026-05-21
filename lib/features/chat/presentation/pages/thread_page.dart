@@ -720,6 +720,10 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
                             message.metadata?['mamanaGifPreviewUrl'] as String? ?? gifUrl;
                         final w = message.metadata?['mamanaGifWidth'] as int?;
                         final h = message.metadata?['mamanaGifHeight'] as int?;
+                        final theme = context.read<ChatTheme>();
+                        final fg = isSentByMe
+                            ? theme.colors.onPrimary
+                            : theme.colors.onSurface;
                         return MamanaGifBubble(
                           url: gifUrl,
                           previewUrl: preview,
@@ -728,6 +732,12 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
                           height: h,
                           maxWidth: maxBubbleW,
                           onTap: () => _openGifFullscreen(context, gifUrl),
+                          time: message.resolvedTime,
+                          status: isSentByMe ? message.resolvedStatus : null,
+                          showStatus: isSentByMe,
+                          footerTextStyle: theme.typography.labelSmall.copyWith(
+                            color: fg.withValues(alpha: 0.85),
+                          ),
                         );
                       }
                       final emoji = message.metadata?['mamanaStickerEmoji'] as String?;
@@ -738,6 +748,9 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
                       final bubble = isSentByMe
                           ? theme.colors.primary
                           : theme.colors.surfaceContainerHigh;
+                      final fg = isSentByMe
+                          ? theme.colors.onPrimary
+                          : theme.colors.onSurface;
                       return Align(
                         alignment:
                             isSentByMe ? Alignment.centerRight : Alignment.centerLeft,
@@ -750,7 +763,22 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
                             color: bubble,
                             borderRadius: BorderRadius.circular(12),
                           ),
-                          child: Text(emoji, style: const TextStyle(fontSize: 56)),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.end,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(emoji, style: const TextStyle(fontSize: 56)),
+                              const SizedBox(height: 2),
+                              CustomTimeAndStatus(
+                                time: message.resolvedTime,
+                                status: isSentByMe ? message.resolvedStatus : null,
+                                showStatus: isSentByMe,
+                                textStyle: theme.typography.labelSmall.copyWith(
+                                  color: fg.withValues(alpha: 0.85),
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
                         ),
                       );
@@ -992,16 +1020,16 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
                                   ),
                                 ),
                               ),
-                              if (isSentByMe)
-                                CustomTimeAndStatus(
-                                  time: message.resolvedTime,
-                                  status: message.resolvedStatus,
-                                  showTime: true,
-                                  showStatus: true,
-                                  textStyle: theme.typography.labelSmall.copyWith(
-                                    color: fg.withValues(alpha: 0.9),
-                                  ),
+                              CustomTimeAndStatus(
+                                time: message.resolvedTime,
+                                status: isSentByMe
+                                    ? message.resolvedStatus
+                                    : null,
+                                showStatus: isSentByMe,
+                                textStyle: theme.typography.labelSmall.copyWith(
+                                  color: fg.withValues(alpha: 0.9),
                                 ),
+                              ),
                             ],
                           ),
                         ),

@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_chat_core/flutter_chat_core.dart';
+
+import 'message_status_icon.dart';
 
 /// Renders a Giphy GIF or sticker URL inside a chat bubble.
 class MamanaGifBubble extends StatelessWidget {
@@ -11,6 +14,10 @@ class MamanaGifBubble extends StatelessWidget {
     this.height,
     this.maxWidth = 280,
     this.onTap,
+    this.time,
+    this.status,
+    this.showStatus = false,
+    this.footerTextStyle,
   });
 
   final String url;
@@ -20,6 +27,10 @@ class MamanaGifBubble extends StatelessWidget {
   final int? height;
   final double maxWidth;
   final VoidCallback? onTap;
+  final DateTime? time;
+  final MessageStatus? status;
+  final bool showStatus;
+  final TextStyle? footerTextStyle;
 
   @override
   Widget build(BuildContext context) {
@@ -41,6 +52,11 @@ class MamanaGifBubble extends StatelessWidget {
     }
 
     final imageUrl = url.isNotEmpty ? url : previewUrl;
+    final fg = isSentByMe
+        ? theme.colorScheme.onPrimaryContainer
+        : theme.colorScheme.onSurface;
+    final footerStyle = footerTextStyle ??
+        theme.textTheme.labelSmall?.copyWith(color: fg.withValues(alpha: 0.85));
 
     return Align(
       alignment: isSentByMe ? Alignment.centerRight : Alignment.centerLeft,
@@ -53,31 +69,46 @@ class MamanaGifBubble extends StatelessWidget {
             color: bubble,
             borderRadius: BorderRadius.circular(12),
           ),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(12),
-            child: SizedBox(
-              width: displayW,
-              height: displayH,
-              child: Image.network(
-                imageUrl,
-                fit: BoxFit.contain,
-                loadingBuilder: (context, child, progress) {
-                  if (progress == null) return child;
-                  if (previewUrl.isNotEmpty && previewUrl != imageUrl) {
-                    return Image.network(previewUrl, fit: BoxFit.contain);
-                  }
-                  return const Center(
-                    child: SizedBox(
-                      width: 24,
-                      height: 24,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    ),
-                  );
-                },
-                errorBuilder: (_, __, ___) =>
-                    const Center(child: Icon(Icons.broken_image_outlined)),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ClipRRect(
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
+                child: SizedBox(
+                  width: displayW,
+                  height: displayH,
+                  child: Image.network(
+                    imageUrl,
+                    fit: BoxFit.contain,
+                    loadingBuilder: (context, child, progress) {
+                      if (progress == null) return child;
+                      if (previewUrl.isNotEmpty && previewUrl != imageUrl) {
+                        return Image.network(previewUrl, fit: BoxFit.contain);
+                      }
+                      return const Center(
+                        child: SizedBox(
+                          width: 24,
+                          height: 24,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
+                      );
+                    },
+                    errorBuilder: (_, __, ___) =>
+                        const Center(child: Icon(Icons.broken_image_outlined)),
+                  ),
+                ),
               ),
-            ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(8, 2, 8, 6),
+                child: CustomTimeAndStatus(
+                  time: time,
+                  status: status,
+                  showStatus: showStatus,
+                  textStyle: footerStyle,
+                ),
+              ),
+            ],
           ),
         ),
       ),
