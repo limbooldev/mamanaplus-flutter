@@ -616,6 +616,17 @@ class $LocalMessagesTable extends LocalMessages
     type: DriftSqlType.dateTime,
     requiredDuringInsert: true,
   );
+  static const VerificationMeta _editedAtMeta = const VerificationMeta(
+    'editedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> editedAt = GeneratedColumn<DateTime>(
+    'edited_at',
+    aliasedName,
+    true,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+  );
   static const VerificationMeta _receiptDeliveredAtMeta =
       const VerificationMeta('receiptDeliveredAt');
   @override
@@ -649,6 +660,7 @@ class $LocalMessagesTable extends LocalMessages
     replyToMessageId,
     storyMediaId,
     createdAt,
+    editedAt,
     receiptDeliveredAt,
     receiptReadAt,
   ];
@@ -729,6 +741,12 @@ class $LocalMessagesTable extends LocalMessages
     } else if (isInserting) {
       context.missing(_createdAtMeta);
     }
+    if (data.containsKey('edited_at')) {
+      context.handle(
+        _editedAtMeta,
+        editedAt.isAcceptableOrUnknown(data['edited_at']!, _editedAtMeta),
+      );
+    }
     if (data.containsKey('receipt_delivered_at')) {
       context.handle(
         _receiptDeliveredAtMeta,
@@ -788,6 +806,10 @@ class $LocalMessagesTable extends LocalMessages
         DriftSqlType.dateTime,
         data['${effectivePrefix}created_at'],
       )!,
+      editedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}edited_at'],
+      ),
       receiptDeliveredAt: attachedDatabase.typeMapping.read(
         DriftSqlType.dateTime,
         data['${effectivePrefix}receipt_delivered_at'],
@@ -815,6 +837,9 @@ class LocalMessage extends DataClass implements Insertable<LocalMessage> {
   final int? storyMediaId;
   final DateTime createdAt;
 
+  /// From API `edited_at` when the sender has edited the message.
+  final DateTime? editedAt;
+
   /// From API `receipt`: for own messages in a DM = peer delivery/read; for others = local read state.
   final DateTime? receiptDeliveredAt;
   final DateTime? receiptReadAt;
@@ -827,6 +852,7 @@ class LocalMessage extends DataClass implements Insertable<LocalMessage> {
     this.replyToMessageId,
     this.storyMediaId,
     required this.createdAt,
+    this.editedAt,
     this.receiptDeliveredAt,
     this.receiptReadAt,
   });
@@ -845,6 +871,9 @@ class LocalMessage extends DataClass implements Insertable<LocalMessage> {
       map['story_media_id'] = Variable<int>(storyMediaId);
     }
     map['created_at'] = Variable<DateTime>(createdAt);
+    if (!nullToAbsent || editedAt != null) {
+      map['edited_at'] = Variable<DateTime>(editedAt);
+    }
     if (!nullToAbsent || receiptDeliveredAt != null) {
       map['receipt_delivered_at'] = Variable<DateTime>(receiptDeliveredAt);
     }
@@ -868,6 +897,9 @@ class LocalMessage extends DataClass implements Insertable<LocalMessage> {
           ? const Value.absent()
           : Value(storyMediaId),
       createdAt: Value(createdAt),
+      editedAt: editedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(editedAt),
       receiptDeliveredAt: receiptDeliveredAt == null && nullToAbsent
           ? const Value.absent()
           : Value(receiptDeliveredAt),
@@ -891,6 +923,7 @@ class LocalMessage extends DataClass implements Insertable<LocalMessage> {
       replyToMessageId: serializer.fromJson<int?>(json['replyToMessageId']),
       storyMediaId: serializer.fromJson<int?>(json['storyMediaId']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+      editedAt: serializer.fromJson<DateTime?>(json['editedAt']),
       receiptDeliveredAt: serializer.fromJson<DateTime?>(
         json['receiptDeliveredAt'],
       ),
@@ -909,6 +942,7 @@ class LocalMessage extends DataClass implements Insertable<LocalMessage> {
       'replyToMessageId': serializer.toJson<int?>(replyToMessageId),
       'storyMediaId': serializer.toJson<int?>(storyMediaId),
       'createdAt': serializer.toJson<DateTime>(createdAt),
+      'editedAt': serializer.toJson<DateTime?>(editedAt),
       'receiptDeliveredAt': serializer.toJson<DateTime?>(receiptDeliveredAt),
       'receiptReadAt': serializer.toJson<DateTime?>(receiptReadAt),
     };
@@ -923,6 +957,7 @@ class LocalMessage extends DataClass implements Insertable<LocalMessage> {
     Value<int?> replyToMessageId = const Value.absent(),
     Value<int?> storyMediaId = const Value.absent(),
     DateTime? createdAt,
+    Value<DateTime?> editedAt = const Value.absent(),
     Value<DateTime?> receiptDeliveredAt = const Value.absent(),
     Value<DateTime?> receiptReadAt = const Value.absent(),
   }) => LocalMessage(
@@ -936,6 +971,7 @@ class LocalMessage extends DataClass implements Insertable<LocalMessage> {
         : this.replyToMessageId,
     storyMediaId: storyMediaId.present ? storyMediaId.value : this.storyMediaId,
     createdAt: createdAt ?? this.createdAt,
+    editedAt: editedAt.present ? editedAt.value : this.editedAt,
     receiptDeliveredAt: receiptDeliveredAt.present
         ? receiptDeliveredAt.value
         : this.receiptDeliveredAt,
@@ -961,6 +997,7 @@ class LocalMessage extends DataClass implements Insertable<LocalMessage> {
           ? data.storyMediaId.value
           : this.storyMediaId,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+      editedAt: data.editedAt.present ? data.editedAt.value : this.editedAt,
       receiptDeliveredAt: data.receiptDeliveredAt.present
           ? data.receiptDeliveredAt.value
           : this.receiptDeliveredAt,
@@ -981,6 +1018,7 @@ class LocalMessage extends DataClass implements Insertable<LocalMessage> {
           ..write('replyToMessageId: $replyToMessageId, ')
           ..write('storyMediaId: $storyMediaId, ')
           ..write('createdAt: $createdAt, ')
+          ..write('editedAt: $editedAt, ')
           ..write('receiptDeliveredAt: $receiptDeliveredAt, ')
           ..write('receiptReadAt: $receiptReadAt')
           ..write(')'))
@@ -997,6 +1035,7 @@ class LocalMessage extends DataClass implements Insertable<LocalMessage> {
     replyToMessageId,
     storyMediaId,
     createdAt,
+    editedAt,
     receiptDeliveredAt,
     receiptReadAt,
   );
@@ -1012,6 +1051,7 @@ class LocalMessage extends DataClass implements Insertable<LocalMessage> {
           other.replyToMessageId == this.replyToMessageId &&
           other.storyMediaId == this.storyMediaId &&
           other.createdAt == this.createdAt &&
+          other.editedAt == this.editedAt &&
           other.receiptDeliveredAt == this.receiptDeliveredAt &&
           other.receiptReadAt == this.receiptReadAt);
 }
@@ -1025,6 +1065,7 @@ class LocalMessagesCompanion extends UpdateCompanion<LocalMessage> {
   final Value<int?> replyToMessageId;
   final Value<int?> storyMediaId;
   final Value<DateTime> createdAt;
+  final Value<DateTime?> editedAt;
   final Value<DateTime?> receiptDeliveredAt;
   final Value<DateTime?> receiptReadAt;
   const LocalMessagesCompanion({
@@ -1036,6 +1077,7 @@ class LocalMessagesCompanion extends UpdateCompanion<LocalMessage> {
     this.replyToMessageId = const Value.absent(),
     this.storyMediaId = const Value.absent(),
     this.createdAt = const Value.absent(),
+    this.editedAt = const Value.absent(),
     this.receiptDeliveredAt = const Value.absent(),
     this.receiptReadAt = const Value.absent(),
   });
@@ -1048,6 +1090,7 @@ class LocalMessagesCompanion extends UpdateCompanion<LocalMessage> {
     this.replyToMessageId = const Value.absent(),
     this.storyMediaId = const Value.absent(),
     required DateTime createdAt,
+    this.editedAt = const Value.absent(),
     this.receiptDeliveredAt = const Value.absent(),
     this.receiptReadAt = const Value.absent(),
   }) : conversationId = Value(conversationId),
@@ -1063,6 +1106,7 @@ class LocalMessagesCompanion extends UpdateCompanion<LocalMessage> {
     Expression<int>? replyToMessageId,
     Expression<int>? storyMediaId,
     Expression<DateTime>? createdAt,
+    Expression<DateTime>? editedAt,
     Expression<DateTime>? receiptDeliveredAt,
     Expression<DateTime>? receiptReadAt,
   }) {
@@ -1075,6 +1119,7 @@ class LocalMessagesCompanion extends UpdateCompanion<LocalMessage> {
       if (replyToMessageId != null) 'reply_to_message_id': replyToMessageId,
       if (storyMediaId != null) 'story_media_id': storyMediaId,
       if (createdAt != null) 'created_at': createdAt,
+      if (editedAt != null) 'edited_at': editedAt,
       if (receiptDeliveredAt != null)
         'receipt_delivered_at': receiptDeliveredAt,
       if (receiptReadAt != null) 'receipt_read_at': receiptReadAt,
@@ -1090,6 +1135,7 @@ class LocalMessagesCompanion extends UpdateCompanion<LocalMessage> {
     Value<int?>? replyToMessageId,
     Value<int?>? storyMediaId,
     Value<DateTime>? createdAt,
+    Value<DateTime?>? editedAt,
     Value<DateTime?>? receiptDeliveredAt,
     Value<DateTime?>? receiptReadAt,
   }) {
@@ -1102,6 +1148,7 @@ class LocalMessagesCompanion extends UpdateCompanion<LocalMessage> {
       replyToMessageId: replyToMessageId ?? this.replyToMessageId,
       storyMediaId: storyMediaId ?? this.storyMediaId,
       createdAt: createdAt ?? this.createdAt,
+      editedAt: editedAt ?? this.editedAt,
       receiptDeliveredAt: receiptDeliveredAt ?? this.receiptDeliveredAt,
       receiptReadAt: receiptReadAt ?? this.receiptReadAt,
     );
@@ -1134,6 +1181,9 @@ class LocalMessagesCompanion extends UpdateCompanion<LocalMessage> {
     if (createdAt.present) {
       map['created_at'] = Variable<DateTime>(createdAt.value);
     }
+    if (editedAt.present) {
+      map['edited_at'] = Variable<DateTime>(editedAt.value);
+    }
     if (receiptDeliveredAt.present) {
       map['receipt_delivered_at'] = Variable<DateTime>(
         receiptDeliveredAt.value,
@@ -1156,6 +1206,7 @@ class LocalMessagesCompanion extends UpdateCompanion<LocalMessage> {
           ..write('replyToMessageId: $replyToMessageId, ')
           ..write('storyMediaId: $storyMediaId, ')
           ..write('createdAt: $createdAt, ')
+          ..write('editedAt: $editedAt, ')
           ..write('receiptDeliveredAt: $receiptDeliveredAt, ')
           ..write('receiptReadAt: $receiptReadAt')
           ..write(')'))
@@ -2268,6 +2319,7 @@ typedef $$LocalMessagesTableCreateCompanionBuilder =
       Value<int?> replyToMessageId,
       Value<int?> storyMediaId,
       required DateTime createdAt,
+      Value<DateTime?> editedAt,
       Value<DateTime?> receiptDeliveredAt,
       Value<DateTime?> receiptReadAt,
     });
@@ -2281,6 +2333,7 @@ typedef $$LocalMessagesTableUpdateCompanionBuilder =
       Value<int?> replyToMessageId,
       Value<int?> storyMediaId,
       Value<DateTime> createdAt,
+      Value<DateTime?> editedAt,
       Value<DateTime?> receiptDeliveredAt,
       Value<DateTime?> receiptReadAt,
     });
@@ -2331,6 +2384,11 @@ class $$LocalMessagesTableFilterComposer
 
   ColumnFilters<DateTime> get createdAt => $composableBuilder(
     column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get editedAt => $composableBuilder(
+    column: $table.editedAt,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -2394,6 +2452,11 @@ class $$LocalMessagesTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<DateTime> get editedAt => $composableBuilder(
+    column: $table.editedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<DateTime> get receiptDeliveredAt => $composableBuilder(
     column: $table.receiptDeliveredAt,
     builder: (column) => ColumnOrderings(column),
@@ -2446,6 +2509,9 @@ class $$LocalMessagesTableAnnotationComposer
   GeneratedColumn<DateTime> get createdAt =>
       $composableBuilder(column: $table.createdAt, builder: (column) => column);
 
+  GeneratedColumn<DateTime> get editedAt =>
+      $composableBuilder(column: $table.editedAt, builder: (column) => column);
+
   GeneratedColumn<DateTime> get receiptDeliveredAt => $composableBuilder(
     column: $table.receiptDeliveredAt,
     builder: (column) => column,
@@ -2496,6 +2562,7 @@ class $$LocalMessagesTableTableManager
                 Value<int?> replyToMessageId = const Value.absent(),
                 Value<int?> storyMediaId = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
+                Value<DateTime?> editedAt = const Value.absent(),
                 Value<DateTime?> receiptDeliveredAt = const Value.absent(),
                 Value<DateTime?> receiptReadAt = const Value.absent(),
               }) => LocalMessagesCompanion(
@@ -2507,6 +2574,7 @@ class $$LocalMessagesTableTableManager
                 replyToMessageId: replyToMessageId,
                 storyMediaId: storyMediaId,
                 createdAt: createdAt,
+                editedAt: editedAt,
                 receiptDeliveredAt: receiptDeliveredAt,
                 receiptReadAt: receiptReadAt,
               ),
@@ -2520,6 +2588,7 @@ class $$LocalMessagesTableTableManager
                 Value<int?> replyToMessageId = const Value.absent(),
                 Value<int?> storyMediaId = const Value.absent(),
                 required DateTime createdAt,
+                Value<DateTime?> editedAt = const Value.absent(),
                 Value<DateTime?> receiptDeliveredAt = const Value.absent(),
                 Value<DateTime?> receiptReadAt = const Value.absent(),
               }) => LocalMessagesCompanion.insert(
@@ -2531,6 +2600,7 @@ class $$LocalMessagesTableTableManager
                 replyToMessageId: replyToMessageId,
                 storyMediaId: storyMediaId,
                 createdAt: createdAt,
+                editedAt: editedAt,
                 receiptDeliveredAt: receiptDeliveredAt,
                 receiptReadAt: receiptReadAt,
               ),

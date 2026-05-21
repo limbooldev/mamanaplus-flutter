@@ -47,6 +47,8 @@ class InboxCubit extends Cubit<InboxState> {
       if (type == 'new_message') {
         _maybeAckDelivered(event);
         _scheduleQuietRefresh();
+      } else if (type == 'message_edited') {
+        _scheduleQuietRefresh();
       }
     });
     // Flush all outbox rows across all conversations when the socket reconnects.

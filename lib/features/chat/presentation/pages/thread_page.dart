@@ -865,6 +865,10 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
                                       ? message.resolvedStatus
                                       : null,
                                   showStatus: isSentByMe,
+                                  isEdited:
+                                      (message.metadata?['mamanaIsEdited']
+                                          as bool?) ??
+                                      false,
                                   textStyle: theme.typography.labelSmall.copyWith(
                                     color: fg.withValues(alpha: 0.85),
                                   ),

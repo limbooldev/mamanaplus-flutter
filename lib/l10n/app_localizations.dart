@@ -502,6 +502,12 @@ abstract class AppLocalizations {
   /// **'Edit message'**
   String get editMessageTitle;
 
+  /// Label shown next to a message timestamp after it has been edited
+  ///
+  /// In en, this message translates to:
+  /// **'Edited'**
+  String get messageEdited;
+
   /// No description provided for @buttonSave.
   ///
   /// In en, this message translates to:

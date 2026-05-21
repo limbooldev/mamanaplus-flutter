@@ -141,6 +141,10 @@
   "actionDeleteForMe": "Delete for me",
   "actionDeleteForEveryone": "Delete for everyone",
   "editMessageTitle": "Edit message",
+  "messageEdited": "Edited",
+  "@messageEdited": {
+    "description": "Label shown next to a message timestamp after it has been edited"
+  },
   "buttonSave": "Save",
   "blockDialogTitle": "Block user id",
   "blockPeerConfirmTitle": "Block this person?",

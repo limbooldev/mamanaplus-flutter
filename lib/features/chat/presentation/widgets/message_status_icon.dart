@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_chat_core/flutter_chat_core.dart';
+import 'package:mamana_plus/l10n/app_localizations.dart';
 import 'package:provider/provider.dart';
 
 /// WhatsApp-style read indicator. Sits on its own (not in [AppColors]) so the
@@ -63,6 +64,7 @@ class CustomTimeAndStatus extends StatelessWidget {
     this.status,
     this.showTime = true,
     this.showStatus = true,
+    this.isEdited = false,
     this.textStyle,
   });
 
@@ -70,6 +72,7 @@ class CustomTimeAndStatus extends StatelessWidget {
   final MessageStatus? status;
   final bool showTime;
   final bool showStatus;
+  final bool isEdited;
   final TextStyle? textStyle;
 
   @override
@@ -80,9 +83,13 @@ class CustomTimeAndStatus extends StatelessWidget {
     final color =
         textStyle?.color ?? Theme.of(context).colorScheme.onSurfaceVariant;
 
+    final l10n = AppLocalizations.of(context);
+
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
+        if (isEdited && l10n != null)
+          Text('${l10n.messageEdited} · ', style: textStyle),
         if (showTime && time != null)
           Text(timeFormat.format(time!.toLocal()), style: textStyle),
         if (showStatus && status != null) ...[

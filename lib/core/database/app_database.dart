@@ -30,6 +30,8 @@ class LocalMessages extends Table {
   IntColumn get replyToMessageId => integer().nullable()();
   IntColumn get storyMediaId => integer().nullable()();
   DateTimeColumn get createdAt => dateTime()();
+  /// From API `edited_at` when the sender has edited the message.
+  DateTimeColumn get editedAt => dateTime().nullable()();
   /// From API `receipt`: for own messages in a DM = peer delivery/read; for others = local read state.
   DateTimeColumn get receiptDeliveredAt => dateTime().nullable()();
   DateTimeColumn get receiptReadAt => dateTime().nullable()();
@@ -78,7 +80,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(_openConnection());
 
   @override
-  int get schemaVersion => 6;
+  int get schemaVersion => 7;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -109,6 +111,9 @@ class AppDatabase extends _$AppDatabase {
             await m.addColumn(messageOutbox, messageOutbox.mediaDurationMs);
             await m.addColumn(messageOutbox, messageOutbox.attempts);
             await m.addColumn(messageOutbox, messageOutbox.lastErrorAt);
+          }
+          if (from < 7) {
+            await m.addColumn(localMessages, localMessages.editedAt);
           }
         },
       );

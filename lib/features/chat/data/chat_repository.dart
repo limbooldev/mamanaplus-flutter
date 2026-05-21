@@ -361,6 +361,8 @@ class ChatRepository {
         final created =
             DateTime.tryParse(m['created_at'] as String? ?? '') ??
             DateTime.now();
+        DateTime? editedAt =
+            DateTime.tryParse(m['edited_at'] as String? ?? '');
         DateTime? recDel;
         DateTime? recRead;
         final receipt = m['receipt'];
@@ -372,6 +374,7 @@ class ChatRepository {
         // or carries an older value.
         final prev = existingById[id];
         if (prev != null) {
+          editedAt ??= prev.editedAt;
           if (recDel == null ||
               (prev.receiptDeliveredAt != null &&
                   prev.receiptDeliveredAt!.isAfter(recDel))) {
@@ -398,6 +401,7 @@ class ChatRepository {
               storyMid == null ? null : (storyMid as num).toInt(),
             ),
             createdAt: created,
+            editedAt: Value(editedAt),
             receiptDeliveredAt: Value(recDel),
             receiptReadAt: Value(recRead),
           ),

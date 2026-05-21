@@ -338,6 +338,13 @@ class ThreadCubit extends Cubit<ThreadState> {
         if (msgId != null) {
           unawaited(_repo.markRead(conversationId, msgId));
         }
+      } else if (type == 'message_edited' && payload is Map<String, dynamic>) {
+        final cid = _jsonInt(payload['conversation_id']);
+        if (cid != conversationId) return;
+        final msg = payload['message'] as Map<String, dynamic>?;
+        if (msg == null) return;
+        await _repo.cacheMessages(conversationId, [msg]);
+        await _reloadLocal();
       } else if (type == 'typing' && payload is Map<String, dynamic>) {
         final cid = _jsonInt(payload['conversation_id']);
         final uid = _jsonInt(payload['user_id']);

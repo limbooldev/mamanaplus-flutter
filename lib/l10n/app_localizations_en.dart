@@ -241,6 +241,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get editMessageTitle => 'Edit message';
 
   @override
+  String get messageEdited => 'Edited';
+
+  @override
   String get buttonSave => 'Save';
 
   @override

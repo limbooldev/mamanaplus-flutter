@@ -245,6 +245,11 @@ List<Message> mapLocalMessagesToChatMessages(
       );
     }
 
+    final isEdited = m.editedAt != null;
+    final textMeta = <String, dynamic>{
+      if (isEdited) 'mamanaIsEdited': true,
+      ...meta,
+    };
     return Message.text(
       id: id,
       authorId: authorId,
@@ -252,7 +257,7 @@ List<Message> mapLocalMessagesToChatMessages(
       createdAt: m.createdAt,
       replyToMessageId: replyTo,
       status: status,
-      metadata: meta.isEmpty ? null : meta,
+      metadata: textMeta.isEmpty ? null : textMeta,
     );
   }).toList();
 }
