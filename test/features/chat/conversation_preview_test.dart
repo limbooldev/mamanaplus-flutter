@@ -8,7 +8,7 @@ void main() {
       conversationPreviewForMessage(
         body: '{"gif_id":"x","url":"https://x.gif","kind":"gif"}',
         contentType: kMamanaGifContentType,
-      ),
+      ).text,
       'GIF',
     );
   });
@@ -18,7 +18,7 @@ void main() {
       conversationPreviewForMessage(
         body: '{"gif_id":"x","url":"https://x.webp","kind":"sticker"}',
         contentType: kMamanaGifContentType,
-      ),
+      ).text,
       'Sticker',
     );
   });
@@ -28,44 +28,63 @@ void main() {
       conversationPreviewForMessage(
         body: '{"sticker_id":"heart","emoji":"❤️"}',
         contentType: kMamanaStickerContentType,
-      ),
+      ).text,
       '❤️',
     );
   });
 
   test('normalizeConversationListPreview parses JSON body from API', () {
     expect(
-      normalizeConversationListPreview(
+      decodeConversationListPreview(
         '{"gif_id":"abc","url":"https://media.giphy.com/x.gif","kind":"gif"}',
-      ),
+      ).text,
       'GIF',
     );
     expect(
-      normalizeConversationListPreview(
+      decodeConversationListPreview(
         '{"sticker_id":"wave","emoji":"👋"}',
-      ),
+      ).text,
       '👋',
     );
   });
 
   test('media kinds map to labels', () {
-    expect(
-      conversationPreviewForMessage(
-        body: '{"object_key":"conv/1/a","mime":"image/jpeg","kind":"image"}',
-        contentType: kMamanaMediaContentType,
-      ),
-      'Photo',
+    final preview = conversationPreviewForMessage(
+      body: '{"object_key":"conv/1/a","mime":"image/jpeg","kind":"image"}',
+      contentType: kMamanaMediaContentType,
     );
+    expect(preview.text, 'Photo');
+    expect(preview.mediaKind, ConversationPreviewMediaKind.image);
   });
 
-  test('media caption is used as preview when present', () {
+  test('media caption includes media kind for inbox icon', () {
+    final preview = conversationPreviewForMessage(
+      body:
+          '{"object_key":"conv/1/a","mime":"image/jpeg","kind":"image","caption":"Look at this sunset"}',
+      contentType: kMamanaMediaContentType,
+    );
+    expect(preview.text, 'Look at this sunset');
+    expect(preview.mediaKind, ConversationPreviewMediaKind.image);
+
+    final encoded = encodeConversationListPreview(preview);
+    expect(encoded, '{"m":"image","p":"Look at this sunset"}');
+
+    final decoded = decodeConversationListPreview(encoded);
+    expect(decoded.text, 'Look at this sunset');
+    expect(decoded.mediaKind, ConversationPreviewMediaKind.image);
+  });
+
+  test('video caption encodes with video kind', () {
+    final preview = conversationPreviewForMessage(
+      body:
+          '{"object_key":"conv/1/a","mime":"video/mp4","kind":"video","caption":"Check this out"}',
+      contentType: kMamanaMediaContentType,
+    );
+    expect(preview.mediaKind, ConversationPreviewMediaKind.video);
     expect(
-      conversationPreviewForMessage(
-        body:
-            '{"object_key":"conv/1/a","mime":"image/jpeg","kind":"image","caption":"Look at this sunset"}',
-        contentType: kMamanaMediaContentType,
-      ),
-      'Look at this sunset',
+      decodeConversationListPreview(encodeConversationListPreview(preview))
+          .mediaKind,
+      ConversationPreviewMediaKind.video,
     );
   });
 }

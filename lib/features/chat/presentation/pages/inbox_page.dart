@@ -185,7 +185,7 @@ class _ChatsTab extends StatelessWidget {
               return _ConversationTile(
                 title: title,
                 avatarMediaKey: _avatarKeyFor(c),
-                previewLine: _previewLine(c, isGroup),
+                previewLine: _previewFor(c, isGroup),
                 timeLabel: _timeLabel(context, c),
                 isGroup: isGroup,
                 conversationId: c.id,
@@ -207,10 +207,12 @@ class _ChatsTab extends StatelessWidget {
     );
   }
 
-  String _previewLine(LocalConversation c, bool isGroup) {
-    final preview = normalizeConversationListPreview(c.lastMessagePreview);
-    if (preview.isNotEmpty) return preview;
-    return isGroup ? 'Group' : 'Direct message';
+  ConversationListPreview _previewFor(LocalConversation c, bool isGroup) {
+    final preview = decodeConversationListPreview(c.lastMessagePreview);
+    if (preview.text.isNotEmpty || preview.hasMediaIcon) return preview;
+    return ConversationListPreview(
+      text: isGroup ? 'Group' : 'Direct message',
+    );
   }
 
   String? _timeLabel(BuildContext context, LocalConversation c) {
@@ -261,7 +263,7 @@ class _ConversationTile extends StatelessWidget {
   final String title;
   final String? avatarMediaKey;
   /// Last message preview or placeholder (no timestamp).
-  final String previewLine;
+  final ConversationListPreview previewLine;
   final String? timeLabel;
   final bool isGroup;
   final int conversationId;
@@ -327,17 +329,7 @@ class _ConversationTile extends StatelessWidget {
                   Row(
                     crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
-                      Expanded(
-                        child: Text(
-                          previewLine,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: GoogleFonts.inter(
-                            fontSize: 13,
-                            color: AppColors.subtitleLight,
-                          ),
-                        ),
-                      ),
+                      Expanded(child: _PreviewLine(preview: previewLine)),
                       if (unreadCount > 0) ...[
                         const SizedBox(width: 8),
                         _UnreadBadge(count: unreadCount),
@@ -350,6 +342,47 @@ class _ConversationTile extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+class _PreviewLine extends StatelessWidget {
+  const _PreviewLine({required this.preview});
+
+  final ConversationListPreview preview;
+
+  @override
+  Widget build(BuildContext context) {
+    final style = GoogleFonts.inter(
+      fontSize: 13,
+      color: AppColors.subtitleLight,
+    );
+    final icon = switch (preview.mediaKind) {
+      ConversationPreviewMediaKind.image => Icons.photo_camera_outlined,
+      ConversationPreviewMediaKind.video => Icons.videocam_outlined,
+      null => null,
+    };
+    if (icon == null) {
+      return Text(
+        preview.text,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: style,
+      );
+    }
+    return Row(
+      children: [
+        Icon(icon, size: 16, color: AppColors.subtitleLight),
+        const SizedBox(width: 4),
+        Expanded(
+          child: Text(
+            preview.text,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: style,
+          ),
+        ),
+      ],
     );
   }
 }

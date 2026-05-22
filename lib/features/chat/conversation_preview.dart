@@ -4,6 +4,25 @@ import 'package:mamana_plus/core/database/app_database.dart';
 
 import 'media_constants.dart';
 
+/// Media kinds that show an inbox icon alongside caption text.
+enum ConversationPreviewMediaKind {
+  image,
+  video,
+}
+
+/// Parsed inbox / conversation-list preview (plain text or media + caption).
+class ConversationListPreview {
+  const ConversationListPreview({
+    required this.text,
+    this.mediaKind,
+  });
+
+  final String text;
+  final ConversationPreviewMediaKind? mediaKind;
+
+  bool get hasMediaIcon => mediaKind != null;
+}
+
 /// Normalizes a MIME type (strips parameters like `; charset=utf-8`).
 String normalizeContentType(String? contentType) {
   final raw = (contentType ?? '').trim();
@@ -13,7 +32,7 @@ String normalizeContentType(String? contentType) {
 }
 
 /// Human-readable inbox / conversation-list preview for a message.
-String conversationPreviewForMessage({
+ConversationListPreview conversationPreviewForMessage({
   required String body,
   required String contentType,
   int? storyMediaId,
@@ -21,14 +40,14 @@ String conversationPreviewForMessage({
   final ct = normalizeContentType(contentType);
 
   if (storyMediaId != null && storyMediaId > 0) {
-    return 'Story';
+    return const ConversationListPreview(text: 'Story');
   }
 
   if (ct == kMamanaGifContentType) {
-    return _gifPreviewFromBody(body);
+    return ConversationListPreview(text: _gifPreviewFromBody(body));
   }
   if (ct == kMamanaStickerContentType) {
-    return _catalogStickerPreviewFromBody(body);
+    return ConversationListPreview(text: _catalogStickerPreviewFromBody(body));
   }
   if (ct == kMamanaMediaContentType) {
     return _mediaPreviewFromBody(body);
@@ -39,9 +58,11 @@ String conversationPreviewForMessage({
   if (fromJson != null) return fromJson;
 
   final t = body.trim();
-  if (t.isEmpty) return 'Message';
-  if (t.length > 120) return '${t.substring(0, 117)}…';
-  return t;
+  if (t.isEmpty) return const ConversationListPreview(text: 'Message');
+  if (t.length > 120) {
+    return ConversationListPreview(text: '${t.substring(0, 117)}…');
+  }
+  return ConversationListPreview(text: t);
 }
 
 /// Same as [conversationPreviewForMessage] for a cached [LocalMessage].
@@ -50,15 +71,53 @@ String conversationPreviewForLocalMessage(LocalMessage m) {
     body: m.body,
     contentType: m.contentType,
     storyMediaId: m.storyMediaId,
-  );
+  ).text;
+}
+
+/// Encodes [preview] for storage in [LocalConversations.lastMessagePreview].
+String encodeConversationListPreview(ConversationListPreview preview) {
+  if (preview.mediaKind != null && preview.text.isNotEmpty) {
+    return jsonEncode({
+      'm': preview.mediaKind!.name,
+      'p': preview.text,
+    });
+  }
+  return preview.text;
+}
+
+/// Parses a stored or API `last_message_preview` string.
+ConversationListPreview decodeConversationListPreview(String? preview) {
+  final t = preview?.trim();
+  if (t == null || t.isEmpty) {
+    return const ConversationListPreview(text: '');
+  }
+  if (t.startsWith('{')) {
+    try {
+      final map = jsonDecode(t) as Map<String, dynamic>;
+      final kindRaw = map['m'] as String?;
+      final text = (map['p'] as String?)?.trim() ?? '';
+      final kind = switch (kindRaw) {
+        'image' => ConversationPreviewMediaKind.image,
+        'video' => ConversationPreviewMediaKind.video,
+        _ => null,
+      };
+      if (kind != null && text.isNotEmpty) {
+        return ConversationListPreview(text: text, mediaKind: kind);
+      }
+    } catch (_) {}
+    final fromBody = _previewFromJsonBody(t);
+    if (fromBody != null) return fromBody;
+  }
+  return ConversationListPreview(text: t);
 }
 
 /// If [preview] from the API is already friendly, return it; otherwise parse JSON bodies.
-String normalizeConversationListPreview(String? preview) {
-  final t = preview?.trim();
-  if (t == null || t.isEmpty) return '';
-  if (!t.startsWith('{')) return t;
-  return _previewFromJsonBody(t) ?? t;
+ConversationListPreview normalizeConversationListPreview(String? preview) {
+  final decoded = decodeConversationListPreview(preview);
+  if (decoded.text.isNotEmpty || decoded.mediaKind != null) {
+    return decoded;
+  }
+  return decoded;
 }
 
 String _gifPreviewFromBody(String body) {
@@ -86,49 +145,61 @@ String _truncatePreview(String text) {
   return '${t.substring(0, 117)}…';
 }
 
-String _mediaPreviewFromBody(String body) {
+ConversationPreviewMediaKind? _mediaKindFromWire(String? kind) {
+  return switch (kind) {
+    'image' || 'sticker' => ConversationPreviewMediaKind.image,
+    'video' => ConversationPreviewMediaKind.video,
+    _ => null,
+  };
+}
+
+ConversationListPreview _mediaPreviewFromBody(String body) {
   try {
     final map = jsonDecode(body) as Map<String, dynamic>;
+    final kind = map['kind'] as String? ?? '';
     final caption = (map['caption'] as String?)?.trim();
     if (caption != null && caption.isNotEmpty) {
-      return _truncatePreview(caption);
+      return ConversationListPreview(
+        text: _truncatePreview(caption),
+        mediaKind: _mediaKindFromWire(kind),
+      );
     }
-    return switch (map['kind'] as String? ?? '') {
-      'image' => 'Photo',
-      'video' => 'Video',
-      'voice' => 'Voice message',
-      'sticker' => 'Sticker',
-      _ => 'Media',
-    };
+    return ConversationListPreview(
+      text: switch (kind) {
+        'image' => 'Photo',
+        'video' => 'Video',
+        'voice' => 'Voice message',
+        'sticker' => 'Sticker',
+        _ => 'Media',
+      },
+      mediaKind: _mediaKindFromWire(kind),
+    );
   } catch (_) {
-    return 'Media';
+    return const ConversationListPreview(text: 'Media');
   }
 }
 
-String? _previewFromJsonBody(String body) {
+ConversationListPreview? _previewFromJsonBody(String body) {
   final t = body.trim();
   if (!t.startsWith('{')) return null;
   try {
     final map = jsonDecode(t) as Map<String, dynamic>;
     if (map.containsKey('gif_id') && map.containsKey('url')) {
       final kind = map['kind'] as String? ?? 'gif';
-      return kind == 'sticker' ? 'Sticker' : 'GIF';
+      return ConversationListPreview(
+        text: kind == 'sticker' ? 'Sticker' : 'GIF',
+      );
     }
     if (map.containsKey('sticker_id') && map.containsKey('emoji')) {
-      return map['emoji'] as String? ?? 'Sticker';
+      return ConversationListPreview(
+        text: map['emoji'] as String? ?? 'Sticker',
+      );
     }
     if (map.containsKey('object_key') && map.containsKey('kind')) {
-      final caption = (map['caption'] as String?)?.trim();
-      if (caption != null && caption.isNotEmpty) {
-        return _truncatePreview(caption);
-      }
-      return switch (map['kind'] as String? ?? '') {
-        'image' => 'Photo',
-        'video' => 'Video',
-        'voice' => 'Voice message',
-        'sticker' => 'Sticker',
-        _ => 'Media',
-      };
+      return _mediaPreviewFromBody(t);
+    }
+    if (map.containsKey('m') && map.containsKey('p')) {
+      return decodeConversationListPreview(t);
     }
   } catch (_) {}
   return null;

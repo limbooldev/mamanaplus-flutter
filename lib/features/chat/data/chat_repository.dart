@@ -315,9 +315,10 @@ class ChatRepository {
         if (m['peer'] != null) {
           peerJson = jsonEncode(m['peer']);
         }
-        final preview = normalizeConversationListPreview(
+        final preview = decodeConversationListPreview(
           m['last_message_preview'] as String?,
         );
+        final previewText = encodeConversationListPreview(preview);
         final lastAtRaw = m['last_message_at'] as String?;
         final lastAt = DateTime.tryParse(lastAtRaw ?? '');
         final unread = _parseUnreadCount(m);
@@ -328,7 +329,7 @@ class ChatRepository {
             type: type,
             title: Value(title),
             peerJson: Value(peerJson),
-            lastMessagePreview: Value(preview.isEmpty ? null : preview),
+            lastMessagePreview: Value(previewText.isEmpty ? null : previewText),
             lastMessageAt: Value(lastAt),
             unreadCount: Value(unread),
             updatedAt: DateTime.now(),
@@ -337,6 +338,7 @@ class ChatRepository {
         );
       }
     });
+    await _reconcileConversationPreviewsFromLocalMessages();
   }
 
   Future<void> cacheMessages(
@@ -444,11 +446,12 @@ class ChatRepository {
       contentType: ct,
       storyMediaId: storyId,
     );
+    final previewText = encodeConversationListPreview(preview);
     await (_db.update(_db.localConversations)
           ..where((t) => t.id.equals(conversationId)))
         .write(
       LocalConversationsCompanion(
-        lastMessagePreview: Value(preview),
+        lastMessagePreview: Value(previewText),
         lastMessageAt: Value(newestAt),
         updatedAt: Value(DateTime.now()),
       ),
@@ -462,7 +465,58 @@ class ChatRepository {
         .get();
   }
 
-  Future<List<LocalConversation>> loadConversationsLocal() {
+  /// Latest cached row per conversation (newest [LocalMessage.createdAt] wins).
+  Future<Map<int, LocalMessage>> _loadLatestMessageByConversation(
+    Iterable<int> conversationIds,
+  ) async {
+    final ids = conversationIds.toList(growable: false);
+    if (ids.isEmpty) return const {};
+    final rows = await (_db.select(_db.localMessages)
+          ..where((t) => t.conversationId.isIn(ids))
+          ..orderBy([(t) => OrderingTerm.desc(t.createdAt)]))
+        .get();
+    final out = <int, LocalMessage>{};
+    for (final row in rows) {
+      out.putIfAbsent(row.conversationId, () => row);
+    }
+    return out;
+  }
+
+  /// Rebuilds inbox previews from cached message bodies so media captions keep
+  /// their image/video icon even when the API `last_message_preview` is plain text.
+  Future<void> _reconcileConversationPreviewsFromLocalMessages() async {
+    final convs = await (_db.select(_db.localConversations)).get();
+    if (convs.isEmpty) return;
+    final latestByConv = await _loadLatestMessageByConversation(
+      convs.map((c) => c.id),
+    );
+    for (final c in convs) {
+      final latest = latestByConv[c.id];
+      if (latest == null) continue;
+      final convAt = c.lastMessageAt;
+      if (convAt != null && latest.createdAt.isBefore(convAt)) continue;
+
+      final computed = conversationPreviewForMessage(
+        body: latest.body,
+        contentType: latest.contentType,
+        storyMediaId: latest.storyMediaId,
+      );
+      final encoded = encodeConversationListPreview(computed);
+      if (encoded == (c.lastMessagePreview ?? '')) continue;
+
+      await (_db.update(_db.localConversations)
+            ..where((t) => t.id.equals(c.id)))
+          .write(
+        LocalConversationsCompanion(
+          lastMessagePreview: Value(encoded),
+          updatedAt: Value(DateTime.now()),
+        ),
+      );
+    }
+  }
+
+  Future<List<LocalConversation>> loadConversationsLocal() async {
+    await _reconcileConversationPreviewsFromLocalMessages();
     return (_db.select(
       _db.localConversations,
     )..orderBy([
@@ -491,9 +545,10 @@ class ChatRepository {
     if (m['peer'] != null) {
       peerJson = jsonEncode(m['peer']);
     }
-    final preview = normalizeConversationListPreview(
+    final preview = decodeConversationListPreview(
       m['last_message_preview'] as String?,
     );
+    final previewText = encodeConversationListPreview(preview);
     final lastAtRaw = m['last_message_at'] as String?;
     final lastAt = DateTime.tryParse(lastAtRaw ?? '');
     final unread = _parseUnreadCount(m);
@@ -505,7 +560,7 @@ class ChatRepository {
             type: type,
             title: Value(title),
             peerJson: Value(peerJson),
-            lastMessagePreview: Value(preview.isEmpty ? null : preview),
+            lastMessagePreview: Value(previewText.isEmpty ? null : previewText),
             lastMessageAt: Value(lastAt),
             unreadCount: Value(unread),
             updatedAt: DateTime.now(),
