@@ -23,6 +23,18 @@ class ConversationListPreview {
   bool get hasMediaIcon => mediaKind != null;
 }
 
+/// True when the user may copy or edit message body (plain text only).
+bool isEditableChatMessage(LocalMessage m) {
+  if (m.storyMediaId != null && m.storyMediaId! > 0) {
+    return false;
+  }
+  final ct = normalizeContentType(m.contentType);
+  if (ct != 'text/plain') {
+    return false;
+  }
+  return m.body.trim().isNotEmpty;
+}
+
 /// Normalizes a MIME type (strips parameters like `; charset=utf-8`).
 String normalizeContentType(String? contentType) {
   final raw = (contentType ?? '').trim();

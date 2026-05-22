@@ -22,6 +22,7 @@ import '../../../../core/database/app_database.dart';
 import '../../../../core/jwt_util.dart';
 import '../../../../router/app_routes.dart';
 import '../../../../shared/ui/ui.dart';
+import '../../conversation_preview.dart';
 import '../../data/chat_mute_prefs.dart';
 import '../../data/chat_repository.dart';
 import '../cubit/thread_cubit.dart';
@@ -1280,11 +1281,6 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
           mainAxisSize: MainAxisSize.min,
           children: [
             ListTile(
-              leading: const Icon(Icons.insert_emoticon_outlined),
-              title: const Text('Sticker from photo'),
-              onTap: () => Navigator.pop(ctx, 'sticker_image'),
-            ),
-            ListTile(
               leading: const Icon(Icons.photo_library_outlined),
               title: const Text('Photo library'),
               onTap: () => Navigator.pop(ctx, 'gallery'),
@@ -1312,23 +1308,6 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
     final cubit = context.read<ThreadCubit>();
     final picker = ImagePicker();
     switch (picked) {
-      case 'sticker_image':
-        final x = await picker.pickImage(source: ImageSource.gallery);
-        if (x != null && context.mounted) {
-          final picked = await openMediaCaptionPreview(
-            context,
-            path: x.path,
-            kind: 'sticker',
-          );
-          if (picked != null && context.mounted) {
-            await cubit.sendMediaFile(
-              path: picked.path,
-              kind: 'sticker',
-              caption: picked.caption,
-            );
-          }
-        }
-        break;
       case 'gallery':
         final x = await picker.pickImage(source: ImageSource.gallery);
         if (x == null) break;
@@ -1459,9 +1438,7 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
   Future<void> _ownMessageActions(BuildContext context, LocalMessage m) async {
     final l10n = AppLocalizations.of(context)!;
     final cubit = context.read<ThreadCubit>();
-    final ct = m.contentType.toLowerCase().trim();
-    final canCopy = (ct == 'text/plain' || ct.startsWith('text/plain;')) &&
-        m.body.trim().isNotEmpty;
+    final canCopy = isEditableChatMessage(m);
     final action = await showModalBottomSheet<String>(
       context: context,
       builder: (ctx) => SafeArea(
@@ -1479,11 +1456,12 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
                 title: Text(l10n.actionCopy),
                 onTap: () => Navigator.pop(ctx, 'copy'),
               ),
-            ListTile(
-              leading: const Icon(Icons.edit),
-              title: Text(l10n.actionEdit),
-              onTap: () => Navigator.pop(ctx, 'edit'),
-            ),
+            if (canCopy)
+              ListTile(
+                leading: const Icon(Icons.edit),
+                title: Text(l10n.actionEdit),
+                onTap: () => Navigator.pop(ctx, 'edit'),
+              ),
             ListTile(
               leading: const Icon(Icons.visibility_off_outlined),
               title: Text(l10n.actionDeleteForMe),

@@ -316,7 +316,7 @@ class ComposerReplyPreview extends StatelessWidget {
               const SizedBox(height: 2),
               Text(
                 data.subtitle,
-                maxLines: 2,
+                maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: GoogleFonts.inter(fontSize: 13, color: subtitleColor),
               ),
@@ -401,7 +401,7 @@ class ReplyQuote extends StatelessWidget {
                 const SizedBox(height: 2),
                 Text(
                   data.subtitle,
-                  maxLines: 2,
+                  maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                     color: subtitleColor,
