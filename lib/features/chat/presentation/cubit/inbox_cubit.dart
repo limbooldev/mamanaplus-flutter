@@ -51,10 +51,14 @@ class InboxCubit extends Cubit<InboxState> {
         _scheduleQuietRefresh();
       }
     });
-    // Flush all outbox rows across all conversations when the socket reconnects.
-    // This covers messages sent while offline in conversations not currently open.
+    // Every time the WebSocket reconnects, flush all queued outbox rows and
+    // refresh the inbox from REST. The refresh is critical: while the socket
+    // was down (app backgrounded, OS killed TCP, backend 60 s idle close)
+    // `new_message` events were delivered only via FCM, so unread badges and
+    // last-message previews on the inbox can be stale.
     _reconnectSub = _repo.socket.connected.listen((_) {
       unawaited(_repo.flushAllOutbox());
+      unawaited(refreshQuiet());
     });
   }
 

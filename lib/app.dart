@@ -43,12 +43,13 @@ class MamanaApp extends StatefulWidget {
   State<MamanaApp> createState() => _MamanaAppState();
 }
 
-class _MamanaAppState extends State<MamanaApp> {
+class _MamanaAppState extends State<MamanaApp> with WidgetsBindingObserver {
   late final GoRouter _router;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     final auth = widget.authCubit;
     final start = _initialLocationFor(auth.state);
     _router = GoRouter(
@@ -155,8 +156,43 @@ class _MamanaAppState extends State<MamanaApp> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _router.dispose();
     super.dispose();
+  }
+
+  /// Suspends the WebSocket on background and reconnects on foreground.
+  ///
+  /// We don't just rely on the OS tearing down the TCP flow: a suspended app
+  /// briefly keeps the socket alive, and during that window the still-alive
+  /// [ThreadCubit] would auto-`markRead` incoming messages and presence would
+  /// keep showing "Online". Explicitly suspending makes presence accurate and
+  /// lets the backend fall back to FCM push (see `deliverNewMessagePush`,
+  /// which only sends push when `!Hub.IsUserConnected(uid)`).
+  ///
+  /// On resume we reconnect immediately rather than waiting for the OS to
+  /// surface a half-open socket or for exponential backoff — the resulting
+  /// `connected` stream event lets [ThreadCubit]/[InboxCubit] refetch any
+  /// messages that arrived (via push) while we were suspended.
+  ///
+  /// We deliberately ignore [AppLifecycleState.inactive] (and `hidden`) so a
+  /// transient interruption (notification shade pull-down, app switcher) does
+  /// not flap the connection.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (widget.authCubit.state is! AuthAuthenticated) return;
+    final socket = widget.chatRepository.socket;
+    switch (state) {
+      case AppLifecycleState.resumed:
+        socket.resume();
+        socket.ensureConnected();
+      case AppLifecycleState.paused:
+      case AppLifecycleState.detached:
+        socket.suspend();
+      case AppLifecycleState.inactive:
+      case AppLifecycleState.hidden:
+        break;
+    }
   }
 
   void _syncRouteToAuth(AuthState state) {

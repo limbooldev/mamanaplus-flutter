@@ -306,10 +306,16 @@ class ThreadCubit extends Cubit<ThreadState> {
       unawaited(_reloadLocal());
     });
 
-    // Flush any outbox rows that failed to send (e.g. sent while offline)
-    // every time the WebSocket re-establishes a connection.
+    // Every time the WebSocket re-establishes, flush any outbox rows that
+    // failed to send AND re-fetch messages from REST. The refetch is critical:
+    // while the socket was down (app backgrounded, OS killed TCP flow, backend
+    // 60 s idle close, etc.) any `new_message` events delivered by FCM-only
+    // recipients never reached this cubit, so the in-memory thread is stale.
+    // Without this, the user has to leave and re-enter the thread to see
+    // messages that arrived during the disconnect window.
     _reconnectSub = _repo.socket.connected.listen((_) {
       unawaited(flushOutbox());
+      unawaited(_reloadMessagesFromRemote());
     });
 
     _sub = _repo.socket.events.listen((event) async {
