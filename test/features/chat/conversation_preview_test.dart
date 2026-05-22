@@ -57,4 +57,15 @@ void main() {
       'Photo',
     );
   });
+
+  test('media caption is used as preview when present', () {
+    expect(
+      conversationPreviewForMessage(
+        body:
+            '{"object_key":"conv/1/a","mime":"image/jpeg","kind":"image","caption":"Look at this sunset"}',
+        contentType: kMamanaMediaContentType,
+      ),
+      'Look at this sunset',
+    );
+  });
 }

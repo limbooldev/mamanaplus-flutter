@@ -176,6 +176,11 @@
     }
   },
 
+  "mediaCaptionHint": "Add a caption\u2026",
+  "mediaPreviewEdit": "Edit",
+  "mediaPreviewSend": "Send",
+  "mediaPreviewClose": "Close",
+
   "pickUsersTitleSingle": "New message",
   "pickUsersTitleMulti": "Add members",
   "pickUsersSearchHint": "Search by name",

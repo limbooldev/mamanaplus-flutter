@@ -65,6 +65,9 @@ class MessageOutbox extends Table {
   TextColumn get mediaKind => text().nullable()();
   IntColumn get mediaDurationMs => integer().nullable()();
 
+  /// Optional caption typed on the pre-send preview screen.
+  TextColumn get mediaCaption => text().nullable()();
+
   /// Number of failed send attempts (incremented on each network failure).
   IntColumn get attempts => integer().withDefault(const Constant(0))();
 
@@ -80,7 +83,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(_openConnection());
 
   @override
-  int get schemaVersion => 7;
+  int get schemaVersion => 8;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -114,6 +117,9 @@ class AppDatabase extends _$AppDatabase {
           }
           if (from < 7) {
             await m.addColumn(localMessages, localMessages.editedAt);
+          }
+          if (from < 8) {
+            await m.addColumn(messageOutbox, messageOutbox.mediaCaption);
           }
         },
       );

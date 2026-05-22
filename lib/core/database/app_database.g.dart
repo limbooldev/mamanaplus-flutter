@@ -1340,6 +1340,17 @@ class $MessageOutboxTable extends MessageOutbox
     type: DriftSqlType.int,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _mediaCaptionMeta = const VerificationMeta(
+    'mediaCaption',
+  );
+  @override
+  late final GeneratedColumn<String> mediaCaption = GeneratedColumn<String>(
+    'media_caption',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   static const VerificationMeta _attemptsMeta = const VerificationMeta(
     'attempts',
   );
@@ -1376,6 +1387,7 @@ class $MessageOutboxTable extends MessageOutbox
     mediaMime,
     mediaKind,
     mediaDurationMs,
+    mediaCaption,
     attempts,
     lastErrorAt,
   ];
@@ -1480,6 +1492,15 @@ class $MessageOutboxTable extends MessageOutbox
         ),
       );
     }
+    if (data.containsKey('media_caption')) {
+      context.handle(
+        _mediaCaptionMeta,
+        mediaCaption.isAcceptableOrUnknown(
+          data['media_caption']!,
+          _mediaCaptionMeta,
+        ),
+      );
+    }
     if (data.containsKey('attempts')) {
       context.handle(
         _attemptsMeta,
@@ -1548,6 +1569,10 @@ class $MessageOutboxTable extends MessageOutbox
         DriftSqlType.int,
         data['${effectivePrefix}media_duration_ms'],
       ),
+      mediaCaption: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}media_caption'],
+      ),
       attempts: attachedDatabase.typeMapping.read(
         DriftSqlType.int,
         data['${effectivePrefix}attempts'],
@@ -1588,6 +1613,9 @@ class MessageOutboxData extends DataClass
   final String? mediaKind;
   final int? mediaDurationMs;
 
+  /// Optional caption typed on the pre-send preview screen.
+  final String? mediaCaption;
+
   /// Number of failed send attempts (incremented on each network failure).
   final int attempts;
 
@@ -1606,6 +1634,7 @@ class MessageOutboxData extends DataClass
     this.mediaMime,
     this.mediaKind,
     this.mediaDurationMs,
+    this.mediaCaption,
     required this.attempts,
     this.lastErrorAt,
   });
@@ -1634,6 +1663,9 @@ class MessageOutboxData extends DataClass
     }
     if (!nullToAbsent || mediaDurationMs != null) {
       map['media_duration_ms'] = Variable<int>(mediaDurationMs);
+    }
+    if (!nullToAbsent || mediaCaption != null) {
+      map['media_caption'] = Variable<String>(mediaCaption);
     }
     map['attempts'] = Variable<int>(attempts);
     if (!nullToAbsent || lastErrorAt != null) {
@@ -1667,6 +1699,9 @@ class MessageOutboxData extends DataClass
       mediaDurationMs: mediaDurationMs == null && nullToAbsent
           ? const Value.absent()
           : Value(mediaDurationMs),
+      mediaCaption: mediaCaption == null && nullToAbsent
+          ? const Value.absent()
+          : Value(mediaCaption),
       attempts: Value(attempts),
       lastErrorAt: lastErrorAt == null && nullToAbsent
           ? const Value.absent()
@@ -1691,6 +1726,7 @@ class MessageOutboxData extends DataClass
       mediaMime: serializer.fromJson<String?>(json['mediaMime']),
       mediaKind: serializer.fromJson<String?>(json['mediaKind']),
       mediaDurationMs: serializer.fromJson<int?>(json['mediaDurationMs']),
+      mediaCaption: serializer.fromJson<String?>(json['mediaCaption']),
       attempts: serializer.fromJson<int>(json['attempts']),
       lastErrorAt: serializer.fromJson<DateTime?>(json['lastErrorAt']),
     );
@@ -1710,6 +1746,7 @@ class MessageOutboxData extends DataClass
       'mediaMime': serializer.toJson<String?>(mediaMime),
       'mediaKind': serializer.toJson<String?>(mediaKind),
       'mediaDurationMs': serializer.toJson<int?>(mediaDurationMs),
+      'mediaCaption': serializer.toJson<String?>(mediaCaption),
       'attempts': serializer.toJson<int>(attempts),
       'lastErrorAt': serializer.toJson<DateTime?>(lastErrorAt),
     };
@@ -1727,6 +1764,7 @@ class MessageOutboxData extends DataClass
     Value<String?> mediaMime = const Value.absent(),
     Value<String?> mediaKind = const Value.absent(),
     Value<int?> mediaDurationMs = const Value.absent(),
+    Value<String?> mediaCaption = const Value.absent(),
     int? attempts,
     Value<DateTime?> lastErrorAt = const Value.absent(),
   }) => MessageOutboxData(
@@ -1745,6 +1783,7 @@ class MessageOutboxData extends DataClass
     mediaDurationMs: mediaDurationMs.present
         ? mediaDurationMs.value
         : this.mediaDurationMs,
+    mediaCaption: mediaCaption.present ? mediaCaption.value : this.mediaCaption,
     attempts: attempts ?? this.attempts,
     lastErrorAt: lastErrorAt.present ? lastErrorAt.value : this.lastErrorAt,
   );
@@ -1771,6 +1810,9 @@ class MessageOutboxData extends DataClass
       mediaDurationMs: data.mediaDurationMs.present
           ? data.mediaDurationMs.value
           : this.mediaDurationMs,
+      mediaCaption: data.mediaCaption.present
+          ? data.mediaCaption.value
+          : this.mediaCaption,
       attempts: data.attempts.present ? data.attempts.value : this.attempts,
       lastErrorAt: data.lastErrorAt.present
           ? data.lastErrorAt.value
@@ -1792,6 +1834,7 @@ class MessageOutboxData extends DataClass
           ..write('mediaMime: $mediaMime, ')
           ..write('mediaKind: $mediaKind, ')
           ..write('mediaDurationMs: $mediaDurationMs, ')
+          ..write('mediaCaption: $mediaCaption, ')
           ..write('attempts: $attempts, ')
           ..write('lastErrorAt: $lastErrorAt')
           ..write(')'))
@@ -1811,6 +1854,7 @@ class MessageOutboxData extends DataClass
     mediaMime,
     mediaKind,
     mediaDurationMs,
+    mediaCaption,
     attempts,
     lastErrorAt,
   );
@@ -1829,6 +1873,7 @@ class MessageOutboxData extends DataClass
           other.mediaMime == this.mediaMime &&
           other.mediaKind == this.mediaKind &&
           other.mediaDurationMs == this.mediaDurationMs &&
+          other.mediaCaption == this.mediaCaption &&
           other.attempts == this.attempts &&
           other.lastErrorAt == this.lastErrorAt);
 }
@@ -1845,6 +1890,7 @@ class MessageOutboxCompanion extends UpdateCompanion<MessageOutboxData> {
   final Value<String?> mediaMime;
   final Value<String?> mediaKind;
   final Value<int?> mediaDurationMs;
+  final Value<String?> mediaCaption;
   final Value<int> attempts;
   final Value<DateTime?> lastErrorAt;
   final Value<int> rowid;
@@ -1860,6 +1906,7 @@ class MessageOutboxCompanion extends UpdateCompanion<MessageOutboxData> {
     this.mediaMime = const Value.absent(),
     this.mediaKind = const Value.absent(),
     this.mediaDurationMs = const Value.absent(),
+    this.mediaCaption = const Value.absent(),
     this.attempts = const Value.absent(),
     this.lastErrorAt = const Value.absent(),
     this.rowid = const Value.absent(),
@@ -1876,6 +1923,7 @@ class MessageOutboxCompanion extends UpdateCompanion<MessageOutboxData> {
     this.mediaMime = const Value.absent(),
     this.mediaKind = const Value.absent(),
     this.mediaDurationMs = const Value.absent(),
+    this.mediaCaption = const Value.absent(),
     this.attempts = const Value.absent(),
     this.lastErrorAt = const Value.absent(),
     this.rowid = const Value.absent(),
@@ -1895,6 +1943,7 @@ class MessageOutboxCompanion extends UpdateCompanion<MessageOutboxData> {
     Expression<String>? mediaMime,
     Expression<String>? mediaKind,
     Expression<int>? mediaDurationMs,
+    Expression<String>? mediaCaption,
     Expression<int>? attempts,
     Expression<DateTime>? lastErrorAt,
     Expression<int>? rowid,
@@ -1911,6 +1960,7 @@ class MessageOutboxCompanion extends UpdateCompanion<MessageOutboxData> {
       if (mediaMime != null) 'media_mime': mediaMime,
       if (mediaKind != null) 'media_kind': mediaKind,
       if (mediaDurationMs != null) 'media_duration_ms': mediaDurationMs,
+      if (mediaCaption != null) 'media_caption': mediaCaption,
       if (attempts != null) 'attempts': attempts,
       if (lastErrorAt != null) 'last_error_at': lastErrorAt,
       if (rowid != null) 'rowid': rowid,
@@ -1929,6 +1979,7 @@ class MessageOutboxCompanion extends UpdateCompanion<MessageOutboxData> {
     Value<String?>? mediaMime,
     Value<String?>? mediaKind,
     Value<int?>? mediaDurationMs,
+    Value<String?>? mediaCaption,
     Value<int>? attempts,
     Value<DateTime?>? lastErrorAt,
     Value<int>? rowid,
@@ -1945,6 +1996,7 @@ class MessageOutboxCompanion extends UpdateCompanion<MessageOutboxData> {
       mediaMime: mediaMime ?? this.mediaMime,
       mediaKind: mediaKind ?? this.mediaKind,
       mediaDurationMs: mediaDurationMs ?? this.mediaDurationMs,
+      mediaCaption: mediaCaption ?? this.mediaCaption,
       attempts: attempts ?? this.attempts,
       lastErrorAt: lastErrorAt ?? this.lastErrorAt,
       rowid: rowid ?? this.rowid,
@@ -1987,6 +2039,9 @@ class MessageOutboxCompanion extends UpdateCompanion<MessageOutboxData> {
     if (mediaDurationMs.present) {
       map['media_duration_ms'] = Variable<int>(mediaDurationMs.value);
     }
+    if (mediaCaption.present) {
+      map['media_caption'] = Variable<String>(mediaCaption.value);
+    }
     if (attempts.present) {
       map['attempts'] = Variable<int>(attempts.value);
     }
@@ -2013,6 +2068,7 @@ class MessageOutboxCompanion extends UpdateCompanion<MessageOutboxData> {
           ..write('mediaMime: $mediaMime, ')
           ..write('mediaKind: $mediaKind, ')
           ..write('mediaDurationMs: $mediaDurationMs, ')
+          ..write('mediaCaption: $mediaCaption, ')
           ..write('attempts: $attempts, ')
           ..write('lastErrorAt: $lastErrorAt, ')
           ..write('rowid: $rowid')
@@ -2642,6 +2698,7 @@ typedef $$MessageOutboxTableCreateCompanionBuilder =
       Value<String?> mediaMime,
       Value<String?> mediaKind,
       Value<int?> mediaDurationMs,
+      Value<String?> mediaCaption,
       Value<int> attempts,
       Value<DateTime?> lastErrorAt,
       Value<int> rowid,
@@ -2659,6 +2716,7 @@ typedef $$MessageOutboxTableUpdateCompanionBuilder =
       Value<String?> mediaMime,
       Value<String?> mediaKind,
       Value<int?> mediaDurationMs,
+      Value<String?> mediaCaption,
       Value<int> attempts,
       Value<DateTime?> lastErrorAt,
       Value<int> rowid,
@@ -2725,6 +2783,11 @@ class $$MessageOutboxTableFilterComposer
 
   ColumnFilters<int> get mediaDurationMs => $composableBuilder(
     column: $table.mediaDurationMs,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get mediaCaption => $composableBuilder(
+    column: $table.mediaCaption,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -2803,6 +2866,11 @@ class $$MessageOutboxTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get mediaCaption => $composableBuilder(
+    column: $table.mediaCaption,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<int> get attempts => $composableBuilder(
     column: $table.attempts,
     builder: (column) => ColumnOrderings(column),
@@ -2866,6 +2934,11 @@ class $$MessageOutboxTableAnnotationComposer
     builder: (column) => column,
   );
 
+  GeneratedColumn<String> get mediaCaption => $composableBuilder(
+    column: $table.mediaCaption,
+    builder: (column) => column,
+  );
+
   GeneratedColumn<int> get attempts =>
       $composableBuilder(column: $table.attempts, builder: (column) => column);
 
@@ -2921,6 +2994,7 @@ class $$MessageOutboxTableTableManager
                 Value<String?> mediaMime = const Value.absent(),
                 Value<String?> mediaKind = const Value.absent(),
                 Value<int?> mediaDurationMs = const Value.absent(),
+                Value<String?> mediaCaption = const Value.absent(),
                 Value<int> attempts = const Value.absent(),
                 Value<DateTime?> lastErrorAt = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
@@ -2936,6 +3010,7 @@ class $$MessageOutboxTableTableManager
                 mediaMime: mediaMime,
                 mediaKind: mediaKind,
                 mediaDurationMs: mediaDurationMs,
+                mediaCaption: mediaCaption,
                 attempts: attempts,
                 lastErrorAt: lastErrorAt,
                 rowid: rowid,
@@ -2953,6 +3028,7 @@ class $$MessageOutboxTableTableManager
                 Value<String?> mediaMime = const Value.absent(),
                 Value<String?> mediaKind = const Value.absent(),
                 Value<int?> mediaDurationMs = const Value.absent(),
+                Value<String?> mediaCaption = const Value.absent(),
                 Value<int> attempts = const Value.absent(),
                 Value<DateTime?> lastErrorAt = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
@@ -2968,6 +3044,7 @@ class $$MessageOutboxTableTableManager
                 mediaMime: mediaMime,
                 mediaKind: mediaKind,
                 mediaDurationMs: mediaDurationMs,
+                mediaCaption: mediaCaption,
                 attempts: attempts,
                 lastErrorAt: lastErrorAt,
                 rowid: rowid,

@@ -598,6 +598,7 @@ class ThreadCubit extends Cubit<ThreadState> {
     required String path,
     required String kind,
     int? durationMs,
+    String? caption,
   }) async {
     final mime = lookupMimeType(path) ?? 'application/octet-stream';
     final replyId = state.replyTo?.id;
@@ -610,6 +611,7 @@ class ThreadCubit extends Cubit<ThreadState> {
       kind: kind,
       durationMs: durationMs,
       replyToMessageId: replyId,
+      caption: caption,
     ));
   }
 

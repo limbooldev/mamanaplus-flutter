@@ -95,6 +95,7 @@ class ChatRepository {
     required String mediaKind,
     int? mediaDurationMs,
     int? replyToMessageId,
+    String? caption,
   }) async {
     await _db
         .into(_db.messageOutbox)
@@ -110,6 +111,7 @@ class ChatRepository {
             mediaMime: Value(mediaMime),
             mediaKind: Value(mediaKind),
             mediaDurationMs: Value(mediaDurationMs),
+            mediaCaption: Value(caption),
           ),
         );
     _outboxChangesCtrl.add(conversationId);
@@ -168,6 +170,7 @@ class ChatRepository {
     required String kind,
     int? durationMs,
     int? replyToMessageId,
+    String? caption,
   }) async {
     await enqueuePendingMediaSend(
       localId: localId,
@@ -177,6 +180,7 @@ class ChatRepository {
       mediaKind: kind,
       mediaDurationMs: durationMs,
       replyToMessageId: replyToMessageId,
+      caption: caption,
     );
     try {
       final bytes = await File(path).readAsBytes();
@@ -187,6 +191,7 @@ class ChatRepository {
         kind: kind,
         durationMs: durationMs,
         replyToMessageId: replyToMessageId,
+        caption: caption,
       );
       await _deleteOutbox(localId, conversationId);
     } catch (_) {
@@ -279,6 +284,7 @@ class ChatRepository {
           kind: row.mediaKind ?? 'image',
           durationMs: row.mediaDurationMs,
           replyToMessageId: row.replyToMessageId,
+          caption: row.mediaCaption,
         );
       } else {
         final m = await _remote.sendMessage(
@@ -677,6 +683,7 @@ class ChatRepository {
     required String kind,
     int? durationMs,
     int? replyToMessageId,
+    String? caption,
   }) =>
       _uploadAndSendMediaFromBytes(
         conversationId: conversationId,
@@ -685,6 +692,7 @@ class ChatRepository {
         kind: kind,
         durationMs: durationMs,
         replyToMessageId: replyToMessageId,
+        caption: caption,
       );
 
   Future<Map<String, dynamic>> _uploadAndSendMediaFromBytes({
@@ -694,6 +702,7 @@ class ChatRepository {
     required String kind,
     int? durationMs,
     int? replyToMessageId,
+    String? caption,
   }) async {
     final presign = await _remote.presignMedia(
       contentType: mimeType,
@@ -725,6 +734,7 @@ class ChatRepository {
       'mime': mimeType,
       'kind': kind,
       if (durationMs != null && durationMs > 0) 'duration_ms': durationMs,
+      if (caption != null && caption.trim().isNotEmpty) 'caption': caption.trim(),
     });
     final m = await sendMessage(
       conversationId,

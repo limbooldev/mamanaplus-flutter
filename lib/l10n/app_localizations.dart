@@ -610,6 +610,30 @@ abstract class AppLocalizations {
   /// **'Could not export video: {error}'**
   String videoEditorExportFailed(String error);
 
+  /// No description provided for @mediaCaptionHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Add a caption…'**
+  String get mediaCaptionHint;
+
+  /// No description provided for @mediaPreviewEdit.
+  ///
+  /// In en, this message translates to:
+  /// **'Edit'**
+  String get mediaPreviewEdit;
+
+  /// No description provided for @mediaPreviewSend.
+  ///
+  /// In en, this message translates to:
+  /// **'Send'**
+  String get mediaPreviewSend;
+
+  /// No description provided for @mediaPreviewClose.
+  ///
+  /// In en, this message translates to:
+  /// **'Close'**
+  String get mediaPreviewClose;
+
   /// No description provided for @pickUsersTitleSingle.
   ///
   /// In en, this message translates to:

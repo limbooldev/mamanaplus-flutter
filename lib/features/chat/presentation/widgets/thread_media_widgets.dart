@@ -18,6 +18,22 @@ const double kChatInlineVideoW = 220;
 const double kChatInlineVideoH = 140;
 const double kChatAudioBubbleMinW = 220;
 
+/// Caption text shown below inline image/video bubbles when present.
+Widget? buildMediaCaptionWidget(String? caption, Color foreground) {
+  final text = caption?.trim();
+  if (text == null || text.isEmpty) return null;
+  return Padding(
+    padding: const EdgeInsets.only(top: 4, left: 2, right: 2, bottom: 2),
+    child: ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: kChatInlineImageW),
+      child: Text(
+        text,
+        style: TextStyle(color: foreground, fontSize: 14),
+      ),
+    ),
+  );
+}
+
 /// Parses `object_key` from our `/v1/media/download?object_key=…` URLs (used by voice playback + tests).
 String? parseObjectKeyFromMediaDownloadUrl(String source) {
   final uri = Uri.tryParse(source);
@@ -485,6 +501,10 @@ class _ThreadVideoBubbleState extends State<ThreadVideoBubble> {
   @override
   Widget build(BuildContext context) {
     final theme = context.read<ChatTheme>();
+    final captionWidget = buildMediaCaptionWidget(
+      widget.message.metadata?['caption'] as String?,
+      widget.foreground,
+    );
     return Align(
       alignment: widget.isSentByMe ? Alignment.centerRight : Alignment.centerLeft,
       child: Container(
@@ -562,6 +582,7 @@ class _ThreadVideoBubbleState extends State<ThreadVideoBubble> {
                   ),
                 ),
               ),
+            if (captionWidget != null) captionWidget,
             if (widget.isSentByMe)
               CustomTimeAndStatus(
                 time: widget.message.resolvedTime,

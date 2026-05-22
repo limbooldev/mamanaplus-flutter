@@ -80,9 +80,19 @@ String _catalogStickerPreviewFromBody(String body) {
   }
 }
 
+String _truncatePreview(String text) {
+  final t = text.trim();
+  if (t.length <= 120) return t;
+  return '${t.substring(0, 117)}…';
+}
+
 String _mediaPreviewFromBody(String body) {
   try {
     final map = jsonDecode(body) as Map<String, dynamic>;
+    final caption = (map['caption'] as String?)?.trim();
+    if (caption != null && caption.isNotEmpty) {
+      return _truncatePreview(caption);
+    }
     return switch (map['kind'] as String? ?? '') {
       'image' => 'Photo',
       'video' => 'Video',
@@ -108,6 +118,10 @@ String? _previewFromJsonBody(String body) {
       return map['emoji'] as String? ?? 'Sticker';
     }
     if (map.containsKey('object_key') && map.containsKey('kind')) {
+      final caption = (map['caption'] as String?)?.trim();
+      if (caption != null && caption.isNotEmpty) {
+        return _truncatePreview(caption);
+      }
       return switch (map['kind'] as String? ?? '') {
         'image' => 'Photo',
         'video' => 'Video',

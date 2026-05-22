@@ -32,6 +32,24 @@ class ReplyPreviewMapContext {
   final String Function(String) userFallback;
 }
 
+Map<String, dynamic> _withMediaCaptionMeta(
+  Map<String, dynamic> meta,
+  Map<String, dynamic> map,
+) {
+  final caption = (map['caption'] as String?)?.trim();
+  if (caption == null || caption.isEmpty) return meta;
+  return {...meta, 'caption': caption};
+}
+
+Map<String, dynamic> _withOutboxCaptionMeta(
+  Map<String, dynamic> meta,
+  String? caption,
+) {
+  final trimmed = caption?.trim();
+  if (trimmed == null || trimmed.isEmpty) return meta;
+  return {...meta, 'caption': trimmed};
+}
+
 Map<String, dynamic> _mergeReplyPreviewMetadata(
   LocalMessage m,
   List<LocalMessage> allMessages,
@@ -168,6 +186,7 @@ List<Message> mapLocalMessagesToChatMessages(
         final key = map['object_key'] as String? ?? '';
         final kind = map['kind'] as String? ?? 'image';
         final durMs = (map['duration_ms'] as num?)?.toInt() ?? 0;
+        final mediaMeta = _withMediaCaptionMeta(meta, map);
         final url = _mediaDownloadUrl(apiBaseUrl, key);
         switch (kind) {
           case 'video':
@@ -178,7 +197,7 @@ List<Message> mapLocalMessagesToChatMessages(
               createdAt: m.createdAt,
               replyToMessageId: replyTo,
               status: status,
-              metadata: meta.isEmpty ? null : meta,
+              metadata: mediaMeta.isEmpty ? null : mediaMeta,
             );
           case 'voice':
             return Message.audio(
@@ -189,7 +208,7 @@ List<Message> mapLocalMessagesToChatMessages(
               createdAt: m.createdAt,
               replyToMessageId: replyTo,
               status: status,
-              metadata: meta.isEmpty ? null : meta,
+              metadata: mediaMeta.isEmpty ? null : mediaMeta,
             );
           case 'sticker':
           case 'image':
@@ -201,7 +220,7 @@ List<Message> mapLocalMessagesToChatMessages(
               createdAt: m.createdAt,
               replyToMessageId: replyTo,
               status: status,
-              metadata: meta.isEmpty ? null : meta,
+              metadata: mediaMeta.isEmpty ? null : mediaMeta,
             );
         }
       } catch (_) {
@@ -357,6 +376,7 @@ List<Message> mapPendingOutboxToChatMessages(
     if (mediaPath != null && mediaPath.isNotEmpty) {
       final source = 'file://$mediaPath';
       final durMs = row.mediaDurationMs ?? 0;
+      final mediaMeta = _withOutboxCaptionMeta(meta, row.mediaCaption);
       switch (row.mediaKind) {
         case 'video':
           return Message.video(
@@ -366,7 +386,7 @@ List<Message> mapPendingOutboxToChatMessages(
             createdAt: row.createdAt,
             replyToMessageId: replyTo,
             status: status,
-            metadata: meta.isEmpty ? null : meta,
+            metadata: mediaMeta.isEmpty ? null : mediaMeta,
           );
         case 'voice':
           return Message.audio(
@@ -377,7 +397,7 @@ List<Message> mapPendingOutboxToChatMessages(
             createdAt: row.createdAt,
             replyToMessageId: replyTo,
             status: status,
-            metadata: meta.isEmpty ? null : meta,
+            metadata: mediaMeta.isEmpty ? null : mediaMeta,
           );
         case 'sticker':
         case 'image':
@@ -389,7 +409,7 @@ List<Message> mapPendingOutboxToChatMessages(
             createdAt: row.createdAt,
             replyToMessageId: replyTo,
             status: status,
-            metadata: meta.isEmpty ? null : meta,
+            metadata: mediaMeta.isEmpty ? null : mediaMeta,
           );
       }
     }

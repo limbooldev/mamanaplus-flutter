@@ -26,8 +26,7 @@ import '../../data/chat_mute_prefs.dart';
 import '../../data/chat_repository.dart';
 import '../cubit/thread_cubit.dart';
 import '../mappers/local_message_to_chat_message.dart';
-import '../widgets/chat_image_editor_flow.dart';
-import '../widgets/chat_video_editor_flow.dart';
+import '../widgets/media_caption_preview.dart';
 import '../widgets/message_status_icon.dart';
 import '../widgets/mamana_gif_bubble.dart';
 import '../widgets/reply_quote.dart';
@@ -976,6 +975,10 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
                           ),
                         );
                       }
+                      final captionWidget = buildMediaCaptionWidget(
+                        message.metadata?['caption'] as String?,
+                        fg,
+                      );
                       return Align(
                         alignment:
                             isSentByMe ? Alignment.centerRight : Alignment.centerLeft,
@@ -1020,6 +1023,7 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
                                   ),
                                 ),
                               ),
+                              if (captionWidget != null) captionWidget,
                               CustomTimeAndStatus(
                                 time: message.resolvedTime,
                                 status: isSentByMe
@@ -1311,9 +1315,17 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
       case 'sticker_image':
         final x = await picker.pickImage(source: ImageSource.gallery);
         if (x != null && context.mounted) {
-          final edited = await openChatImageEditor(context, x.path);
-          if (edited != null && context.mounted) {
-            await cubit.sendMediaFile(path: edited, kind: 'sticker');
+          final picked = await openMediaCaptionPreview(
+            context,
+            path: x.path,
+            kind: 'sticker',
+          );
+          if (picked != null && context.mounted) {
+            await cubit.sendMediaFile(
+              path: picked.path,
+              kind: 'sticker',
+              caption: picked.caption,
+            );
           }
         }
         break;
@@ -1321,27 +1333,51 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
         final x = await picker.pickImage(source: ImageSource.gallery);
         if (x == null) break;
         if (!context.mounted) return;
-        final edited = await openChatImageEditor(context, x.path);
-        if (edited != null && context.mounted) {
-          await cubit.sendMediaFile(path: edited, kind: 'image');
+        final picked = await openMediaCaptionPreview(
+          context,
+          path: x.path,
+          kind: 'image',
+        );
+        if (picked != null && context.mounted) {
+          await cubit.sendMediaFile(
+            path: picked.path,
+            kind: 'image',
+            caption: picked.caption,
+          );
         }
         break;
       case 'camera':
         final x = await picker.pickImage(source: ImageSource.camera);
         if (x == null) break;
         if (!context.mounted) return;
-        final edited = await openChatImageEditor(context, x.path);
-        if (edited != null && context.mounted) {
-          await cubit.sendMediaFile(path: edited, kind: 'image');
+        final picked = await openMediaCaptionPreview(
+          context,
+          path: x.path,
+          kind: 'image',
+        );
+        if (picked != null && context.mounted) {
+          await cubit.sendMediaFile(
+            path: picked.path,
+            kind: 'image',
+            caption: picked.caption,
+          );
         }
         break;
       case 'video':
         final x = await picker.pickVideo(source: ImageSource.gallery);
         if (x == null) break;
         if (!context.mounted) return;
-        final edited = await openChatVideoEditor(context, x.path);
-        if (edited != null && context.mounted) {
-          await cubit.sendMediaFile(path: edited, kind: 'video');
+        final picked = await openMediaCaptionPreview(
+          context,
+          path: x.path,
+          kind: 'video',
+        );
+        if (picked != null && context.mounted) {
+          await cubit.sendMediaFile(
+            path: picked.path,
+            kind: 'video',
+            caption: picked.caption,
+          );
         }
         break;
       case 'voice':

@@ -300,6 +300,18 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String get mediaCaptionHint => 'Add a caption…';
+
+  @override
+  String get mediaPreviewEdit => 'Edit';
+
+  @override
+  String get mediaPreviewSend => 'Send';
+
+  @override
+  String get mediaPreviewClose => 'Close';
+
+  @override
   String get pickUsersTitleSingle => 'New message';
 
   @override
