@@ -75,6 +75,7 @@ class _MediaCaptionPreviewPageState extends State<_MediaCaptionPreviewPage> {
 
     return Scaffold(
       backgroundColor: Colors.black,
+      resizeToAvoidBottomInset: false,
       appBar: AppBar(
         backgroundColor: Colors.black,
         foregroundColor: Colors.white,
@@ -85,70 +86,74 @@ class _MediaCaptionPreviewPageState extends State<_MediaCaptionPreviewPage> {
           onPressed: () => Navigator.of(context).pop(),
         ),
       ),
-      body: Column(
+      body: Stack(
+        fit: StackFit.expand,
         children: [
-          Expanded(
-            child: Center(
-              child: _isVideo
-                  ? _LocalVideoPreview(path: _path)
-                  : InteractiveViewer(
-                      minScale: 1,
-                      maxScale: 4,
-                      child: Image.file(
-                        File(_path),
-                        fit: BoxFit.contain,
-                      ),
+          Center(
+            child: _isVideo
+                ? _LocalVideoPreview(path: _path)
+                : InteractiveViewer(
+                    minScale: 1,
+                    maxScale: 4,
+                    child: Image.file(
+                      File(_path),
+                      fit: BoxFit.contain,
                     ),
-            ),
+                  ),
           ),
-          SafeArea(
-            top: false,
-            child: Padding(
-              padding: EdgeInsets.fromLTRB(12, 8, 12, 12 + bottomInset),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Expanded(
-                    child: TextField(
-                      controller: _captionController,
-                      focusNode: _captionFocus,
-                      maxLength: 1024,
-                      minLines: 1,
-                      maxLines: 4,
-                      style: const TextStyle(color: Colors.white),
-                      textCapitalization: TextCapitalization.sentences,
-                      decoration: InputDecoration(
-                        hintText: l10n.mediaCaptionHint,
-                        hintStyle: TextStyle(
-                          color: Colors.white.withValues(alpha: 0.5),
-                        ),
-                        counterStyle: TextStyle(
-                          color: Colors.white.withValues(alpha: 0.4),
-                        ),
-                        filled: true,
-                        fillColor: Colors.white.withValues(alpha: 0.12),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(24),
-                          borderSide: BorderSide.none,
-                        ),
-                        contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 10,
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: bottomInset,
+            child: SafeArea(
+              top: false,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: _captionController,
+                        focusNode: _captionFocus,
+                        maxLength: 1024,
+                        minLines: 1,
+                        maxLines: 4,
+                        style: const TextStyle(color: Colors.white),
+                        textCapitalization: TextCapitalization.sentences,
+                        decoration: InputDecoration(
+                          hintText: l10n.mediaCaptionHint,
+                          hintStyle: TextStyle(
+                            color: Colors.white.withValues(alpha: 0.5),
+                          ),
+                          counterStyle: TextStyle(
+                            color: Colors.white.withValues(alpha: 0.4),
+                          ),
+                          filled: true,
+                          fillColor: Colors.white.withValues(alpha: 0.12),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(24),
+                            borderSide: BorderSide.none,
+                          ),
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 10,
+                          ),
                         ),
                       ),
                     ),
-                  ),
-                  const SizedBox(width: 8),
-                  Material(
-                    color: AppColors.primary,
-                    shape: const CircleBorder(),
-                    child: IconButton(
-                      icon: const Icon(Icons.send, color: Colors.white),
-                      tooltip: l10n.mediaPreviewSend,
-                      onPressed: _send,
+                    const SizedBox(width: 8),
+                    Material(
+                      color: AppColors.primary,
+                      shape: const CircleBorder(),
+                      child: IconButton(
+                        icon: const Icon(Icons.send, color: Colors.white),
+                        tooltip: l10n.mediaPreviewSend,
+                        onPressed: _send,
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
           ),
