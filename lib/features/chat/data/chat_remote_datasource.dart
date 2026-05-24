@@ -62,12 +62,14 @@ class ChatRemoteDataSource {
     String? cursor,
     int limit = 50,
     String? q,
+    String direction = 'older',
   }) async {
     final res = await _dio.get<Map<String, dynamic>>(
       '/v1/conversations/$conversationId/messages',
       queryParameters: {
         if (cursor != null) 'cursor': cursor,
         'limit': limit,
+        'direction': direction,
         if (q != null && q.trim().length >= 2) 'q': q.trim(),
       },
     );

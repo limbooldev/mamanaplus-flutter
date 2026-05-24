@@ -6,7 +6,9 @@ import 'package:drift/drift.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
+import '../../../core/api_config.dart';
 import '../../../core/database/app_database.dart';
+import '../../../core/token_refresh.dart';
 import '../../../core/token_storage.dart';
 import '../conversation_preview.dart';
 import '../media_constants.dart';
@@ -20,15 +22,21 @@ class ChatRepository {
     required AppDatabase db,
     required ChatSocket socket,
     TokenStorage? tokens,
+    ApiConfig? config,
+    void Function(String accessToken)? onAccessTokenRefreshed,
   }) : _remote = remote,
        _db = db,
        _socket = socket,
-       _tokens = tokens;
+       _tokens = tokens,
+       _config = config,
+       _onAccessTokenRefreshed = onAccessTokenRefreshed;
 
   final ChatRemoteDataSource _remote;
   final AppDatabase _db;
   final ChatSocket _socket;
   final TokenStorage? _tokens;
+  final ApiConfig? _config;
+  final void Function(String accessToken)? _onAccessTokenRefreshed;
 
   /// Pokes a `conversationId` whenever a row in [MessageOutbox] is inserted,
   /// updated, or removed. Cubits subscribe to drive optimistic UI updates.
@@ -48,12 +56,25 @@ class ChatRepository {
     return t.getAccessToken();
   }
 
-  /// Opens WebSocket using [TokenStorage] for fresh tokens on each connect/reconnect.
+  /// Opens WebSocket using [TokenStorage]; refresh via Dio on demand.
   void connectRealtime(Uri wsUri) {
     final t = _tokens;
     if (t == null) return;
-    _socket.connect(wsUri, t.getAccessToken);
+    final cfg = _config;
+    _socket.connect(wsUri, ({bool forceRefresh = false}) async {
+      if (forceRefresh && cfg != null) {
+        await refreshAccessToken(
+          config: cfg,
+          tokens: t,
+          onAccessTokenRefreshed: _onAccessTokenRefreshed,
+        );
+      }
+      return t.getAccessToken();
+    });
   }
+
+  /// After Dio rotates the access token without a full reconnect.
+  void notifyRealtimeTokenRotated() => _socket.notifyTokenRotated();
 
   /// Returns the authenticated user's profile from `GET /v1/me`.
   /// Keys: id, email, display_name, created_at.
@@ -581,7 +602,35 @@ class ChatRepository {
     int conversationId, {
     String? cursor,
     String? q,
-  }) => _remote.listMessages(conversationId, cursor: cursor, q: q);
+    String direction = 'older',
+  }) =>
+      _remote.listMessages(
+        conversationId,
+        cursor: cursor,
+        q: q,
+        direction: direction,
+      );
+
+  /// Gap-fill after reconnect: messages newer than the latest cached row.
+  Future<void> syncNewerMessages(int conversationId) async {
+    final local = await loadMessagesLocal(conversationId);
+    if (local.isEmpty) {
+      final data = await fetchMessages(conversationId);
+      final items = (data['items'] as List<dynamic>? ?? [])
+          .cast<Map<String, dynamic>>();
+      if (items.isNotEmpty) await cacheMessages(conversationId, items);
+      return;
+    }
+    final cursor = local.first.id.toString();
+    final data = await fetchMessages(
+      conversationId,
+      cursor: cursor,
+      direction: 'newer',
+    );
+    final items = (data['items'] as List<dynamic>? ?? [])
+        .cast<Map<String, dynamic>>();
+    if (items.isNotEmpty) await cacheMessages(conversationId, items);
+  }
 
   Future<List<Map<String, dynamic>>> listStickers() async {
     final data = await _remote.listStickers();

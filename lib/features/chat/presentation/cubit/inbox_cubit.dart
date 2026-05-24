@@ -53,7 +53,7 @@ class InboxCubit extends Cubit<InboxState> {
     });
     // Every time the WebSocket reconnects, flush all queued outbox rows and
     // refresh the inbox from REST. The refresh is critical: while the socket
-    // was down (app backgrounded, OS killed TCP, backend 60 s idle close)
+    // was down (app backgrounded, OS killed TCP, backend 90 s idle close)
     // `new_message` events were delivered only via FCM, so unread badges and
     // last-message previews on the inbox can be stale.
     _reconnectSub = _repo.socket.connected.listen((_) {

@@ -315,7 +315,11 @@ class ThreadCubit extends Cubit<ThreadState> {
     // messages that arrived during the disconnect window.
     _reconnectSub = _repo.socket.connected.listen((_) {
       unawaited(flushOutbox());
-      unawaited(_reloadMessagesFromRemote());
+      if (state.messageSearchQuery != null) {
+        unawaited(_reloadMessagesFromRemote());
+      } else {
+        unawaited(_syncNewerAfterReconnect());
+      }
     });
 
     _sub = _repo.socket.events.listen((event) async {
@@ -539,6 +543,20 @@ class ThreadCubit extends Cubit<ThreadState> {
     final local = await _repo.loadMessagesLocal(conversationId);
     final pending = await _repo.loadOutboxLocal(conversationId);
     emit(state.copyWith(messages: local, pending: pending));
+  }
+
+  Future<void> _syncNewerAfterReconnect() async {
+    try {
+      await _repo.syncNewerMessages(conversationId);
+      final local = await _repo.loadMessagesLocal(conversationId);
+      final pending = await _repo.loadOutboxLocal(conversationId);
+      emit(state.copyWith(messages: local, pending: pending, loading: false));
+      if (local.isNotEmpty) {
+        await _repo.markRead(conversationId, local.first.id);
+      }
+    } catch (e) {
+      emit(state.copyWith(loading: false, error: e.toString()));
+    }
   }
 
   Future<void> _reloadMessagesFromRemote() async {
