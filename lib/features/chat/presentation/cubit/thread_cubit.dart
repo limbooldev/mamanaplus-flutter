@@ -273,6 +273,7 @@ class ThreadCubit extends Cubit<ThreadState> {
   StreamSubscription<Map<String, dynamic>>? _sub;
   StreamSubscription<int>? _outboxSub;
   StreamSubscription<void>? _reconnectSub;
+  bool _typingActive = false;
 
   /// Route extra and/or local inbox cache (`private` / `group`).
   String? _resolvedConversationType;
@@ -315,7 +316,11 @@ class ThreadCubit extends Cubit<ThreadState> {
     // messages that arrived during the disconnect window.
     _reconnectSub = _repo.socket.connected.listen((_) {
       unawaited(flushOutbox());
-      unawaited(_reloadMessagesFromRemote());
+      if (state.messageSearchQuery != null) {
+        unawaited(_reloadMessagesFromRemote());
+      } else {
+        unawaited(_syncNewerAfterReconnect());
+      }
     });
 
     _sub = _repo.socket.events.listen((event) async {
@@ -541,6 +546,20 @@ class ThreadCubit extends Cubit<ThreadState> {
     emit(state.copyWith(messages: local, pending: pending));
   }
 
+  Future<void> _syncNewerAfterReconnect() async {
+    try {
+      await _repo.syncNewerMessages(conversationId);
+      final local = await _repo.loadMessagesLocal(conversationId);
+      final pending = await _repo.loadOutboxLocal(conversationId);
+      emit(state.copyWith(messages: local, pending: pending, loading: false));
+      if (local.isNotEmpty) {
+        await _repo.markRead(conversationId, local.first.id);
+      }
+    } catch (e) {
+      emit(state.copyWith(loading: false, error: e.toString()));
+    }
+  }
+
   Future<void> _reloadMessagesFromRemote() async {
     try {
       final data = await _repo.fetchMessages(
@@ -685,10 +704,16 @@ class ThreadCubit extends Cubit<ThreadState> {
     await _reloadLocal();
   }
 
-  void onTyping(bool v) => unawaited(_repo.typing(conversationId, v));
+  void onTyping(bool v) {
+    _typingActive = v;
+    unawaited(_repo.typing(conversationId, v));
+  }
 
   @override
   Future<void> close() {
+    if (_typingActive) {
+      unawaited(_repo.typing(conversationId, false));
+    }
     _sub?.cancel();
     _outboxSub?.cancel();
     _reconnectSub?.cancel();

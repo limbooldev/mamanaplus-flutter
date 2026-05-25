@@ -55,6 +55,8 @@ Future<void> main() async {
         db: db,
         socket: socket,
         tokens: tokens,
+        config: config,
+        onAccessTokenRefreshed: auth.applyRefreshedAccessToken,
       );
       auth.beforeLogout = () async {
         await repo.unregisterPush();

@@ -1,6 +1,7 @@
 import 'package:dio/dio.dart';
 
 import 'api_config.dart';
+import 'token_refresh.dart';
 import 'token_storage.dart';
 
 /// [RequestOptions.extra] flag: set before retry after refresh to avoid refresh loops.
@@ -10,19 +11,6 @@ bool _isPublicAuthPath(String path) {
   return path.endsWith('/v1/auth/login') ||
       path.endsWith('/v1/auth/register') ||
       path.endsWith('/v1/auth/refresh');
-}
-
-/// Single-flight refresh across all [createDio] instances (matches server refresh rotation).
-Future<bool>? _refreshInProgress;
-
-Future<bool> _runSingleFlightRefresh(Future<bool> Function() run) {
-  final existing = _refreshInProgress;
-  if (existing != null) return existing;
-  final f = run().whenComplete(() {
-    _refreshInProgress = null;
-  });
-  _refreshInProgress = f;
-  return f;
 }
 
 /// Configured Dio with auth + refresh on 401.
@@ -72,12 +60,10 @@ Dio createDio({
           return;
         }
 
-        final refreshed = await _runSingleFlightRefresh(
-          () => _tryRefresh(
-            config,
-            tokens,
-            onAccessTokenRefreshed,
-          ),
+        final refreshed = await refreshAccessToken(
+          config: config,
+          tokens: tokens,
+          onAccessTokenRefreshed: onAccessTokenRefreshed,
         );
         if (refreshed) {
           final t = await tokens.getAccessToken();
@@ -114,35 +100,3 @@ Dio createDio({
   return dio;
 }
 
-Future<bool> _tryRefresh(
-  ApiConfig config,
-  TokenStorage tokens,
-  void Function(String accessToken)? onAccessTokenRefreshed,
-) async {
-  final refresh = await tokens.getRefreshToken();
-  if (refresh == null || refresh.isEmpty) return false;
-  try {
-    final plain = Dio(
-      BaseOptions(
-        baseUrl: config.baseUrl,
-        connectTimeout: const Duration(seconds: 60),
-        receiveTimeout: const Duration(seconds: 60),
-        sendTimeout: const Duration(seconds: 60),
-      ),
-    );
-    final res = await plain.post<Map<String, dynamic>>(
-      '/v1/auth/refresh',
-      data: {'refresh_token': refresh},
-    );
-    final data = res.data;
-    if (data == null) return false;
-    final access = data['access_token'] as String?;
-    final next = data['refresh_token'] as String?;
-    if (access == null || next == null) return false;
-    await tokens.saveTokens(access: access, refresh: next);
-    onAccessTokenRefreshed?.call(access);
-    return true;
-  } catch (_) {
-    return false;
-  }
-}

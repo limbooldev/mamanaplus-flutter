@@ -45,6 +45,7 @@ class MamanaApp extends StatefulWidget {
 
 class _MamanaAppState extends State<MamanaApp> with WidgetsBindingObserver {
   late final GoRouter _router;
+  AuthState? _lastAuthState;
 
   @override
   void initState() {
@@ -185,7 +186,7 @@ class _MamanaAppState extends State<MamanaApp> with WidgetsBindingObserver {
     switch (state) {
       case AppLifecycleState.resumed:
         socket.resume();
-        socket.ensureConnected();
+        socket.forceReconnect();
       case AppLifecycleState.paused:
       case AppLifecycleState.detached:
         socket.suspend();
@@ -228,8 +229,14 @@ class _MamanaAppState extends State<MamanaApp> with WidgetsBindingObserver {
   Widget build(BuildContext context) {
     return BlocListener<AuthCubit, AuthState>(
       listener: (context, state) {
+        final wasAuthed = _lastAuthState is AuthAuthenticated;
+        _lastAuthState = state;
         if (state is AuthAuthenticated) {
-          _attachSessionRealtimeAndPush();
+          if (!wasAuthed) {
+            _attachSessionRealtimeAndPush();
+          } else {
+            widget.chatRepository.notifyRealtimeTokenRotated();
+          }
         }
         if (state is AuthUnauthenticated) {
           widget.chatRepository.socket.disconnect();
