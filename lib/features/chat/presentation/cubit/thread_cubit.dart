@@ -273,6 +273,7 @@ class ThreadCubit extends Cubit<ThreadState> {
   StreamSubscription<Map<String, dynamic>>? _sub;
   StreamSubscription<int>? _outboxSub;
   StreamSubscription<void>? _reconnectSub;
+  bool _typingActive = false;
 
   /// Route extra and/or local inbox cache (`private` / `group`).
   String? _resolvedConversationType;
@@ -703,10 +704,16 @@ class ThreadCubit extends Cubit<ThreadState> {
     await _reloadLocal();
   }
 
-  void onTyping(bool v) => unawaited(_repo.typing(conversationId, v));
+  void onTyping(bool v) {
+    _typingActive = v;
+    unawaited(_repo.typing(conversationId, v));
+  }
 
   @override
   Future<void> close() {
+    if (_typingActive) {
+      unawaited(_repo.typing(conversationId, false));
+    }
     _sub?.cancel();
     _outboxSub?.cancel();
     _reconnectSub?.cancel();
