@@ -5,6 +5,7 @@ import 'package:giphy_get/giphy_get.dart';
 import 'package:provider/provider.dart';
 
 import 'emoji_sticker_gif_panel.dart';
+import 'thread_voice_recorder.dart';
 
 /// Composer row + optional emoji/GIF panel; updates [ComposerHeightNotifier].
 class ThreadComposerWithPanel extends StatefulWidget {
@@ -21,6 +22,8 @@ class ThreadComposerWithPanel extends StatefulWidget {
     required this.onEmojiSelected,
     required this.onGifSelected,
     required this.onStickerSelected,
+    required this.onVoiceSend,
+    this.onVoicePermissionDenied,
     this.panelInitialTab = 0,
     this.isDark = false,
     this.handleSafeArea = true,
@@ -37,6 +40,8 @@ class ThreadComposerWithPanel extends StatefulWidget {
   final ValueChanged<String> onEmojiSelected;
   final ValueChanged<GiphyGif> onGifSelected;
   final ValueChanged<GiphyGif> onStickerSelected;
+  final Future<void> Function(String path, Duration duration) onVoiceSend;
+  final VoidCallback? onVoicePermissionDenied;
   final int panelInitialTab;
   final bool isDark;
   final bool handleSafeArea;
@@ -47,11 +52,30 @@ class ThreadComposerWithPanel extends StatefulWidget {
 
 class _ThreadComposerWithPanelState extends State<ThreadComposerWithPanel> {
   final _key = GlobalKey();
+  late final ThreadVoiceRecorderController _voiceController;
 
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _measure());
+    _voiceController = ThreadVoiceRecorderController(
+      onSend: widget.onVoiceSend,
+      onPermissionDenied: widget.onVoicePermissionDenied,
+    );
+    _voiceController.addListener(_onVoiceControllerChanged);
+  }
+
+  @override
+  void dispose() {
+    _voiceController.removeListener(_onVoiceControllerChanged);
+    _voiceController.dispose();
+    super.dispose();
+  }
+
+  void _onVoiceControllerChanged() {
+    if (mounted) {
+      setState(() {});
+      WidgetsBinding.instance.addPostFrameCallback((_) => _measure());
+    }
   }
 
   @override
@@ -71,14 +95,117 @@ class _ThreadComposerWithPanelState extends State<ThreadComposerWithPanel> {
     );
   }
 
+  bool get _voiceLockedOrPreview {
+    final s = _voiceController.state;
+    return s == VoiceRecorderUiState.locked || s == VoiceRecorderUiState.preview;
+  }
+
   @override
   Widget build(BuildContext context) {
     final bottomSafe = widget.handleSafeArea ? MediaQuery.paddingOf(context).bottom : 0.0;
     final theme = context.read<ChatTheme>();
     final onAttachmentTap = context.read<OnAttachmentTapCallback?>();
+    final onSurface = theme.colors.onSurface;
+    final primary = theme.colors.primary;
 
-    // Safe area belongs under the emoji panel, not between composer and tabs.
     final composerBottomPad = widget.showEmojiPanel ? 8.0 : 8.0 + bottomSafe;
+
+    Widget composerRow;
+    if (_voiceLockedOrPreview) {
+      composerRow = ThreadVoiceRecorderBar(
+        controller: _voiceController,
+        isDark: widget.isDark,
+        primaryColor: primary,
+        onSurfaceColor: onSurface,
+      );
+    } else {
+      final isRecording = _voiceController.state == VoiceRecorderUiState.recording;
+      composerRow = Row(
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          if (onAttachmentTap != null && !isRecording)
+            IconButton(
+              icon: const Icon(Icons.add_circle_outline),
+              color: onSurface.withValues(alpha: 0.5),
+              onPressed: onAttachmentTap,
+            ),
+          if (!isRecording)
+            Expanded(
+              child: TextField(
+                controller: widget.textEditingController,
+                focusNode: widget.focusNode,
+                decoration: InputDecoration(
+                  hintText: widget.hintText,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(24),
+                    borderSide: BorderSide.none,
+                  ),
+                  filled: true,
+                  fillColor: theme.colors.surfaceContainerHigh.withValues(alpha: 0.8),
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                ),
+                style: theme.typography.bodyMedium.copyWith(
+                  color: onSurface,
+                ),
+                minLines: 1,
+                maxLines: 4,
+                textCapitalization: TextCapitalization.sentences,
+                onSubmitted: (text) {
+                  context.read<OnMessageSendCallback?>()?.call(text.trim());
+                  widget.textEditingController.clear();
+                },
+              ),
+            )
+          else
+            Expanded(
+              child: ThreadVoiceRecorderHoldContent(
+                controller: _voiceController,
+                onSurfaceColor: onSurface,
+              ),
+            ),
+          if (!isRecording)
+            IconButton(
+              icon: Icon(
+                widget.showEmojiPanel
+                    ? Icons.keyboard_outlined
+                    : Icons.emoji_emotions_outlined,
+              ),
+              color: widget.showEmojiPanel
+                  ? primary
+                  : onSurface.withValues(alpha: 0.5),
+              onPressed: widget.onToggleEmojiPanel,
+            ),
+          ValueListenableBuilder<TextEditingValue>(
+            valueListenable: widget.textEditingController,
+            builder: (context, value, _) {
+              final hasText = value.text.trim().isNotEmpty;
+              if (hasText) {
+                return IconButton(
+                  icon: const Icon(Icons.send),
+                  color: primary,
+                  onPressed: () {
+                    final text = widget.textEditingController.text.trim();
+                    context.read<OnMessageSendCallback?>()?.call(text);
+                    widget.textEditingController.clear();
+                  },
+                );
+              }
+              if (isRecording) {
+                return ThreadVoiceRecorderMicCluster(
+                  controller: _voiceController,
+                  isDark: widget.isDark,
+                  primaryColor: primary,
+                );
+              }
+              return ThreadVoiceRecorderMic(
+                controller: _voiceController,
+                primaryColor: primary,
+              );
+            },
+          ),
+        ],
+      );
+    }
 
     final bar = Material(
       color: widget.isDark ? const Color(0xFF1C1C1E) : const Color(0xFFF2F2F7),
@@ -88,73 +215,7 @@ class _ThreadComposerWithPanelState extends State<ThreadComposerWithPanel> {
           widget.topWidget,
           Padding(
             padding: EdgeInsets.fromLTRB(8, 8, 8, composerBottomPad),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                if (onAttachmentTap != null)
-                  IconButton(
-                    icon: const Icon(Icons.add_circle_outline),
-                    color: theme.colors.onSurface.withValues(alpha: 0.5),
-                    onPressed: onAttachmentTap,
-                  ),
-                Expanded(
-                  child: TextField(
-                    controller: widget.textEditingController,
-                    focusNode: widget.focusNode,
-                    decoration: InputDecoration(
-                      hintText: widget.hintText,
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(24),
-                        borderSide: BorderSide.none,
-                      ),
-                      filled: true,
-                      fillColor: theme.colors.surfaceContainerHigh.withValues(alpha: 0.8),
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                    ),
-                    style: theme.typography.bodyMedium.copyWith(
-                      color: theme.colors.onSurface,
-                    ),
-                    minLines: 1,
-                    maxLines: 4,
-                    textCapitalization: TextCapitalization.sentences,
-                    onSubmitted: (text) {
-                      context.read<OnMessageSendCallback?>()?.call(text.trim());
-                      widget.textEditingController.clear();
-                    },
-                  ),
-                ),
-                IconButton(
-                  icon: Icon(
-                    widget.showEmojiPanel
-                        ? Icons.keyboard_outlined
-                        : Icons.emoji_emotions_outlined,
-                  ),
-                  color: widget.showEmojiPanel
-                      ? theme.colors.primary
-                      : theme.colors.onSurface.withValues(alpha: 0.5),
-                  onPressed: widget.onToggleEmojiPanel,
-                ),
-                ValueListenableBuilder<TextEditingValue>(
-                  valueListenable: widget.textEditingController,
-                  builder: (context, value, _) {
-                    final hasText = value.text.trim().isNotEmpty;
-                    return IconButton(
-                      icon: const Icon(Icons.send),
-                      color: hasText
-                          ? theme.colors.primary
-                          : theme.colors.onSurface.withValues(alpha: 0.35),
-                      onPressed: hasText
-                          ? () {
-                              final text = widget.textEditingController.text.trim();
-                              context.read<OnMessageSendCallback?>()?.call(text);
-                              widget.textEditingController.clear();
-                            }
-                          : null,
-                    );
-                  },
-                ),
-              ],
-            ),
+            child: composerRow,
           ),
         ],
       ),

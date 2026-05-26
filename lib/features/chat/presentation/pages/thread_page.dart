@@ -10,10 +10,7 @@ import 'package:flutter_chat_ui/flutter_chat_ui.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:mamana_plus/l10n/app_localizations.dart';
-import 'package:path/path.dart' as p;
-import 'package:path_provider/path_provider.dart';
 import 'package:giphy_get/giphy_get.dart';
-import 'package:record/record.dart';
 
 import '../../../../core/api_config.dart';
 import '../../../../core/giphy_config.dart';
@@ -1134,6 +1131,20 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
                       onEmojiSelected: _insertEmoji,
                       onGifSelected: (gif) => _sendGiphySelection(gif, kind: 'gif'),
                       onStickerSelected: (gif) => _sendGiphySelection(gif, kind: 'sticker'),
+                      onVoiceSend: (path, duration) async {
+                        await context.read<ThreadCubit>().sendMediaFile(
+                          path: path,
+                          kind: 'voice',
+                        );
+                      },
+                      onVoicePermissionDenied: () {
+                        if (!context.mounted) return;
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('Microphone permission required'),
+                          ),
+                        );
+                      },
                       topWidget: BlocBuilder<ThreadCubit, ThreadState>(
                         buildWhen: (a, b) =>
                             a.replyTo != b.replyTo || a.messageSearchQuery != b.messageSearchQuery,
@@ -1295,11 +1306,6 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
               title: const Text('Video'),
               onTap: () => Navigator.pop(ctx, 'video'),
             ),
-            ListTile(
-              leading: const Icon(Icons.mic_none),
-              title: const Text('Voice'),
-              onTap: () => Navigator.pop(ctx, 'voice'),
-            ),
           ],
         ),
       ),
@@ -1359,46 +1365,7 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
           );
         }
         break;
-      case 'voice':
-        await _recordVoice(context, cubit);
-        break;
     }
-  }
-
-  Future<void> _recordVoice(BuildContext context, ThreadCubit cubit) async {
-    final rec = AudioRecorder();
-    final ok = await rec.hasPermission();
-    if (!ok) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Microphone permission required')),
-        );
-      }
-      return;
-    }
-    final dir = await getTemporaryDirectory();
-    final path = p.join(dir.path, 'voice_${DateTime.now().millisecondsSinceEpoch}.m4a');
-    await rec.start(const RecordConfig(encoder: AudioEncoder.aacLc), path: path);
-    if (!context.mounted) return;
-    await showDialog<void>(
-      context: context,
-      barrierDismissible: false,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Recording…'),
-        actions: [
-          TextButton(
-            onPressed: () async {
-              await rec.stop();
-              if (ctx.mounted) Navigator.pop(ctx);
-              if (context.mounted) {
-                await cubit.sendMediaFile(path: path, kind: 'voice');
-              }
-            },
-            child: const Text('Stop & send'),
-          ),
-        ],
-      ),
-    );
   }
 
   ChatTheme _buildChatTheme(ThemeData theme, bool isDark) {
