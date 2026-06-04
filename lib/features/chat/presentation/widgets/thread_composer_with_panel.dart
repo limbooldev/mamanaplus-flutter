@@ -24,6 +24,7 @@ class ThreadComposerWithPanel extends StatefulWidget {
     required this.onStickerSelected,
     required this.onVoiceSend,
     this.onVoicePermissionDenied,
+    this.onLayoutHeightChanged,
     this.panelInitialTab = 0,
     this.isDark = false,
     this.handleSafeArea = true,
@@ -42,6 +43,10 @@ class ThreadComposerWithPanel extends StatefulWidget {
   final ValueChanged<GiphyGif> onStickerSelected;
   final Future<void> Function(String path, Duration duration) onVoiceSend;
   final VoidCallback? onVoicePermissionDenied;
+
+  /// Fired when measured height changes (list bottom inset must be recomputed).
+  final VoidCallback? onLayoutHeightChanged;
+
   final int panelInitialTab;
   final bool isDark;
   final bool handleSafeArea;
@@ -62,6 +67,7 @@ class _ThreadComposerWithPanelState extends State<ThreadComposerWithPanel> {
       onPermissionDenied: widget.onVoicePermissionDenied,
     );
     _voiceController.addListener(_onVoiceControllerChanged);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _measure());
   }
 
   @override
@@ -90,9 +96,13 @@ class _ThreadComposerWithPanelState extends State<ThreadComposerWithPanel> {
     if (renderBox == null) return;
     final height = renderBox.size.height;
     final bottomSafe = widget.handleSafeArea ? MediaQuery.paddingOf(context).bottom : 0.0;
-    context.read<ComposerHeightNotifier>().setHeight(
-      widget.handleSafeArea ? height - bottomSafe : height,
-    );
+    final next = widget.handleSafeArea ? height - bottomSafe : height;
+    final notifier = context.read<ComposerHeightNotifier>();
+    final changed = notifier.height != next;
+    notifier.setHeight(next);
+    if (changed) {
+      widget.onLayoutHeightChanged?.call();
+    }
   }
 
   bool get _voiceLockedOrPreview {

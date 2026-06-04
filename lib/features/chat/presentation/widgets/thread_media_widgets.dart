@@ -11,12 +11,15 @@ import '../../data/chat_repository.dart';
 import 'message_status_icon.dart';
 
 /// Inline chat thumbnails use fixed dimensions so the message list does not
-/// reflow while images/videos decode or stream.
+/// reflow while images/videos decode or voice notes load.
 const double kChatInlineImageW = 220;
 const double kChatInlineImageH = 160;
 const double kChatInlineVideoW = 220;
 const double kChatInlineVideoH = 140;
 const double kChatAudioBubbleMinW = 220;
+
+/// Reserved height for the voice seek row so bubbles do not grow after load.
+const double kChatAudioSliderBlockHeight = 56;
 
 /// Caption text shown below inline image/video bubbles when present.
 Widget? buildMediaCaptionWidget(String? caption, Color foreground) {
@@ -612,6 +615,7 @@ class ThreadAudioBubble extends StatefulWidget {
     required this.foreground,
     required this.isSentByMe,
     this.voiceCacheOverride,
+    this.onLayoutSettled,
   });
 
   final AudioMessage message;
@@ -623,6 +627,9 @@ class ThreadAudioBubble extends StatefulWidget {
 
   /// In tests, bypasses [ChatRepository.downloadVoiceToCache].
   final Future<File> Function(String objectKey)? voiceCacheOverride;
+
+  /// Called when load state changes so the thread can re-pin scroll to bottom.
+  final VoidCallback? onLayoutSettled;
 
   @override
   State<ThreadAudioBubble> createState() => _ThreadAudioBubbleState();
@@ -728,7 +735,10 @@ class _ThreadAudioBubbleState extends State<ThreadAudioBubble> {
       } else {
         throw UnsupportedError('Unsupported audio URI scheme: ${uri.scheme}');
       }
-      if (mounted) setState(() => _loading = false);
+      if (mounted) {
+        setState(() => _loading = false);
+        widget.onLayoutSettled?.call();
+      }
     } catch (e, st) {
       debugPrint('ThreadAudioBubble load failed: $e\n$st');
       if (mounted) {
@@ -736,6 +746,7 @@ class _ThreadAudioBubbleState extends State<ThreadAudioBubble> {
           _loading = false;
           _loadError = e.toString();
         });
+        widget.onLayoutSettled?.call();
       }
     }
   }
@@ -778,6 +789,124 @@ class _ThreadAudioBubbleState extends State<ThreadAudioBubble> {
     unawaited(_positionSub?.cancel() ?? Future<void>.value());
     _player.dispose();
     super.dispose();
+  }
+
+  Duration get _messageDurationFallback {
+    final d = widget.message.duration;
+    if (d.inMilliseconds > 0) {
+      return d;
+    }
+    return Duration.zero;
+  }
+
+  Widget _voiceSliderShell({required Widget child}) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 4),
+      child: SizedBox(
+        height: kChatAudioSliderBlockHeight,
+        child: child,
+      ),
+    );
+  }
+
+  Widget _voiceSliderPlaceholder(ChatTheme theme, {Duration? total}) {
+    final labelStyle = theme.typography.labelSmall.copyWith(
+      color: widget.foreground.withValues(alpha: 0.75),
+    );
+    final totalDuration = total ?? _messageDurationFallback;
+    return _voiceSliderShell(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Row(
+            children: [
+              Text(_formatDuration(Duration.zero), style: labelStyle),
+              const Spacer(),
+              Text(_formatDuration(totalDuration), style: labelStyle),
+            ],
+          ),
+          SliderTheme(
+            data: SliderTheme.of(context).copyWith(
+              trackHeight: 2,
+              thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 5),
+              overlayShape: const RoundSliderOverlayShape(overlayRadius: 10),
+              disabledThumbColor: widget.foreground.withValues(alpha: 0.35),
+              disabledActiveTrackColor: widget.foreground.withValues(alpha: 0.2),
+              disabledInactiveTrackColor: widget.foreground.withValues(alpha: 0.12),
+            ),
+            child: Slider(
+              value: 0,
+              onChanged: null,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _voiceSliderInteractive(ChatTheme theme) {
+    return StreamBuilder<Duration>(
+      stream: _player.positionStream,
+      initialData: _player.position,
+      builder: (context, posSnap) {
+        return StreamBuilder<Duration?>(
+          stream: _player.durationStream,
+          initialData: _player.duration,
+          builder: (context, durSnap) {
+            final position = posSnap.data ?? Duration.zero;
+            final duration = durSnap.data ?? Duration.zero;
+            final maxMs = duration.inMilliseconds;
+            if (maxMs <= 0) {
+              return _voiceSliderPlaceholder(theme);
+            }
+            final progress = maxMs > 0
+                ? (position.inMilliseconds / maxMs).clamp(0.0, 1.0)
+                : 0.0;
+            final sliderValue = _sliderDragging ? _sliderDragProgress : progress;
+            final labelStyle = theme.typography.labelSmall.copyWith(
+              color: widget.foreground.withValues(alpha: 0.75),
+            );
+            return _voiceSliderShell(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Row(
+                    children: [
+                      Text(_formatDuration(position), style: labelStyle),
+                      const Spacer(),
+                      Text(_formatDuration(duration), style: labelStyle),
+                    ],
+                  ),
+                  SliderTheme(
+                    data: SliderTheme.of(context).copyWith(
+                      trackHeight: 2,
+                      thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 5),
+                      overlayShape: const RoundSliderOverlayShape(overlayRadius: 10),
+                    ),
+                    child: Slider(
+                      value: sliderValue.clamp(0.0, 1.0),
+                      onChangeStart: (_) {
+                        setState(() {
+                          _sliderDragging = true;
+                          _sliderDragProgress = progress;
+                        });
+                      },
+                      onChanged: (v) {
+                        setState(() => _sliderDragProgress = v);
+                        unawaited(_seekToProgress(v, maxMs));
+                      },
+                      onChangeEnd: (_) {
+                        setState(() => _sliderDragging = false);
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
   }
 
   @override
@@ -876,75 +1005,10 @@ class _ThreadAudioBubbleState extends State<ThreadAudioBubble> {
                   ),
                 ],
               ),
-              if (!_loading && _loadError == null)
-                StreamBuilder<Duration>(
-                  stream: _player.positionStream,
-                  initialData: _player.position,
-                  builder: (context, posSnap) {
-                    return StreamBuilder<Duration?>(
-                      stream: _player.durationStream,
-                      initialData: _player.duration,
-                      builder: (context, durSnap) {
-                        final position = posSnap.data ?? Duration.zero;
-                        final duration = durSnap.data ?? Duration.zero;
-                        final maxMs = duration.inMilliseconds;
-                        if (maxMs <= 0) return const SizedBox.shrink();
-                        final progress = maxMs > 0
-                            ? (position.inMilliseconds / maxMs).clamp(0.0, 1.0)
-                            : 0.0;
-                        final sliderValue = _sliderDragging ? _sliderDragProgress : progress;
-                        return Padding(
-                          padding: const EdgeInsets.only(top: 4),
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Row(
-                                children: [
-                                  Text(
-                                    _formatDuration(position),
-                                    style: theme.typography.labelSmall.copyWith(
-                                      color: widget.foreground.withValues(alpha: 0.75),
-                                    ),
-                                  ),
-                                  const Spacer(),
-                                  Text(
-                                    _formatDuration(duration),
-                                    style: theme.typography.labelSmall.copyWith(
-                                      color: widget.foreground.withValues(alpha: 0.75),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              SliderTheme(
-                                data: SliderTheme.of(context).copyWith(
-                                  trackHeight: 2,
-                                  thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 5),
-                                  overlayShape: const RoundSliderOverlayShape(overlayRadius: 10),
-                                ),
-                                child: Slider(
-                                  value: sliderValue.clamp(0.0, 1.0),
-                                  onChangeStart: (_) {
-                                    setState(() {
-                                      _sliderDragging = true;
-                                      _sliderDragProgress = progress;
-                                    });
-                                  },
-                                  onChanged: (v) {
-                                    setState(() => _sliderDragProgress = v);
-                                    unawaited(_seekToProgress(v, maxMs));
-                                  },
-                                  onChangeEnd: (_) {
-                                    setState(() => _sliderDragging = false);
-                                  },
-                                ),
-                              ),
-                            ],
-                          ),
-                        );
-                      },
-                    );
-                  },
-                ),
+              if (_loadError == null)
+                _loading
+                    ? _voiceSliderPlaceholder(theme)
+                    : _voiceSliderInteractive(theme),
             ],
           ),
         ),

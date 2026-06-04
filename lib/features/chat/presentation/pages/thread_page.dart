@@ -3,6 +3,7 @@ import 'dart:io';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show ScrollDirection;
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_chat_core/flutter_chat_core.dart';
@@ -102,14 +103,61 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
   final _giphyApiKey = GiphyConfig.fromEnvironment().apiKey;
   String? _scrollHighlightMessageId;
   Timer? _scrollHighlightTimer;
+  late final ScrollController _listScrollController;
+
+  /// Keeps the list pinned to the newest messages until the user scrolls up.
+  var _stickToBottom = true;
+
+  static const _stickToBottomReleaseGap = 72.0;
+  static const _scrollToBottomLayoutPasses = 8;
 
   @override
   void initState() {
     super.initState();
     _chatController = InMemoryChatController();
+    _listScrollController = ScrollController();
+    _listScrollController.addListener(_onListScroll);
     _composerController.addListener(_handleComposerTextChanged);
     _composerFocusNode.addListener(_onComposerFocusChanged);
     dismissConversationNotification(widget.conversationId);
+  }
+
+  void _onListScroll() {
+    if (!_stickToBottom || !_listScrollController.hasClients) return;
+    final pos = _listScrollController.position;
+    if (pos.userScrollDirection == ScrollDirection.idle) return;
+    final gap = pos.maxScrollExtent - pos.pixels;
+    if (gap > _stickToBottomReleaseGap) {
+      _stickToBottom = false;
+    }
+  }
+
+  void _jumpToListBottom() {
+    if (!_listScrollController.hasClients) return;
+    final max = _listScrollController.position.maxScrollExtent;
+    if (max <= 0) return;
+    if ((_listScrollController.offset - max).abs() > 0.5) {
+      _listScrollController.jumpTo(max);
+    }
+  }
+
+  /// Re-scroll after composer height / media layout updates (library initial
+  /// scroll often runs before [ComposerHeightNotifier] has a real measurement).
+  void _scheduleScrollToBottom() {
+    if (!_stickToBottom || !mounted) return;
+    var pass = 0;
+    void schedulePass() {
+      if (!_stickToBottom || !mounted || pass >= _scrollToBottomLayoutPasses) {
+        return;
+      }
+      pass++;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!_stickToBottom || !mounted) return;
+        _jumpToListBottom();
+        schedulePass();
+      });
+    }
+    schedulePass();
   }
 
   void _onComposerFocusChanged() {
@@ -193,6 +241,8 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
   void dispose() {
     _scrollHighlightTimer?.cancel();
     _typingIdleTimer?.cancel();
+    _listScrollController.removeListener(_onListScroll);
+    _listScrollController.dispose();
     _composerController.removeListener(_handleComposerTextChanged);
     _composerFocusNode.removeListener(_onComposerFocusChanged);
     _composerController.dispose();
@@ -291,6 +341,7 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
     // Because updates are pre-applied above, the diff sees no "change" ops for
     // existing messages — only new/removed messages produce insertItem/removeItem.
     await _chatController.setMessages(mapped, animated: false);
+    _scheduleScrollToBottom();
   }
 
   LocalMessage? _localById(List<LocalMessage> messages, int id) {
@@ -1099,6 +1150,8 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
                                 bubble: bubble,
                                 foreground: fg,
                                 isSentByMe: isSentByMe,
+                                onLayoutSettled:
+                                    _stickToBottom ? _scheduleScrollToBottom : null,
                               ),
                             ],
                           ),
@@ -1110,6 +1163,7 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
                       // ChatAnimatedListReversed + setMessages diffs can hit
                       // SliverAnimatedList child-order assertions.
                       return ChatAnimatedList(
+                        scrollController: _listScrollController,
                         itemBuilder: itemBuilder,
                       );
                     },
@@ -1122,6 +1176,7 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
                       focusNode: _composerFocusNode,
                       hintText: l10n.composerHint,
                       handleSafeArea: true,
+                      onLayoutHeightChanged: _scheduleScrollToBottom,
                       isDark: isDark,
                       showEmojiPanel: _showEmojiPanel,
                       panelHeight: _keyboardHeight,
