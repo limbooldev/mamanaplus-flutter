@@ -307,6 +307,8 @@ class ComposerReplyPreview extends StatelessWidget {
                 replyToTitle,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.start,
+                textDirection: textDirectionFor(replyToTitle),
                 style: GoogleFonts.inter(
                   fontSize: 13,
                   fontWeight: FontWeight.w600,
@@ -318,6 +320,8 @@ class ComposerReplyPreview extends StatelessWidget {
                 data.subtitle,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.start,
+                textDirection: textDirectionFor(data.subtitle),
                 style: GoogleFonts.inter(fontSize: 13, color: subtitleColor),
               ),
             ],
@@ -374,11 +378,15 @@ class ReplyQuote extends StatelessWidget {
     final quote = Container(
       width: double.infinity,
       margin: const EdgeInsets.only(bottom: 6),
-      padding: const EdgeInsets.only(left: 8, top: 4, bottom: 4, right: 4),
+      padding: const EdgeInsetsDirectional.only(start: 8, top: 4, bottom: 4, end: 4),
       decoration: BoxDecoration(
-        border: Border(left: BorderSide(color: barColor, width: 3)),
+        border: BorderDirectional(
+          start: BorderSide(color: barColor, width: 3),
+        ),
         color: bgColor,
-        borderRadius: const BorderRadius.horizontal(left: Radius.circular(4)),
+        borderRadius: const BorderRadiusDirectional.horizontal(
+          start: Radius.circular(4),
+        ),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -391,6 +399,8 @@ class ReplyQuote extends StatelessWidget {
                   data.authorName,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.start,
+                  textDirection: textDirectionFor(data.authorName),
                   style: TextStyle(
                     color: titleColor,
                     fontSize: 13,
@@ -403,6 +413,8 @@ class ReplyQuote extends StatelessWidget {
                   data.subtitle,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.start,
+                  textDirection: textDirectionFor(data.subtitle),
                   style: TextStyle(
                     color: subtitleColor,
                     fontSize: 13,
@@ -427,7 +439,9 @@ class ReplyQuote extends StatelessWidget {
       color: Colors.transparent,
       child: InkWell(
         onTap: onTap,
-        borderRadius: const BorderRadius.horizontal(left: Radius.circular(4)),
+        borderRadius: BorderRadiusDirectional.horizontal(
+          start: const Radius.circular(4),
+        ).resolve(Directionality.of(context)),
         child: quote,
       ),
     );

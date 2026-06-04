@@ -4,6 +4,7 @@ import 'package:flutter_chat_ui/flutter_chat_ui.dart';
 import 'package:giphy_get/giphy_get.dart';
 import 'package:provider/provider.dart';
 
+import '../../../../shared/ui/ui.dart';
 import 'emoji_sticker_gif_panel.dart';
 import 'thread_voice_recorder.dart';
 
@@ -141,28 +142,35 @@ class _ThreadComposerWithPanelState extends State<ThreadComposerWithPanel> {
             ),
           if (!isRecording)
             Expanded(
-              child: TextField(
-                controller: widget.textEditingController,
-                focusNode: widget.focusNode,
-                decoration: InputDecoration(
-                  hintText: widget.hintText,
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(24),
-                    borderSide: BorderSide.none,
-                  ),
-                  filled: true,
-                  fillColor: theme.colors.surfaceContainerHigh.withValues(alpha: 0.8),
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                ),
-                style: theme.typography.bodyMedium.copyWith(
-                  color: onSurface,
-                ),
-                minLines: 1,
-                maxLines: 4,
-                textCapitalization: TextCapitalization.sentences,
-                onSubmitted: (text) {
-                  context.read<OnMessageSendCallback?>()?.call(text.trim());
-                  widget.textEditingController.clear();
+              child: ValueListenableBuilder<TextEditingValue>(
+                valueListenable: widget.textEditingController,
+                builder: (context, value, _) {
+                  return TextField(
+                    controller: widget.textEditingController,
+                    focusNode: widget.focusNode,
+                    decoration: InputDecoration(
+                      hintText: widget.hintText,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(24),
+                        borderSide: BorderSide.none,
+                      ),
+                      filled: true,
+                      fillColor: theme.colors.surfaceContainerHigh.withValues(alpha: 0.8),
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                    ),
+                    style: theme.typography.bodyMedium.copyWith(
+                      color: onSurface,
+                    ),
+                    minLines: 1,
+                    maxLines: 4,
+                    textAlign: TextAlign.start,
+                    textDirection: textDirectionFor(value.text),
+                    textCapitalization: TextCapitalization.sentences,
+                    onSubmitted: (text) {
+                      context.read<OnMessageSendCallback?>()?.call(text.trim());
+                      widget.textEditingController.clear();
+                    },
+                  );
                 },
               ),
             )

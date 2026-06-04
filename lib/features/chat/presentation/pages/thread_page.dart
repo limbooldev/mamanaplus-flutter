@@ -843,9 +843,8 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
                         isRemoved: isRemoved,
                         groupStatus: groupStatus,
                         child: Align(
-                          alignment: isSentByMe
-                              ? Alignment.centerRight
-                              : Alignment.centerLeft,
+                          alignment:
+                              isSentByMe ? Alignment.centerRight : Alignment.centerLeft,
                           child: ConstrainedBox(
                             constraints: BoxConstraints(maxWidth: maxBubbleW),
                             child: _wrapScrollTargetHighlight(
@@ -889,9 +888,8 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
                       final groupedFollowUp =
                           groupStatus?.isFirst == false;
                       return Align(
-                        alignment: isSentByMe
-                            ? Alignment.centerRight
-                            : Alignment.centerLeft,
+                        alignment:
+                            isSentByMe ? Alignment.centerRight : Alignment.centerLeft,
                         child: ConstrainedBox(
                           constraints: BoxConstraints(maxWidth: maxBubbleW),
                           child: Container(
@@ -912,7 +910,7 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
                               ),
                             ),
                             child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.end,
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
                               mainAxisSize: MainAxisSize.min,
                               children: [
                                 if (showReply)
@@ -926,13 +924,12 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
                                     onPrimaryBubble: isSentByMe,
                                     onTap: _replyQuoteTapHandler(context, message),
                                   ),
-                                Align(
-                                  alignment: Alignment.centerLeft,
-                                  child: Text(
-                                    message.text,
-                                    style: theme.typography.bodyMedium
-                                        .copyWith(color: fg),
-                                  ),
+                                Text(
+                                  message.text,
+                                  textAlign: TextAlign.start,
+                                  textDirection: textDirectionFor(message.text),
+                                  style: theme.typography.bodyMedium
+                                      .copyWith(color: fg),
                                 ),
                                 const SizedBox(height: 2),
                                 CustomTimeAndStatus(

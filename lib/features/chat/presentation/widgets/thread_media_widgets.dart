@@ -8,6 +8,7 @@ import 'package:just_audio/just_audio.dart';
 import 'package:video_player/video_player.dart';
 
 import '../../data/chat_repository.dart';
+import '../../../../shared/ui/ui.dart';
 import 'message_status_icon.dart';
 
 /// Inline chat thumbnails use fixed dimensions so the message list does not
@@ -26,11 +27,13 @@ Widget? buildMediaCaptionWidget(String? caption, Color foreground) {
   final text = caption?.trim();
   if (text == null || text.isEmpty) return null;
   return Padding(
-    padding: const EdgeInsets.only(top: 4, left: 2, right: 2, bottom: 2),
+    padding: const EdgeInsetsDirectional.only(top: 4, start: 2, end: 2, bottom: 2),
     child: ConstrainedBox(
       constraints: const BoxConstraints(maxWidth: kChatInlineImageW),
       child: Text(
         text,
+        textAlign: TextAlign.start,
+        textDirection: textDirectionFor(text),
         style: TextStyle(color: foreground, fontSize: 14),
       ),
     ),

@@ -113,33 +113,40 @@ class _MediaCaptionPreviewPageState extends State<_MediaCaptionPreviewPage> {
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
                     Expanded(
-                      child: TextField(
-                        controller: _captionController,
-                        focusNode: _captionFocus,
-                        maxLength: 1024,
-                        minLines: 1,
-                        maxLines: 4,
-                        style: const TextStyle(color: Colors.white),
-                        textCapitalization: TextCapitalization.sentences,
-                        decoration: InputDecoration(
-                          hintText: l10n.mediaCaptionHint,
-                          hintStyle: TextStyle(
-                            color: Colors.white.withValues(alpha: 0.5),
-                          ),
-                          counterStyle: TextStyle(
-                            color: Colors.white.withValues(alpha: 0.4),
-                          ),
-                          filled: true,
-                          fillColor: Colors.white.withValues(alpha: 0.12),
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(24),
-                            borderSide: BorderSide.none,
-                          ),
-                          contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 16,
-                            vertical: 10,
-                          ),
-                        ),
+                      child: ValueListenableBuilder<TextEditingValue>(
+                        valueListenable: _captionController,
+                        builder: (context, value, _) {
+                          return TextField(
+                            controller: _captionController,
+                            focusNode: _captionFocus,
+                            maxLength: 1024,
+                            minLines: 1,
+                            maxLines: 4,
+                            style: const TextStyle(color: Colors.white),
+                            textAlign: TextAlign.start,
+                            textDirection: textDirectionFor(value.text),
+                            textCapitalization: TextCapitalization.sentences,
+                            decoration: InputDecoration(
+                              hintText: l10n.mediaCaptionHint,
+                              hintStyle: TextStyle(
+                                color: Colors.white.withValues(alpha: 0.5),
+                              ),
+                              counterStyle: TextStyle(
+                                color: Colors.white.withValues(alpha: 0.4),
+                              ),
+                              filled: true,
+                              fillColor: Colors.white.withValues(alpha: 0.12),
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(24),
+                                borderSide: BorderSide.none,
+                              ),
+                              contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                                vertical: 10,
+                              ),
+                            ),
+                          );
+                        },
                       ),
                     ),
                     const SizedBox(width: 8),
