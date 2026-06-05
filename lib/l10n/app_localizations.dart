@@ -634,6 +634,18 @@ abstract class AppLocalizations {
   /// **'Close'**
   String get mediaPreviewClose;
 
+  /// No description provided for @chatDayToday.
+  ///
+  /// In en, this message translates to:
+  /// **'Today'**
+  String get chatDayToday;
+
+  /// No description provided for @chatDayYesterday.
+  ///
+  /// In en, this message translates to:
+  /// **'Yesterday'**
+  String get chatDayYesterday;
+
   /// No description provided for @pickUsersTitleSingle.
   ///
   /// In en, this message translates to:

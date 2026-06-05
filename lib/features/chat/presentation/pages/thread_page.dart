@@ -13,6 +13,7 @@ import 'package:provider/provider.dart';
 import 'package:mamana_plus/l10n/app_localizations.dart';
 import 'package:giphy_get/giphy_get.dart';
 
+import '../../../../core/formatting/chat_day_label.dart';
 import '../../../../core/api_config.dart';
 import '../../../../core/giphy_config.dart';
 import '../../../../core/notification_dismiss.dart';
@@ -25,12 +26,14 @@ import '../../data/chat_mute_prefs.dart';
 import '../../data/chat_repository.dart';
 import '../cubit/thread_cubit.dart';
 import '../mappers/local_message_to_chat_message.dart';
+import '../widgets/chat_day_label_chip.dart';
 import '../widgets/media_caption_preview.dart';
 import '../widgets/message_status_icon.dart';
 import '../widgets/mamana_gif_bubble.dart';
 import '../widgets/reply_quote.dart';
 import '../widgets/scroll_target_highlight.dart';
 import '../widgets/thread_app_bar_status.dart';
+import '../widgets/thread_sticky_date_header.dart';
 import '../widgets/thread_composer_with_panel.dart';
 import '../widgets/thread_media_widgets.dart';
 import '../../../social/presentation/pages/user_profile_page.dart';
@@ -109,6 +112,14 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
   var _isAtBottom = true;
   var _unreadInboundCount = 0;
   Set<String> _knownMessageIds = {};
+  final _chatListAreaKey = GlobalKey();
+  final _dayLabelKeys = <String, GlobalKey>{};
+  final _dayLabelDates = <String, DateTime>{};
+  var _stickyDateVisible = false;
+  String? _stickyDateLabel;
+  Timer? _stickyDateHideTimer;
+  var _scrollIdleListenerAttached = false;
+  var _stickyDateUpdateScheduled = false;
 
   static const _atBottomThreshold = 150.0;
   static const _scrollToBottomLayoutPasses = 8;
@@ -126,6 +137,7 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
 
   void _onListScroll() {
     if (!_listScrollController.hasClients) return;
+    _ensureScrollIdleListener();
     final pos = _listScrollController.position;
     final gap = pos.maxScrollExtent - pos.pixels;
     final atBottom = gap <= _atBottomThreshold;
@@ -135,6 +147,111 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
         if (atBottom) _unreadInboundCount = 0;
       });
     }
+    if (pos.isScrollingNotifier.value) {
+      _scheduleStickyDateUpdate();
+    }
+  }
+
+  void _ensureScrollIdleListener() {
+    if (_scrollIdleListenerAttached || !_listScrollController.hasClients) {
+      return;
+    }
+    _scrollIdleListenerAttached = true;
+    _listScrollController.position.isScrollingNotifier
+        .addListener(_onScrollActivityChanged);
+  }
+
+  void _onScrollActivityChanged() {
+    if (!_listScrollController.hasClients || !mounted) return;
+    final scrolling = _listScrollController.position.isScrollingNotifier.value;
+    if (scrolling) {
+      _stickyDateHideTimer?.cancel();
+      if (!_stickyDateVisible) {
+        setState(() => _stickyDateVisible = true);
+      }
+      _scheduleStickyDateUpdate();
+    } else {
+      _stickyDateHideTimer?.cancel();
+      _stickyDateHideTimer = Timer(const Duration(seconds: 1), () {
+        if (mounted) setState(() => _stickyDateVisible = false);
+      });
+    }
+  }
+
+  void _scheduleStickyDateUpdate() {
+    if (_stickyDateUpdateScheduled) return;
+    _stickyDateUpdateScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _stickyDateUpdateScheduled = false;
+      if (mounted) _updateStickyDateFromLayout();
+    });
+  }
+
+  void _updateStickyDateFromLayout() {
+    final listBox =
+        _chatListAreaKey.currentContext?.findRenderObject() as RenderBox?;
+    if (listBox == null) return;
+
+    final viewportTop = listBox.localToGlobal(Offset.zero).dy;
+    const topTolerance = 4.0;
+
+    // Find the topmost rendered chip whose bottom is below the viewport top
+    // (i.e. at least partially entering the viewport from above or visible in it).
+    String? topVisibleKey;
+    var topVisibleY = double.infinity;
+    for (final entry in _dayLabelKeys.entries) {
+      final box =
+          entry.value.currentContext?.findRenderObject() as RenderBox?;
+      if (box == null) continue;
+      final top = box.localToGlobal(Offset.zero).dy;
+      final bottom = top + box.size.height;
+      if (bottom > viewportTop && top < topVisibleY) {
+        topVisibleY = top;
+        topVisibleKey = entry.key;
+      }
+    }
+
+    if (topVisibleKey == null) return;
+    final topVisibleDate = _dayLabelDates[topVisibleKey];
+    if (topVisibleDate == null) return;
+
+    DateTime activeDate;
+    if (topVisibleY <= viewportTop + topTolerance) {
+      // Chip is at or above the viewport top — messages in view are from this day.
+      activeDate = topVisibleDate;
+    } else {
+      // Chip is below the viewport top — messages above the chip (at screen top)
+      // belong to the previous day section.  Look up the previous date.
+      final sortedDates = _dayLabelDates.values.toList()..sort();
+      final idx = sortedDates.indexOf(topVisibleDate);
+      activeDate = idx > 0 ? sortedDates[idx - 1] : topVisibleDate;
+    }
+
+    final label = _formatDayLabel(activeDate);
+    if (label != _stickyDateLabel) {
+      setState(() => _stickyDateLabel = label);
+    }
+  }
+
+  String _dayKeyFor(DateTime date) {
+    final d = date.toLocal();
+    return '${d.year}-${d.month}-${d.day}';
+  }
+
+  GlobalKey _dayLabelKeyFor(DateTime date) {
+    final key = _dayKeyFor(date);
+    _dayLabelDates[key] = dateOnlyLocal(date);
+    return _dayLabelKeys.putIfAbsent(key, GlobalKey.new);
+  }
+
+  String _formatDayLabel(DateTime date) {
+    final l10n = AppLocalizations.of(context)!;
+    return formatChatDayLabel(
+      date,
+      todayLabel: l10n.chatDayToday,
+      yesterdayLabel: l10n.chatDayYesterday,
+      locale: Localizations.localeOf(context).toString(),
+    );
   }
 
   void _jumpToListBottom() {
@@ -249,7 +366,12 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
   @override
   void dispose() {
     _scrollHighlightTimer?.cancel();
+    _stickyDateHideTimer?.cancel();
     _typingIdleTimer?.cancel();
+    if (_scrollIdleListenerAttached && _listScrollController.hasClients) {
+      _listScrollController.position.isScrollingNotifier
+          .removeListener(_onScrollActivityChanged);
+    }
     _listScrollController.removeListener(_onListScroll);
     _listScrollController.dispose();
     _composerController.removeListener(_handleComposerTextChanged);
@@ -713,7 +835,11 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
                 _captureKeyboardHeight(context);
                 final chatTheme = _buildChatTheme(theme, isDark);
                 final maxBubbleW = math.min(340.0, MediaQuery.sizeOf(context).width * 0.78);
-                return Chat(
+                return Stack(
+                  key: _chatListAreaKey,
+                  clipBehavior: Clip.none,
+                  children: [
+                    Chat(
                   currentUserId: '${widget.myUserId}',
                   resolveUser: (id) async {
                     final cubit = context.read<ThreadCubit>();
@@ -866,6 +992,12 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
                     },
                     chatMessageBuilder:
                         (context, message, index, animation, child, {isRemoved, required isSentByMe, groupStatus}) {
+                      final messages = _chatController.messages;
+                      final createdAt = message.createdAt ?? DateTime.now();
+                      final prev = index > 0 ? messages[index - 1] : null;
+                      final prevAt = prev?.createdAt ?? createdAt;
+                      final showDayLabel =
+                          prev == null || !isSameCalendarDay(prevAt, createdAt);
                       // Custom builders replace [ChatMessage], which owns the long-press /
                       // tap [GestureDetector] wired to [onMessageLongPress]. Re-wrap so
                       // actions (copy, reply, etc.) still fire.
@@ -875,7 +1007,15 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
                         animation: animation,
                         isRemoved: isRemoved,
                         groupStatus: groupStatus,
-                        child: Align(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            if (showDayLabel)
+                              ChatDayLabelChip(
+                                key: _dayLabelKeyFor(createdAt),
+                                label: _formatDayLabel(createdAt),
+                              ),
+                            Align(
                           alignment:
                               isSentByMe ? Alignment.centerRight : Alignment.centerLeft,
                           child: ConstrainedBox(
@@ -898,6 +1038,8 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
                               ),
                             ),
                           ),
+                        ),
+                          ],
                         ),
                       );
                     },
@@ -1308,6 +1450,17 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
                       ),
                     ),
                   ),
+                    ),
+                    Positioned(
+                      top: 8,
+                      left: 0,
+                      right: 0,
+                      child: ThreadStickyDateHeader(
+                        visible: _stickyDateVisible,
+                        label: _stickyDateLabel,
+                      ),
+                    ),
+                  ],
                 );
               },
             ),

@@ -181,6 +181,11 @@
   "mediaPreviewSend": "Send",
   "mediaPreviewClose": "Close",
 
+  "composerHint": "Message",
+
+  "chatDayToday": "Today",
+  "chatDayYesterday": "Yesterday",
+
   "pickUsersTitleSingle": "New message",
   "pickUsersTitleMulti": "Add members",
   "pickUsersSearchHint": "Search by name",

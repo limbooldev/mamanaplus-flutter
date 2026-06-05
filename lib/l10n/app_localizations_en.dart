@@ -312,6 +312,12 @@ class AppLocalizationsEn extends AppLocalizations {
   String get mediaPreviewClose => 'Close';
 
   @override
+  String get chatDayToday => 'Today';
+
+  @override
+  String get chatDayYesterday => 'Yesterday';
+
+  @override
   String get pickUsersTitleSingle => 'New message';
 
   @override
