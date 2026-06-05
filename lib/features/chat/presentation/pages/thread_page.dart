@@ -3,13 +3,13 @@ import 'dart:io';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart' show ScrollDirection;
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_chat_core/flutter_chat_core.dart';
 import 'package:flutter_chat_ui/flutter_chat_ui.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:provider/provider.dart';
 import 'package:mamana_plus/l10n/app_localizations.dart';
 import 'package:giphy_get/giphy_get.dart';
 
@@ -105,10 +105,12 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
   Timer? _scrollHighlightTimer;
   late final ScrollController _listScrollController;
 
-  /// Keeps the list pinned to the newest messages until the user scrolls up.
-  var _stickToBottom = true;
+  /// True when the last ~2 messages are visible (WhatsApp-style stick zone).
+  var _isAtBottom = true;
+  var _unreadInboundCount = 0;
+  Set<String> _knownMessageIds = {};
 
-  static const _stickToBottomReleaseGap = 72.0;
+  static const _atBottomThreshold = 150.0;
   static const _scrollToBottomLayoutPasses = 8;
 
   @override
@@ -123,12 +125,15 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
   }
 
   void _onListScroll() {
-    if (!_stickToBottom || !_listScrollController.hasClients) return;
+    if (!_listScrollController.hasClients) return;
     final pos = _listScrollController.position;
-    if (pos.userScrollDirection == ScrollDirection.idle) return;
     final gap = pos.maxScrollExtent - pos.pixels;
-    if (gap > _stickToBottomReleaseGap) {
-      _stickToBottom = false;
+    final atBottom = gap <= _atBottomThreshold;
+    if (atBottom != _isAtBottom) {
+      setState(() {
+        _isAtBottom = atBottom;
+        if (atBottom) _unreadInboundCount = 0;
+      });
     }
   }
 
@@ -144,20 +149,24 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
   /// Re-scroll after composer height / media layout updates (library initial
   /// scroll often runs before [ComposerHeightNotifier] has a real measurement).
   void _scheduleScrollToBottom() {
-    if (!_stickToBottom || !mounted) return;
+    if (!_isAtBottom || !mounted) return;
     var pass = 0;
     void schedulePass() {
-      if (!_stickToBottom || !mounted || pass >= _scrollToBottomLayoutPasses) {
+      if (!_isAtBottom || !mounted || pass >= _scrollToBottomLayoutPasses) {
         return;
       }
       pass++;
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!_stickToBottom || !mounted) return;
+        if (!_isAtBottom || !mounted) return;
         _jumpToListBottom();
         schedulePass();
       });
     }
     schedulePass();
+  }
+
+  void _onComposerLayoutHeightChanged() {
+    _scheduleScrollToBottom();
   }
 
   void _onComposerFocusChanged() {
@@ -341,7 +350,31 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
     // Because updates are pre-applied above, the diff sees no "change" ops for
     // existing messages — only new/removed messages produce insertItem/removeItem.
     await _chatController.setMessages(mapped, animated: false);
-    _scheduleScrollToBottom();
+    if (!mounted) return;
+
+    final isInitialSync = _knownMessageIds.isEmpty;
+    final incomingInbound = isInitialSync
+        ? <Message>[]
+        : mapped.where((m) {
+            if (_knownMessageIds.contains(m.id)) return false;
+            if (m.id.startsWith('pending_')) return false;
+            final id = int.tryParse(m.id);
+            if (id == null) return false;
+            final localMsg = _localById(state.messages, id);
+            return localMsg != null && localMsg.senderId != widget.myUserId;
+          }).toList();
+
+    _knownMessageIds = mapped.map((m) => m.id).toSet();
+
+    if (incomingInbound.isNotEmpty) {
+      if (_isAtBottom) {
+        _scheduleScrollToBottom();
+      } else {
+        setState(() => _unreadInboundCount += incomingInbound.length);
+      }
+    } else if (_isAtBottom) {
+      _scheduleScrollToBottom();
+    }
   }
 
   LocalMessage? _localById(List<LocalMessage> messages, int id) {
@@ -1148,7 +1181,7 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
                                 foreground: fg,
                                 isSentByMe: isSentByMe,
                                 onLayoutSettled:
-                                    _stickToBottom ? _scheduleScrollToBottom : null,
+                                    _isAtBottom ? _scheduleScrollToBottom : null,
                               ),
                             ],
                           ),
@@ -1164,6 +1197,19 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
                         itemBuilder: itemBuilder,
                       );
                     },
+                    scrollToBottomBuilder: (ctx, animation, onPressed) {
+                      return _ScrollToBottomFab(
+                        animation: animation,
+                        unreadCount: _unreadInboundCount,
+                        onTap: () {
+                          setState(() {
+                            _isAtBottom = true;
+                            _unreadInboundCount = 0;
+                          });
+                          onPressed();
+                        },
+                      );
+                    },
                     // Chat overlays the composer on a Stack; [Composer] uses
                     // Positioned(bottom: 0). A raw Column here pins to the top — use
                     // [Composer.topWidget] so reply/search sits above the field but
@@ -1173,7 +1219,7 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
                       focusNode: _composerFocusNode,
                       hintText: l10n.composerHint,
                       handleSafeArea: true,
-                      onLayoutHeightChanged: _scheduleScrollToBottom,
+                      onLayoutHeightChanged: _onComposerLayoutHeightChanged,
                       isDark: isDark,
                       showEmojiPanel: _showEmojiPanel,
                       panelHeight: _keyboardHeight,
@@ -1635,6 +1681,76 @@ class _ComposerMetaStrip extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
         child: child,
       ),
+    );
+  }
+}
+
+/// Scroll-to-bottom control with optional unread badge (replaces library default).
+class _ScrollToBottomFab extends StatelessWidget {
+  const _ScrollToBottomFab({
+    required this.animation,
+    required this.unreadCount,
+    required this.onTap,
+  });
+
+  final Animation<double> animation;
+  final int unreadCount;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final surface = isDark ? AppColors.surfaceDark : AppColors.surfaceLight;
+    final onSurface = isDark ? AppColors.onBackgroundDark : AppColors.onBackgroundLight;
+    final bottomSafeArea = MediaQuery.paddingOf(context).bottom;
+
+    return Consumer<ComposerHeightNotifier>(
+      builder: (context, heightNotifier, _) {
+        return Positioned(
+          right: 16,
+          bottom: heightNotifier.height + 20 + bottomSafeArea,
+          child: ScaleTransition(
+            scale: animation,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (unreadCount > 0)
+                  Container(
+                    margin: const EdgeInsets.only(bottom: 6),
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: AppColors.primary,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Text(
+                      unreadCount > 99 ? '99+' : '$unreadCount',
+                      style: GoogleFonts.inter(
+                        color: AppColors.onPrimary,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                Material(
+                  elevation: 2,
+                  shadowColor: Colors.black26,
+                  color: surface,
+                  shape: const CircleBorder(),
+                  child: InkWell(
+                    customBorder: const CircleBorder(),
+                    onTap: onTap,
+                    child: SizedBox(
+                      width: 40,
+                      height: 40,
+                      child: Icon(Icons.keyboard_arrow_down, color: onSurface, size: 24),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 }
