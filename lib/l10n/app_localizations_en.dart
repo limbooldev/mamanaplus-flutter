@@ -210,6 +210,9 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String get waitingForNetwork => 'Waiting for network...';
+
+  @override
   String get composerHint => 'Message';
 
   @override

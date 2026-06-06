@@ -14,6 +14,7 @@ import '../../conversation_preview.dart';
 import '../../data/chat_repository.dart';
 import '../cubit/auth_cubit.dart';
 import '../cubit/inbox_cubit.dart';
+import '../cubit/network_status_cubit.dart';
 import '../cubit/public_groups_cubit.dart';
 import '../../../social/presentation/widgets/social_media_widgets.dart';
 
@@ -64,7 +65,36 @@ class _InboxAppBar extends StatelessWidget implements PreferredSizeWidget {
   @override
   Widget build(BuildContext context) {
     return AppBar(
-      title: Text(l10n.chatsTitle),
+      title: BlocBuilder<NetworkStatusCubit, bool>(
+        builder: (context, isWaitingForNetwork) {
+          if (isWaitingForNetwork) {
+            return Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                SizedBox(
+                  width: 12,
+                  height: 12,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: isDark
+                        ? AppColors.onBackgroundDark
+                        : AppColors.onBackgroundLight,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Flexible(
+                  child: Text(
+                    l10n.waitingForNetwork,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
+            );
+          }
+          return Text(l10n.chatsTitle);
+        },
+      ),
       actions: [
         _NewGroupButton(l10n: l10n),
         const SizedBox(width: 4),

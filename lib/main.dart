@@ -19,6 +19,7 @@ import 'features/chat/data/chat_remote_datasource.dart';
 import 'features/chat/data/chat_repository.dart';
 import 'features/chat/data/chat_socket.dart';
 import 'features/chat/presentation/cubit/auth_cubit.dart';
+import 'features/chat/presentation/cubit/network_status_cubit.dart';
 import 'features/chat/presentation/cubit/theme_cubit.dart';
 import 'features/social/data/social_repository.dart';
 import 'features/social/data/story_seen_local_store.dart';
@@ -81,6 +82,9 @@ Future<void> main() async {
                   providers: [
                     BlocProvider<AuthCubit>.value(value: auth),
                     BlocProvider<ThemeCubit>.value(value: themeCubit),
+                    BlocProvider<NetworkStatusCubit>(
+                      create: (_) => NetworkStatusCubit(socket),
+                    ),
                   ],
                   child: RepositoryProvider<SocialRepository>(
                     create: (ctx) => SocialRepository(

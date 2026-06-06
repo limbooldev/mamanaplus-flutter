@@ -24,6 +24,7 @@ import '../../../../shared/ui/ui.dart';
 import '../../conversation_preview.dart';
 import '../../data/chat_mute_prefs.dart';
 import '../../data/chat_repository.dart';
+import '../cubit/network_status_cubit.dart';
 import '../cubit/thread_cubit.dart';
 import '../mappers/local_message_to_chat_message.dart';
 import '../widgets/chat_day_label_chip.dart';
@@ -654,7 +655,9 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
           icon: const Icon(Icons.arrow_back_ios_new_rounded),
           onPressed: _handleThreadBack,
         ),
-        title: BlocBuilder<ThreadCubit, ThreadState>(
+        title: BlocBuilder<NetworkStatusCubit, bool>(
+          builder: (context, isWaitingForNetwork) {
+            return BlocBuilder<ThreadCubit, ThreadState>(
           buildWhen: (a, b) =>
               a.headerTitle != b.headerTitle ||
               a.peerAvatarMediaKey != b.peerAvatarMediaKey ||
@@ -708,6 +711,7 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
                         isGroup: isGroup,
                         typingUserIds: state.typingUserIds,
                         myUserId: widget.myUserId,
+                        isWaitingForNetwork: isWaitingForNetwork,
                         dmPeerUserId: state.dmPeerUserId,
                         peerOnline: state.peerOnline,
                         peerLastSeenAt: state.peerLastSeenAt,
@@ -744,6 +748,8 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
                   child: titleRow,
                 ),
               ),
+            );
+          },
             );
           },
         ),

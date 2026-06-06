@@ -442,6 +442,12 @@ abstract class AppLocalizations {
   /// **'{members} members, {online} online'**
   String chatStatusMembersOnline(int members, int online);
 
+  /// No description provided for @waitingForNetwork.
+  ///
+  /// In en, this message translates to:
+  /// **'Waiting for network...'**
+  String get waitingForNetwork;
+
   /// No description provided for @composerHint.
   ///
   /// In en, this message translates to:

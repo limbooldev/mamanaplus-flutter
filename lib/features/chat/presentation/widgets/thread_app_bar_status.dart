@@ -14,6 +14,7 @@ class ThreadAppBarStatus extends StatelessWidget {
     required this.isGroup,
     required this.typingUserIds,
     required this.myUserId,
+    this.isWaitingForNetwork = false,
     this.dmPeerUserId,
     this.peerOnline,
     this.peerLastSeenAt,
@@ -24,6 +25,7 @@ class ThreadAppBarStatus extends StatelessWidget {
   final bool isGroup;
   final Set<int> typingUserIds;
   final int myUserId;
+  final bool isWaitingForNetwork;
   final int? dmPeerUserId;
   final bool? peerOnline;
   final DateTime? peerLastSeenAt;
@@ -43,6 +45,31 @@ class ThreadAppBarStatus extends StatelessWidget {
       color: color,
       height: 1.2,
     );
+
+    if (isWaitingForNetwork) {
+      return Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          SizedBox(
+            width: 10,
+            height: 10,
+            child: CircularProgressIndicator(
+              strokeWidth: 1.5,
+              color: color,
+            ),
+          ),
+          const SizedBox(width: 6),
+          Flexible(
+            child: Text(
+              l10n.waitingForNetwork,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: style,
+            ),
+          ),
+        ],
+      );
+    }
 
     if (isGroup) {
       final typing = _othersTyping.toList();

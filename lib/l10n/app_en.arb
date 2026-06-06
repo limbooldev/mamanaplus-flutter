@@ -131,6 +131,7 @@
       "online": {"type": "int"}
     }
   },
+  "waitingForNetwork": "Waiting for network...",
   "composerHint": "Message",
   "actionReply": "Reply",
   "actionCopy": "Copy",
