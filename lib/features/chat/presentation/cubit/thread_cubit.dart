@@ -120,6 +120,26 @@ MemberPresence? _memberPresenceFromUserMap(dynamic user) {
 
 const _unsetReplyTo = Object();
 
+/// A single emoji reaction by [userId] on a message.
+class MessageReaction {
+  const MessageReaction({required this.userId, required this.emoji});
+
+  final int userId;
+  final String emoji;
+
+  factory MessageReaction.fromJson(Map<String, dynamic> j) => MessageReaction(
+        userId: _jsonInt(j['user_id']) ?? 0,
+        emoji: (j['emoji'] as String? ?? '').trim(),
+      );
+
+  @override
+  bool operator ==(Object other) =>
+      other is MessageReaction && other.userId == userId && other.emoji == emoji;
+
+  @override
+  int get hashCode => Object.hash(userId, emoji);
+}
+
 class ThreadState extends Equatable {
   const ThreadState({
     this.messages = const [],
@@ -139,6 +159,7 @@ class ThreadState extends Equatable {
     this.peerLastSeenAt,
     this.memberPresence = const {},
     this.messageSearchQuery,
+    this.reactions = const {},
   });
 
   final List<LocalMessage> messages;
@@ -180,6 +201,10 @@ class ThreadState extends Equatable {
   /// Group in-thread search (server `q`); null when inactive.
   final String? messageSearchQuery;
 
+  /// Emoji reactions keyed by message id. Populated from the API response and
+  /// updated in real time via `reaction_added` / `reaction_removed` WS events.
+  final Map<int, List<MessageReaction>> reactions;
+
   ThreadState copyWith({
     List<LocalMessage>? messages,
     List<MessageOutboxData>? pending,
@@ -199,6 +224,7 @@ class ThreadState extends Equatable {
     Map<int, MemberPresence>? memberPresence,
     String? messageSearchQuery,
     bool clearMessageSearch = false,
+    Map<int, List<MessageReaction>>? reactions,
   }) =>
       ThreadState(
         messages: messages ?? this.messages,
@@ -221,6 +247,7 @@ class ThreadState extends Equatable {
         memberPresence: memberPresence ?? this.memberPresence,
         messageSearchQuery:
             clearMessageSearch ? null : (messageSearchQuery ?? this.messageSearchQuery),
+        reactions: reactions ?? this.reactions,
       );
 
   /// Private DM: max peer read cursor from `receipt_update` — double-check when read up to [messageId].
@@ -252,6 +279,7 @@ class ThreadState extends Equatable {
         peerLastSeenAt,
         memberPresence,
         messageSearchQuery,
+        reactions,
       ];
 }
 
@@ -389,6 +417,29 @@ class ThreadCubit extends Cubit<ThreadState> {
           );
           emit(state.copyWith(memberPresence: next));
         }
+      } else if (type == 'reaction_added' && payload is Map<String, dynamic>) {
+        final cid = _jsonInt(payload['conversation_id']);
+        if (cid != conversationId) return;
+        final mid = _jsonInt(payload['message_id']);
+        final uid = _jsonInt(payload['user_id']);
+        final emoji = (payload['emoji'] as String?)?.trim() ?? '';
+        if (mid == null || uid == null || emoji.isEmpty) return;
+        final prev = List<MessageReaction>.from(state.reactions[mid] ?? []);
+        final reaction = MessageReaction(userId: uid, emoji: emoji);
+        if (!prev.contains(reaction)) {
+          prev.add(reaction);
+          emit(state.copyWith(reactions: {...state.reactions, mid: prev}));
+        }
+      } else if (type == 'reaction_removed' && payload is Map<String, dynamic>) {
+        final cid = _jsonInt(payload['conversation_id']);
+        if (cid != conversationId) return;
+        final mid = _jsonInt(payload['message_id']);
+        final uid = _jsonInt(payload['user_id']);
+        final emoji = (payload['emoji'] as String?)?.trim() ?? '';
+        if (mid == null || uid == null || emoji.isEmpty) return;
+        final prev = List<MessageReaction>.from(state.reactions[mid] ?? []);
+        prev.removeWhere((r) => r.userId == uid && r.emoji == emoji);
+        emit(state.copyWith(reactions: {...state.reactions, mid: prev}));
       } else if (type == 'receipt_update' && payload is Map<String, dynamic>) {
         final cid = _jsonInt(payload['conversation_id']);
         if (cid != conversationId) return;
@@ -569,6 +620,7 @@ class ThreadCubit extends Cubit<ThreadState> {
       final items = (data['items'] as List<dynamic>? ?? [])
           .map((e) => e as Map<String, dynamic>)
           .toList();
+      final newReactions = _parseReactionsFromItems(items);
       await _repo.cacheMessages(conversationId, items);
       final local = await _repo.loadMessagesLocal(conversationId);
       final pending = await _repo.loadOutboxLocal(conversationId);
@@ -576,6 +628,7 @@ class ThreadCubit extends Cubit<ThreadState> {
         messages: local,
         pending: pending,
         loading: false,
+        reactions: {...state.reactions, ...newReactions},
       ));
       if (local.isNotEmpty) {
         await _repo.markRead(conversationId, local.first.id);
@@ -583,6 +636,25 @@ class ThreadCubit extends Cubit<ThreadState> {
     } catch (e) {
       emit(state.copyWith(loading: false, error: e.toString()));
     }
+  }
+
+  /// Parses `reactions` arrays from a list of raw message JSON maps into a
+  /// `messageId → reactions` map.
+  static Map<int, List<MessageReaction>> _parseReactionsFromItems(
+    List<Map<String, dynamic>> items,
+  ) {
+    final result = <int, List<MessageReaction>>{};
+    for (final item in items) {
+      final id = _jsonInt(item['id']);
+      if (id == null) continue;
+      final rawList = item['reactions'] as List<dynamic>?;
+      if (rawList == null) continue;
+      result[id] = rawList
+          .whereType<Map<String, dynamic>>()
+          .map(MessageReaction.fromJson)
+          .toList();
+    }
+    return result;
   }
 
   /// Server-side substring search (text/plain only); pass null or short string to clear.
@@ -594,6 +666,41 @@ class ThreadCubit extends Cubit<ThreadState> {
   }
 
   void setReplyTo(LocalMessage? m) => emit(state.copyWith(replyTo: m));
+
+  /// Optimistically adds or removes a reaction, then syncs with the server.
+  /// If [myUserId] already reacted with [emoji], the reaction is removed (toggle).
+  Future<void> toggleReaction(int messageId, String emoji) async {
+    final prev = List<MessageReaction>.from(state.reactions[messageId] ?? []);
+    final existing = prev.where(
+      (r) => r.userId == myUserId && r.emoji == emoji,
+    );
+    final alreadyReacted = existing.isNotEmpty;
+
+    // Optimistic update.
+    if (alreadyReacted) {
+      prev.removeWhere((r) => r.userId == myUserId && r.emoji == emoji);
+    } else {
+      prev.add(MessageReaction(userId: myUserId, emoji: emoji));
+    }
+    emit(state.copyWith(reactions: {...state.reactions, messageId: prev}));
+
+    try {
+      if (alreadyReacted) {
+        await _repo.removeReaction(conversationId, messageId, emoji: emoji);
+      } else {
+        await _repo.addReaction(conversationId, messageId, emoji: emoji);
+      }
+    } catch (_) {
+      // Roll back on error.
+      final rolled = List<MessageReaction>.from(state.reactions[messageId] ?? []);
+      if (alreadyReacted) {
+        rolled.add(MessageReaction(userId: myUserId, emoji: emoji));
+      } else {
+        rolled.removeWhere((r) => r.userId == myUserId && r.emoji == emoji);
+      }
+      emit(state.copyWith(reactions: {...state.reactions, messageId: rolled}));
+    }
+  }
 
   String _newLocalId() =>
       '${conversationId}_${DateTime.now().microsecondsSinceEpoch}';

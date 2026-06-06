@@ -37,6 +37,8 @@ import '../widgets/thread_app_bar_status.dart';
 import '../widgets/thread_sticky_date_header.dart';
 import '../widgets/thread_composer_with_panel.dart';
 import '../widgets/thread_media_widgets.dart';
+import '../widgets/emoji_reaction_picker.dart';
+import '../widgets/reaction_bar.dart';
 import '../../../social/presentation/pages/user_profile_page.dart';
 import '../../../social/presentation/widgets/social_media_widgets.dart';
 
@@ -881,11 +883,8 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
                     final cubit = context.read<ThreadCubit>();
                     final local = _localById(cubit.state.messages, id);
                     if (local == null) return;
-                    if (local.senderId == widget.myUserId) {
-                      unawaited(_ownMessageActions(context, local));
-                    } else {
-                      unawaited(_peerMessageActions(context, local));
-                    }
+                    HapticFeedback.mediumImpact();
+                    unawaited(_showReactionPicker(context, local, details.globalPosition));
                   },
                   builders: Builders(
                     customMessageBuilder:
@@ -1007,6 +1006,7 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
                       // Custom builders replace [ChatMessage], which owns the long-press /
                       // tap [GestureDetector] wired to [onMessageLongPress]. Re-wrap so
                       // actions (copy, reply, etc.) still fire.
+                      final msgId = int.tryParse(message.id);
                       return ChatMessage(
                         message: message,
                         index: index,
@@ -1045,6 +1045,27 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
                             ),
                           ),
                         ),
+                            // Reaction bar shown below the bubble.
+                            if (msgId != null)
+                              BlocSelector<ThreadCubit, ThreadState,
+                                  List<MessageReaction>>(
+                                selector: (s) =>
+                                    s.reactions[msgId] ?? const [],
+                                builder: (ctx, reactions) => Padding(
+                                  padding: EdgeInsets.only(
+                                    left: isSentByMe ? 0 : 8,
+                                    right: isSentByMe ? 8 : 0,
+                                  ),
+                                  child: ReactionBar(
+                                    reactions: reactions,
+                                    myUserId: widget.myUserId,
+                                    isSentByMe: isSentByMe,
+                                    onToggle: (emoji) => context
+                                        .read<ThreadCubit>()
+                                        .toggleReaction(msgId, emoji),
+                                  ),
+                                ),
+                              ),
                           ],
                         ),
                       );
@@ -1659,86 +1680,140 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
     );
   }
 
-  Future<void> _ownMessageActions(BuildContext context, LocalMessage m) async {
+  /// Shows the WhatsApp-style emoji reaction picker overlay, then optionally
+  /// opens the action sheet based on what the user selects.
+  Future<void> _showReactionPicker(
+    BuildContext context,
+    LocalMessage m,
+    Offset tapPosition,
+  ) async {
     final l10n = AppLocalizations.of(context)!;
     final cubit = context.read<ThreadCubit>();
+    final isSentByMe = m.senderId == widget.myUserId;
     final canCopy = isEditableChatMessage(m);
-    final action = await showModalBottomSheet<String>(
-      context: context,
-      builder: (ctx) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              leading: const Icon(Icons.reply_rounded),
-              title: Text(l10n.actionReply),
-              onTap: () => Navigator.pop(ctx, 'reply'),
-            ),
-            if (canCopy)
-              ListTile(
-                leading: const Icon(Icons.copy_rounded),
-                title: Text(l10n.actionCopy),
-                onTap: () => Navigator.pop(ctx, 'copy'),
-              ),
-            if (canCopy)
-              ListTile(
-                leading: const Icon(Icons.edit),
-                title: Text(l10n.actionEdit),
-                onTap: () => Navigator.pop(ctx, 'edit'),
-              ),
-            ListTile(
-              leading: const Icon(Icons.visibility_off_outlined),
-              title: Text(l10n.actionDeleteForMe),
-              onTap: () => Navigator.pop(ctx, 'me'),
-            ),
-            ListTile(
-              leading: const Icon(Icons.delete_forever_outlined),
-              title: Text(l10n.actionDeleteForEveryone),
-              onTap: () => Navigator.pop(ctx, 'all'),
-            ),
-          ],
-        ),
-      ),
+    final canEdit = canCopy && isSentByMe;
+
+    // Approximate the message bubble rect from the tap position.
+    // We use a fixed height estimate; the picker clips to screen bounds anyway.
+    const estimatedBubbleH = 60.0;
+    const estimatedBubbleW = 220.0;
+    final bubbleLeft = isSentByMe
+        ? tapPosition.dx - estimatedBubbleW
+        : tapPosition.dx;
+    final rect = Rect.fromLTWH(
+      bubbleLeft,
+      tapPosition.dy - estimatedBubbleH / 2,
+      estimatedBubbleW,
+      estimatedBubbleH,
     );
+
+    // Build the current user's reactions for this message.
+    final reactions = cubit.state.reactions[m.id] ?? [];
+    final myEmojis = reactions
+        .where((r) => r.userId == widget.myUserId)
+        .map((r) => r.emoji)
+        .toList();
+
+    final actions = [
+      ReactionPickerAction(
+        label: l10n.actionReply,
+        icon: Icons.reply_rounded,
+        value: 'reply',
+      ),
+      if (canCopy)
+        ReactionPickerAction(
+          label: l10n.actionCopy,
+          icon: Icons.copy_rounded,
+          value: 'copy',
+        ),
+      if (canEdit)
+        ReactionPickerAction(
+          label: l10n.actionEdit,
+          icon: Icons.edit_rounded,
+          value: 'edit',
+        ),
+      if (!isSentByMe)
+        ReactionPickerAction(
+          label: l10n.actionReport,
+          icon: Icons.flag_outlined,
+          value: 'report',
+        ),
+      if (isSentByMe)
+        ReactionPickerAction(
+          label: l10n.actionDeleteForMe,
+          icon: Icons.visibility_off_outlined,
+          value: 'me',
+          isDestructive: false,
+        ),
+      if (isSentByMe)
+        ReactionPickerAction(
+          label: l10n.actionDeleteForEveryone,
+          icon: Icons.delete_forever_outlined,
+          value: 'all',
+          isDestructive: true,
+        ),
+    ];
+
+    final result = await showEmojiReactionPicker(
+      context: context,
+      messagePosition: rect,
+      isSentByMe: isSentByMe,
+      actions: actions,
+      currentUserEmojis: myEmojis,
+    );
+
     if (!context.mounted) return;
-    if (action == 'reply') {
-      cubit.setReplyTo(m);
-    } else if (action == 'copy') {
-      await Clipboard.setData(ClipboardData(text: m.body));
-      if (context.mounted) {
+
+    if (isEmojiPick(result)) {
+      cubit.toggleReaction(m.id, emojiFromPick(result!));
+      return;
+    }
+
+    if (result is String) {
+      if (result == 'reply') {
+        cubit.setReplyTo(m);
+      } else if (result == 'copy') {
+        await Clipboard.setData(ClipboardData(text: m.body));
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(l10n.snackCopiedMessage)),
+          );
+        }
+      } else if (result == 'edit') {
+        final ctrl = TextEditingController(text: m.body);
+        final ok = await showDialog<bool>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: Text(l10n.editMessageTitle),
+            content: TextField(controller: ctrl, maxLines: 4),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: Text(l10n.buttonCancel),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                child: Text(l10n.buttonSave),
+              ),
+            ],
+          ),
+        );
+        if (ok == true && context.mounted) {
+          await cubit.editMessage(m.id, ctrl.text);
+        }
+        ctrl.dispose();
+      } else if (result == 'me') {
+        await cubit.deleteMessage(m.id, forEveryone: false);
+      } else if (result == 'all') {
+        await cubit.deleteMessage(m.id, forEveryone: true);
+      } else if (result == 'report' && context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(l10n.snackCopiedMessage)),
+          SnackBar(content: Text(l10n.snackReportSubmitted)),
         );
       }
-    } else if (action == 'edit') {
-      final ctrl = TextEditingController(text: m.body);
-      final ok = await showDialog<bool>(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          title: Text(l10n.editMessageTitle),
-          content: TextField(controller: ctrl, maxLines: 4),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: Text(l10n.buttonCancel),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              child: Text(l10n.buttonSave),
-            ),
-          ],
-        ),
-      );
-      if (ok == true && context.mounted) {
-        await cubit.editMessage(m.id, ctrl.text);
-      }
-      ctrl.dispose();
-    } else if (action == 'me') {
-      await cubit.deleteMessage(m.id, forEveryone: false);
-    } else if (action == 'all') {
-      await cubit.deleteMessage(m.id, forEveryone: true);
     }
   }
+
 
   Future<void> _confirmBlockDmPeer(BuildContext context, int peerUserId) async {
     final l10n = AppLocalizations.of(context)!;
@@ -1770,54 +1845,6 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
     }
   }
 
-  Future<void> _peerMessageActions(BuildContext context, LocalMessage m) async {
-    final l10n = AppLocalizations.of(context)!;
-    final cubit = context.read<ThreadCubit>();
-    final ct = m.contentType.toLowerCase().trim();
-    final canCopy = (ct == 'text/plain' || ct.startsWith('text/plain;')) &&
-        m.body.trim().isNotEmpty;
-    final action = await showModalBottomSheet<String>(
-      context: context,
-      builder: (ctx) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              leading: const Icon(Icons.reply_rounded),
-              title: Text(l10n.actionReply),
-              onTap: () => Navigator.pop(ctx, 'reply'),
-            ),
-            if (canCopy)
-              ListTile(
-                leading: const Icon(Icons.copy_rounded),
-                title: Text(l10n.actionCopy),
-                onTap: () => Navigator.pop(ctx, 'copy'),
-              ),
-            ListTile(
-              leading: const Icon(Icons.flag_outlined),
-              title: Text(l10n.actionReport),
-              onTap: () => Navigator.pop(ctx, 'report'),
-            ),
-          ],
-        ),
-      ),
-    );
-    if (!context.mounted) return;
-    if (action == 'reply') {
-      cubit.setReplyTo(m);
-    } else if (action == 'copy') {
-      await Clipboard.setData(ClipboardData(text: m.body));
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(l10n.snackCopiedMessage)),
-        );
-      }
-    } else if (action == 'report' && context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(l10n.snackReportSubmitted)),
-      );
-    }
-  }
 }
 
 /// Thin divider + padding row used above the composer for reply / search context.

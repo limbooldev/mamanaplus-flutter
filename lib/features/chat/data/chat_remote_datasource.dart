@@ -333,6 +333,32 @@ class ChatRemoteDataSource {
     );
   }
 
+  /// Add an emoji reaction to a message. Idempotent — reacting twice with the
+  /// same emoji is a no-op on the server.
+  Future<Map<String, dynamic>> addReaction(
+    int conversationId,
+    int messageId, {
+    required String emoji,
+  }) async {
+    final res = await _dio.post<Map<String, dynamic>>(
+      '/v1/conversations/$conversationId/messages/$messageId/reactions',
+      data: {'emoji': emoji},
+    );
+    return res.data!;
+  }
+
+  /// Remove the caller's emoji reaction from a message.
+  Future<void> removeReaction(
+    int conversationId,
+    int messageId, {
+    required String emoji,
+  }) async {
+    await _dio.delete<void>(
+      '/v1/conversations/$conversationId/messages/$messageId/reactions',
+      data: {'emoji': emoji},
+    );
+  }
+
   /// Authenticated full-object download (same path as browser `object_key` query).
   Future<Uint8List> downloadMediaBytes({required String objectKey}) async {
     final res = await _dio.get<Uint8List>(

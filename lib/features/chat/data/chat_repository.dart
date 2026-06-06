@@ -920,6 +920,20 @@ class ChatRepository {
   Future<void> leavePublicGroup(int groupId) =>
       _remote.leavePublicGroup(groupId);
 
+  // --- Message Reactions ---
+
+  Future<Map<String, dynamic>> addReaction(
+    int conversationId,
+    int messageId, {
+    required String emoji,
+  }) => _remote.addReaction(conversationId, messageId, emoji: emoji);
+
+  Future<void> removeReaction(
+    int conversationId,
+    int messageId, {
+    required String emoji,
+  }) => _remote.removeReaction(conversationId, messageId, emoji: emoji);
+
   void dispose() {
     _outboxChangesCtrl.close();
   }
