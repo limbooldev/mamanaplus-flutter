@@ -5,6 +5,8 @@ import 'package:mamana_plus/l10n/app_localizations.dart';
 import 'package:video_player/video_player.dart';
 
 import '../../../../shared/ui/ui.dart';
+import 'chat_image_editor_flow.dart';
+import 'chat_video_editor_flow.dart';
 
 /// Result of [openMediaCaptionPreview]: the picked file path and an optional caption.
 typedef MediaCaptionPreviewResult = ({String path, String? caption});
@@ -60,6 +62,22 @@ class _MediaCaptionPreviewPageState extends State<_MediaCaptionPreviewPage> {
 
   bool get _isVideo => widget.kind == 'video';
 
+  Future<void> _openEditor() async {
+    if (!mounted) return;
+    final ctx = context;
+    String? edited;
+    if (_isVideo) {
+      // ignore: use_build_context_synchronously
+      edited = await openChatVideoEditor(ctx, _path);
+    } else {
+      // ignore: use_build_context_synchronously
+      edited = await openChatImageEditor(ctx, _path);
+    }
+    if (edited != null && mounted) {
+      setState(() => _path = edited!);
+    }
+  }
+
   void _send() {
     final caption = _captionController.text.trim();
     Navigator.of(context).pop((
@@ -85,6 +103,16 @@ class _MediaCaptionPreviewPageState extends State<_MediaCaptionPreviewPage> {
           tooltip: l10n.mediaPreviewClose,
           onPressed: () => Navigator.of(context).pop(),
         ),
+        actions: [
+          TextButton.icon(
+            onPressed: _openEditor,
+            icon: const Icon(Icons.edit, color: Colors.white),
+            label: Text(
+              l10n.mediaPreviewEdit,
+              style: const TextStyle(color: Colors.white),
+            ),
+          ),
+        ],
       ),
       body: Stack(
         fit: StackFit.expand,
