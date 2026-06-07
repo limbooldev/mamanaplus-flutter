@@ -11,6 +11,13 @@ import '../widgets/reply_quote.dart';
 /// taps on bubbles that don't yet have a server id.
 const String kPendingMessagePrefix = 'pending_';
 
+/// Returns the outbox [localId] when [messageId] is a pending bubble id.
+String? pendingLocalIdFromChatMessageId(String messageId) {
+  if (!messageId.startsWith(kPendingMessagePrefix)) return null;
+  final localId = messageId.substring(kPendingMessagePrefix.length);
+  return localId.isEmpty ? null : localId;
+}
+
 /// Context for baking reply preview into [Message.metadata] at map time.
 class ReplyPreviewMapContext {
   const ReplyPreviewMapContext({

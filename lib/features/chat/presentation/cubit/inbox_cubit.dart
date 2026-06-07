@@ -51,13 +51,12 @@ class InboxCubit extends Cubit<InboxState> {
         _scheduleQuietRefresh();
       }
     });
-    // Every time the WebSocket reconnects, flush all queued outbox rows and
-    // refresh the inbox from REST. The refresh is critical: while the socket
-    // was down (app backgrounded, OS killed TCP, backend 90 s idle close)
-    // `new_message` events were delivered only via FCM, so unread badges and
-    // last-message previews on the inbox can be stale.
+    // Every time the WebSocket reconnects, refresh the inbox from REST. The
+    // refresh is critical: while the socket was down (app backgrounded, OS
+    // killed TCP, backend 90 s idle close) `new_message` events were delivered
+    // only via FCM, so unread badges and last-message previews can be stale.
+    // Outbox flush is centralized in [ChatRepository] on socket reconnect.
     _reconnectSub = _repo.socket.connected.listen((_) {
-      unawaited(_repo.flushAllOutbox());
       unawaited(refreshQuiet());
     });
   }

@@ -35,6 +35,7 @@ Future<Object?> showEmojiReactionPicker({
   required bool isSentByMe,
   required List<ReactionPickerAction> actions,
   required List<String> currentUserEmojis,
+  bool showEmojiRow = true,
 }) {
   return Navigator.of(context, rootNavigator: true).push<Object?>(
     _EmojiPickerRoute(
@@ -42,6 +43,7 @@ Future<Object?> showEmojiReactionPicker({
       isSentByMe: isSentByMe,
       actions: actions,
       currentUserEmojis: currentUserEmojis,
+      showEmojiRow: showEmojiRow,
     ),
   );
 }
@@ -69,12 +71,14 @@ class _EmojiPickerRoute extends PopupRoute<Object?> {
     required this.isSentByMe,
     required this.actions,
     required this.currentUserEmojis,
+    required this.showEmojiRow,
   });
 
   final Rect messagePosition;
   final bool isSentByMe;
   final List<ReactionPickerAction> actions;
   final List<String> currentUserEmojis;
+  final bool showEmojiRow;
 
   @override
   Color? get barrierColor => null;
@@ -100,6 +104,7 @@ class _EmojiPickerRoute extends PopupRoute<Object?> {
       isSentByMe: isSentByMe,
       actions: actions,
       currentUserEmojis: currentUserEmojis,
+      showEmojiRow: showEmojiRow,
     );
   }
 }
@@ -111,6 +116,7 @@ class _EmojiPickerOverlay extends StatelessWidget {
     required this.isSentByMe,
     required this.actions,
     required this.currentUserEmojis,
+    required this.showEmojiRow,
   });
 
   final Animation<double> animation;
@@ -118,6 +124,7 @@ class _EmojiPickerOverlay extends StatelessWidget {
   final bool isSentByMe;
   final List<ReactionPickerAction> actions;
   final List<String> currentUserEmojis;
+  final bool showEmojiRow;
 
   static const double _pillHeight = 56.0;
   static const double _pillPad = 8.0;
@@ -155,7 +162,11 @@ class _EmojiPickerOverlay extends StatelessWidget {
     double cardLeft = isSentByMe ? messagePosition.right - cardW : messagePosition.left;
     cardLeft = cardLeft.clamp(8.0, screenW - cardW - 8.0);
     final cardTop = cardBelow
-        ? (pillAbove ? messagePosition.bottom + _gap : pillTop + _pillHeight + _gap)
+        ? (showEmojiRow
+            ? (pillAbove
+                ? messagePosition.bottom + _gap
+                : pillTop + _pillHeight + _gap)
+            : messagePosition.bottom + _gap)
         : messagePosition.top - (actions.length * 52.0 + 16) - _gap;
 
     return FadeTransition(
@@ -175,21 +186,21 @@ class _EmojiPickerOverlay extends StatelessWidget {
             ),
           ),
 
-          // Emoji pill.
-          Positioned(
-            left: pillLeft,
-            top: pillTop.clamp(safeTop + 4, screenH - _pillHeight - 8),
-            child: ScaleTransition(
-              scale: CurvedAnimation(parent: animation, curve: Curves.elasticOut),
-              child: _EmojiPill(
-                currentUserEmojis: currentUserEmojis,
-                onEmojiTap: (emoji) {
-                  HapticFeedback.selectionClick();
-                  Navigator.of(context).pop(_EmojiPick(emoji));
-                },
+          if (showEmojiRow)
+            Positioned(
+              left: pillLeft,
+              top: pillTop.clamp(safeTop + 4, screenH - _pillHeight - 8),
+              child: ScaleTransition(
+                scale: CurvedAnimation(parent: animation, curve: Curves.elasticOut),
+                child: _EmojiPill(
+                  currentUserEmojis: currentUserEmojis,
+                  onEmojiTap: (emoji) {
+                    HapticFeedback.selectionClick();
+                    Navigator.of(context).pop(_EmojiPick(emoji));
+                  },
+                ),
               ),
             ),
-          ),
 
           // Action card.
           Positioned(

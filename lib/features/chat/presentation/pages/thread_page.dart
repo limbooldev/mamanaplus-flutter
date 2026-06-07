@@ -509,6 +509,29 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
     return null;
   }
 
+  MessageOutboxData? _pendingByLocalId(
+    List<MessageOutboxData> pending,
+    String localId,
+  ) {
+    for (final row in pending) {
+      if (row.localId == localId) return row;
+    }
+    return null;
+  }
+
+  Rect _messageBubbleRect(Offset tapPosition, bool isSentByMe) {
+    const estimatedBubbleH = 60.0;
+    const estimatedBubbleW = 220.0;
+    final bubbleLeft =
+        isSentByMe ? tapPosition.dx - estimatedBubbleW : tapPosition.dx;
+    return Rect.fromLTWH(
+      bubbleLeft,
+      tapPosition.dy - estimatedBubbleH / 2,
+      estimatedBubbleW,
+      estimatedBubbleH,
+    );
+  }
+
   ReplyPreviewData _replyPreviewForMessage(LocalMessage message) {
     final cubit = context.read<ThreadCubit>();
     final ctx = _replyPreviewMapContext(cubit);
@@ -878,6 +901,23 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
                   },
                   onAttachmentTap: () => _openAttachmentSheet(context),
                   onMessageLongPress: (ctx, message, {required index, required details}) {
+                    final pendingLocalId =
+                        pendingLocalIdFromChatMessageId(message.id);
+                    if (pendingLocalId != null) {
+                      final cubit = context.read<ThreadCubit>();
+                      final row = _pendingByLocalId(
+                        cubit.state.pending,
+                        pendingLocalId,
+                      );
+                      if (row == null) return;
+                      HapticFeedback.mediumImpact();
+                      unawaited(_showPendingMessagePicker(
+                        context,
+                        row,
+                        details.globalPosition,
+                      ));
+                      return;
+                    }
                     final id = int.tryParse(message.id);
                     if (id == null) return;
                     final cubit = context.read<ThreadCubit>();
@@ -1680,6 +1720,65 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
     );
   }
 
+  /// Action sheet for an unsent outbox bubble (offline / pending send).
+  Future<void> _showPendingMessagePicker(
+    BuildContext context,
+    MessageOutboxData row,
+    Offset tapPosition,
+  ) async {
+    final l10n = AppLocalizations.of(context)!;
+    final cubit = context.read<ThreadCubit>();
+    final rect = _messageBubbleRect(tapPosition, true);
+    final pendingAsLocal = LocalMessage(
+      id: -1,
+      conversationId: row.conversationId,
+      senderId: widget.myUserId,
+      body: row.body,
+      contentType: row.contentType,
+      replyToMessageId: row.replyToMessageId,
+      createdAt: row.createdAt,
+      storyMediaId: row.storyMediaId,
+    );
+    final canCopy = isEditableChatMessage(pendingAsLocal);
+
+    final actions = [
+      if (canCopy)
+        ReactionPickerAction(
+          label: l10n.actionCopy,
+          icon: Icons.copy_rounded,
+          value: 'copy',
+        ),
+      ReactionPickerAction(
+        label: l10n.actionDeleteForMe,
+        icon: Icons.delete_outline,
+        value: 'delete',
+        isDestructive: true,
+      ),
+    ];
+
+    final result = await showEmojiReactionPicker(
+      context: context,
+      messagePosition: rect,
+      isSentByMe: true,
+      actions: actions,
+      currentUserEmojis: const [],
+      showEmojiRow: false,
+    );
+
+    if (!context.mounted) return;
+
+    if (result == 'copy') {
+      await Clipboard.setData(ClipboardData(text: row.body));
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(l10n.snackCopiedMessage)),
+        );
+      }
+    } else if (result == 'delete') {
+      await cubit.cancelPendingMessage(row.localId);
+    }
+  }
+
   /// Shows the WhatsApp-style emoji reaction picker overlay, then optionally
   /// opens the action sheet based on what the user selects.
   Future<void> _showReactionPicker(
@@ -1693,19 +1792,7 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
     final canCopy = isEditableChatMessage(m);
     final canEdit = canCopy && isSentByMe;
 
-    // Approximate the message bubble rect from the tap position.
-    // We use a fixed height estimate; the picker clips to screen bounds anyway.
-    const estimatedBubbleH = 60.0;
-    const estimatedBubbleW = 220.0;
-    final bubbleLeft = isSentByMe
-        ? tapPosition.dx - estimatedBubbleW
-        : tapPosition.dx;
-    final rect = Rect.fromLTWH(
-      bubbleLeft,
-      tapPosition.dy - estimatedBubbleH / 2,
-      estimatedBubbleW,
-      estimatedBubbleH,
-    );
+    final rect = _messageBubbleRect(tapPosition, isSentByMe);
 
     // Build the current user's reactions for this message.
     final reactions = cubit.state.reactions[m.id] ?? [];

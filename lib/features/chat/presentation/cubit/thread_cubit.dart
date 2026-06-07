@@ -335,15 +335,15 @@ class ThreadCubit extends Cubit<ThreadState> {
       unawaited(_reloadLocal());
     });
 
-    // Every time the WebSocket re-establishes, flush any outbox rows that
-    // failed to send AND re-fetch messages from REST. The refetch is critical:
+    // Every time the WebSocket re-establishes, re-fetch messages from REST. The
+    // refetch is critical:
     // while the socket was down (app backgrounded, OS killed TCP flow, backend
     // 60 s idle close, etc.) any `new_message` events delivered by FCM-only
     // recipients never reached this cubit, so the in-memory thread is stale.
     // Without this, the user has to leave and re-enter the thread to see
     // messages that arrived during the disconnect window.
     _reconnectSub = _repo.socket.connected.listen((_) {
-      unawaited(flushOutbox());
+      // Outbox flush is centralized in [ChatRepository] on socket reconnect.
       if (state.messageSearchQuery != null) {
         unawaited(_reloadMessagesFromRemote());
       } else {
@@ -799,6 +799,18 @@ class ThreadCubit extends Cubit<ThreadState> {
         conversationId,
         messageId,
         scope: forEveryone ? 'for_everyone' : 'for_me',
+      );
+      await _reloadLocal();
+    } catch (e) {
+      emit(state.copyWith(error: e.toString()));
+    }
+  }
+
+  Future<void> cancelPendingMessage(String localId) async {
+    try {
+      await _repo.cancelPendingSend(
+        localId: localId,
+        conversationId: conversationId,
       );
       await _reloadLocal();
     } catch (e) {

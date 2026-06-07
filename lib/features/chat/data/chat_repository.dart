@@ -29,7 +29,11 @@ class ChatRepository {
        _socket = socket,
        _tokens = tokens,
        _config = config,
-       _onAccessTokenRefreshed = onAccessTokenRefreshed;
+       _onAccessTokenRefreshed = onAccessTokenRefreshed {
+    _reconnectSub = _socket.connected.listen((_) {
+      unawaited(flushAllOutbox());
+    });
+  }
 
   final ChatRemoteDataSource _remote;
   final AppDatabase _db;
@@ -44,6 +48,12 @@ class ChatRepository {
       StreamController<int>.broadcast();
 
   Stream<int> get outboxChangedFor => _outboxChangesCtrl.stream;
+
+  /// Prevents the same outbox row from being delivered twice when reconnect
+  /// triggers concurrent flushes and an in-flight optimistic send overlaps.
+  final Set<String> _outboxSendInFlight = {};
+
+  StreamSubscription<void>? _reconnectSub;
 
   ChatSocket get socket => _socket;
 
@@ -165,19 +175,8 @@ class ChatRepository {
       contentType: contentType,
       storyMediaId: storyMediaId,
     );
-    try {
-      final m = await _remote.sendMessage(
-        conversationId,
-        body: body,
-        replyToMessageId: replyToMessageId,
-        storyMediaId: storyMediaId,
-        contentType: contentType,
-      );
-      await cacheMessages(conversationId, [m]);
-      await _deleteOutbox(localId, conversationId);
-    } catch (_) {
-      await _markOutboxFailed(localId, conversationId);
-    }
+    final row = await _loadOutboxRow(localId);
+    if (row != null) await _deliverOutboxRow(row);
   }
 
   /// Optimistic media send. Inserts the outbox row first (renders the bubble
@@ -203,21 +202,8 @@ class ChatRepository {
       replyToMessageId: replyToMessageId,
       caption: caption,
     );
-    try {
-      final bytes = await File(path).readAsBytes();
-      await _uploadAndSendMediaFromBytes(
-        conversationId: conversationId,
-        bytes: bytes,
-        mimeType: mime,
-        kind: kind,
-        durationMs: durationMs,
-        replyToMessageId: replyToMessageId,
-        caption: caption,
-      );
-      await _deleteOutbox(localId, conversationId);
-    } catch (_) {
-      await _markOutboxFailed(localId, conversationId);
-    }
+    final row = await _loadOutboxRow(localId);
+    if (row != null) await _deliverOutboxRow(row);
   }
 
   Future<void> _deleteOutbox(String localId, int conversationId) async {
@@ -225,6 +211,25 @@ class ChatRepository {
       _db.messageOutbox,
     )..where((t) => t.localId.equals(localId))).go();
     _outboxChangesCtrl.add(conversationId);
+  }
+
+  /// Removes a queued outbox row (e.g. user cancels an unsent message offline).
+  Future<void> cancelPendingSend({
+    required String localId,
+    required int conversationId,
+  }) async {
+    final row = await (_db.select(_db.messageOutbox)
+          ..where((t) => t.localId.equals(localId)))
+        .getSingleOrNull();
+    if (row == null) return;
+    final mediaPath = row.mediaPath;
+    await _deleteOutbox(localId, conversationId);
+    if (mediaPath != null && mediaPath.isNotEmpty) {
+      try {
+        final file = File(mediaPath);
+        if (await file.exists()) await file.delete();
+      } catch (_) {}
+    }
   }
 
   Future<void> _markOutboxFailed(String localId, int conversationId) async {
@@ -274,7 +279,7 @@ class ChatRepository {
       _db.messageOutbox,
     )..where((t) => t.conversationId.equals(conversationId))).get();
     for (final row in rows) {
-      await _flushOutboxRow(row);
+      await _deliverOutboxRow(row);
     }
   }
 
@@ -282,44 +287,68 @@ class ChatRepository {
   Future<void> flushAllOutbox() async {
     final rows = await _db.select(_db.messageOutbox).get();
     for (final row in rows) {
-      await _flushOutboxRow(row);
+      await _deliverOutboxRow(row);
     }
   }
 
-  Future<void> _flushOutboxRow(MessageOutboxData row) async {
-    final isMedia = row.mediaPath != null && row.mediaPath!.isNotEmpty;
+  Future<MessageOutboxData?> _loadOutboxRow(String localId) {
+    return (_db.select(_db.messageOutbox)
+          ..where((t) => t.localId.equals(localId)))
+        .getSingleOrNull();
+  }
+
+  bool _tryBeginOutboxSend(String localId) {
+    if (_outboxSendInFlight.contains(localId)) return false;
+    _outboxSendInFlight.add(localId);
+    return true;
+  }
+
+  void _endOutboxSend(String localId) {
+    _outboxSendInFlight.remove(localId);
+  }
+
+  /// Single delivery path for optimistic sends and reconnect flushes.
+  Future<void> _deliverOutboxRow(MessageOutboxData row) async {
+    if (!_tryBeginOutboxSend(row.localId)) return;
     try {
+      final current = await _loadOutboxRow(row.localId);
+      if (current == null) return;
+
+      final isMedia =
+          current.mediaPath != null && current.mediaPath!.isNotEmpty;
       if (isMedia) {
-        final file = File(row.mediaPath!);
+        final file = File(current.mediaPath!);
         if (!file.existsSync()) {
           // Media file is gone (e.g. cache cleared); drop the row to avoid an
           // unending retry loop.
-          await _deleteOutbox(row.localId, row.conversationId);
+          await _deleteOutbox(current.localId, current.conversationId);
           return;
         }
         final bytes = await file.readAsBytes();
         await _uploadAndSendMediaFromBytes(
-          conversationId: row.conversationId,
+          conversationId: current.conversationId,
           bytes: bytes,
-          mimeType: row.mediaMime ?? 'application/octet-stream',
-          kind: row.mediaKind ?? 'image',
-          durationMs: row.mediaDurationMs,
-          replyToMessageId: row.replyToMessageId,
-          caption: row.mediaCaption,
+          mimeType: current.mediaMime ?? 'application/octet-stream',
+          kind: current.mediaKind ?? 'image',
+          durationMs: current.mediaDurationMs,
+          replyToMessageId: current.replyToMessageId,
+          caption: current.mediaCaption,
         );
       } else {
         final m = await _remote.sendMessage(
-          row.conversationId,
-          body: row.body,
-          replyToMessageId: row.replyToMessageId,
-          storyMediaId: row.storyMediaId,
-          contentType: row.contentType,
+          current.conversationId,
+          body: current.body,
+          replyToMessageId: current.replyToMessageId,
+          storyMediaId: current.storyMediaId,
+          contentType: current.contentType,
         );
-        await cacheMessages(row.conversationId, [m]);
+        await cacheMessages(current.conversationId, [m]);
       }
-      await _deleteOutbox(row.localId, row.conversationId);
+      await _deleteOutbox(current.localId, current.conversationId);
     } catch (_) {
       await _markOutboxFailed(row.localId, row.conversationId);
+    } finally {
+      _endOutboxSend(row.localId);
     }
   }
 
@@ -935,6 +964,7 @@ class ChatRepository {
   }) => _remote.removeReaction(conversationId, messageId, emoji: emoji);
 
   void dispose() {
+    _reconnectSub?.cancel();
     _outboxChangesCtrl.close();
   }
 }
