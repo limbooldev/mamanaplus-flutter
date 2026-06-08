@@ -413,7 +413,7 @@ class ChatRepository {
         final id = (m['id'] as num).toInt();
         final senderId = (m['sender_id'] as num).toInt();
         final body = m['body'] as String? ?? '';
-        final ct = m['content_type'] as String? ?? 'text/plain';
+        final ct = normalizeContentType(m['content_type'] as String?);
         final reply = m['reply_to_message_id'];
         final storyMid = m['story_media_id'];
         final created =
@@ -795,11 +795,29 @@ class ChatRepository {
   /// Caches voice bytes under the app temp dir so [just_audio] can play from `file://`
   /// (avoids iOS issues with streaming authenticated URLs).
   Future<File> downloadVoiceToCache(String objectKey) async {
+    return downloadMediaToCache(objectKey, fallbackExtension: 'm4a');
+  }
+
+  /// Caches image bytes locally so [Image.file] can render reliably with auth-backed
+  /// downloads (same rationale as [downloadVoiceToCache]).
+  Future<File> downloadImageToCache(String objectKey) async {
+    final ext = p.extension(objectKey);
+    final fallback = ext.isNotEmpty ? ext.replaceFirst('.', '') : 'jpg';
+    return downloadMediaToCache(objectKey, fallbackExtension: fallback);
+  }
+
+  /// Downloads a media object to the temp cache dir, reusing an existing file when present.
+  Future<File> downloadMediaToCache(
+    String objectKey, {
+    required String fallbackExtension,
+  }) async {
     final root = await getTemporaryDirectory();
-    final dir = Directory(p.join(root.path, 'voice_cache'));
+    final dir = Directory(p.join(root.path, 'media_cache'));
     await dir.create(recursive: true);
+    final ext = p.extension(objectKey);
+    final suffix = ext.isNotEmpty ? ext : '.$fallbackExtension';
     final safe = objectKey.replaceAll(RegExp(r'[^A-Za-z0-9._-]'), '_');
-    final file = File(p.join(dir.path, '$safe.m4a'));
+    final file = File(p.join(dir.path, '$safe$suffix'));
     if (file.existsSync() && file.lengthSync() > 0) {
       return file;
     }

@@ -2,12 +2,14 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_chat_core/flutter_chat_core.dart';
 import 'package:provider/provider.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:video_player/video_player.dart';
 
 import '../../data/chat_repository.dart';
+import '../cubit/network_status_cubit.dart';
 import '../../../../shared/ui/ui.dart';
 import 'message_status_icon.dart';
 
@@ -117,14 +119,11 @@ class _ChatFullscreenImagePage extends StatelessWidget {
                                 color: Colors.white70,
                               ),
                             ),
-                      errorBuilder: (_, __, ___) => Center(
-                        child: Padding(
-                          padding: const EdgeInsets.all(24),
-                          child: Text(
-                            url,
-                            style: const TextStyle(color: Colors.white70),
-                            textAlign: TextAlign.center,
-                          ),
+                      errorBuilder: (_, __, ___) => const Center(
+                        child: Icon(
+                          Icons.broken_image_outlined,
+                          color: Colors.white70,
+                          size: 48,
                         ),
                       ),
                     );
@@ -428,6 +427,162 @@ class _ChatFullscreenVideoPageState extends State<_ChatFullscreenVideoPage> {
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Inline image bubble: pending uploads use [Image.file]; server media streams via
+/// authenticated [Image.network] using a fresh access token from [ChatRepository].
+class ThreadImageBubble extends StatefulWidget {
+  const ThreadImageBubble({
+    super.key,
+    required this.source,
+    required this.chatRepository,
+    required this.accessToken,
+    required this.foreground,
+    this.onTap,
+  });
+
+  final String source;
+  final ChatRepository chatRepository;
+  final String accessToken;
+  final Color foreground;
+  final VoidCallback? onTap;
+
+  @override
+  State<ThreadImageBubble> createState() => _ThreadImageBubbleState();
+}
+
+class _ThreadImageBubbleState extends State<ThreadImageBubble> {
+  File? _localFile;
+  Map<String, String>? _authHeaders;
+  var _useLocalFile = false;
+  var _authReady = false;
+  var _networkFailed = false;
+  var _wasWaitingForNetwork = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _prepare();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final waiting = context.watch<NetworkStatusCubit>().state;
+    if (_wasWaitingForNetwork && !waiting) {
+      _prepare();
+    }
+    _wasWaitingForNetwork = waiting;
+  }
+
+  @override
+  void didUpdateWidget(ThreadImageBubble oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.source != widget.source ||
+        oldWidget.accessToken != widget.accessToken) {
+      _prepare();
+    }
+  }
+
+  Future<void> _prepare() async {
+    if (!mounted) return;
+    setState(() {
+      _authReady = false;
+      _networkFailed = false;
+      _localFile = null;
+      _authHeaders = null;
+      _useLocalFile = false;
+    });
+    try {
+      final uri = Uri.parse(widget.source);
+      if (uri.scheme == 'file') {
+        final file = File(uri.toFilePath());
+        if (!file.existsSync()) throw StateError('missing local image');
+        if (!mounted) return;
+        setState(() {
+          _localFile = file;
+          _useLocalFile = true;
+          _authReady = true;
+        });
+        return;
+      }
+      if (!uri.isScheme('http') && !uri.isScheme('https')) {
+        throw UnsupportedError('Unsupported image URI: ${widget.source}');
+      }
+      final token =
+          await widget.chatRepository.getFreshAccessToken() ?? widget.accessToken;
+      if (!mounted) return;
+      setState(() {
+        _authHeaders = {'Authorization': 'Bearer $token'};
+        _authReady = true;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _authReady = true;
+        _networkFailed = true;
+      });
+    }
+  }
+
+  Widget _placeholder({required IconData icon, VoidCallback? onTap}) {
+    return GestureDetector(
+      onTap: onTap,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: widget.foreground.withValues(alpha: 0.12),
+        ),
+        child: Center(
+          child: Icon(icon, color: widget.foreground.withValues(alpha: 0.7), size: 40),
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    Widget child;
+    if (!_authReady) {
+      child = _placeholder(icon: Icons.image_outlined);
+    } else if (_networkFailed) {
+      child = _placeholder(icon: Icons.broken_image_outlined, onTap: _prepare);
+    } else if (_useLocalFile && _localFile != null) {
+      child = Image.file(
+        _localFile!,
+        width: kChatInlineImageW,
+        height: kChatInlineImageH,
+        fit: BoxFit.cover,
+        errorBuilder: (_, __, ___) =>
+            _placeholder(icon: Icons.broken_image_outlined, onTap: _prepare),
+      );
+    } else {
+      child = Image.network(
+        widget.source,
+        width: kChatInlineImageW,
+        height: kChatInlineImageH,
+        fit: BoxFit.cover,
+        headers: _authHeaders,
+        loadingBuilder: (context, child, progress) {
+          if (progress == null) return child;
+          return _placeholder(icon: Icons.image_outlined);
+        },
+        errorBuilder: (_, __, ___) =>
+            _placeholder(icon: Icons.broken_image_outlined, onTap: _prepare),
+      );
+    }
+
+    return SizedBox(
+      width: kChatInlineImageW,
+      height: kChatInlineImageH,
+      child: GestureDetector(
+        onTap: widget.onTap,
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(8),
+          child: child,
         ),
       ),
     );

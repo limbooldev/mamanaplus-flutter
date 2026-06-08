@@ -3,8 +3,10 @@ import 'dart:convert';
 import 'package:flutter_chat_core/flutter_chat_core.dart';
 
 import '../../../../core/database/app_database.dart';
+import '../../conversation_preview.dart';
 import '../../media_constants.dart';
 import '../widgets/reply_quote.dart';
+import '../widgets/thread_media_widgets.dart';
 
 /// Prefix on synthetic ids for outbox rows. Lets the chat list key pending
 /// bubbles separately from server messages and lets gesture handlers ignore
@@ -129,7 +131,7 @@ List<Message> mapLocalMessagesToChatMessages(
       status = null;
     }
 
-    if (m.contentType == kMamanaGifContentType) {
+    if (normalizeContentType(m.contentType) == kMamanaGifContentType) {
       try {
         final map = jsonDecode(m.body) as Map<String, dynamic>;
         final url = map['url'] as String? ?? '';
@@ -165,7 +167,7 @@ List<Message> mapLocalMessagesToChatMessages(
       }
     }
 
-    if (m.contentType == kMamanaStickerContentType) {
+    if (normalizeContentType(m.contentType) == kMamanaStickerContentType) {
       var emoji = '💬';
       String? sid;
       try {
@@ -187,7 +189,7 @@ List<Message> mapLocalMessagesToChatMessages(
       );
     }
 
-    if (m.contentType == kMamanaMediaContentType) {
+    if (normalizeContentType(m.contentType) == kMamanaMediaContentType) {
       try {
         final map = jsonDecode(m.body) as Map<String, dynamic>;
         final key = map['object_key'] as String? ?? '';
@@ -231,6 +233,19 @@ List<Message> mapLocalMessagesToChatMessages(
             );
         }
       } catch (_) {
+        final downloadUrl = m.body.trim();
+        final key = parseObjectKeyFromMediaDownloadUrl(downloadUrl);
+        if (key != null) {
+          return Message.image(
+            id: id,
+            authorId: authorId,
+            source: downloadUrl,
+            createdAt: m.createdAt,
+            replyToMessageId: replyTo,
+            status: status,
+            metadata: meta.isEmpty ? null : meta,
+          );
+        }
         return Message.text(
           id: id,
           authorId: authorId,
@@ -241,6 +256,19 @@ List<Message> mapLocalMessagesToChatMessages(
           metadata: meta.isEmpty ? null : meta,
         );
       }
+    }
+
+    final downloadKey = parseObjectKeyFromMediaDownloadUrl(m.body.trim());
+    if (downloadKey != null) {
+      return Message.image(
+        id: id,
+        authorId: authorId,
+        source: m.body.trim(),
+        createdAt: m.createdAt,
+        replyToMessageId: replyTo,
+        status: status,
+        metadata: meta.isEmpty ? null : meta,
+      );
     }
 
     if (_looksLikeImageUrl(m)) {

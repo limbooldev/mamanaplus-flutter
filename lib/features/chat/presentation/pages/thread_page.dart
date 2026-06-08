@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:io';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -1208,61 +1207,6 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
                       // [Image.file] — `Image.network` chokes on a `file://` URI
                       // and bearer headers obviously don't apply.
                       final src = message.source;
-                      final localPath = src.startsWith('file://')
-                          ? Uri.parse(src).toFilePath()
-                          : null;
-                      Widget imageWidget;
-                      if (localPath != null) {
-                        imageWidget = Image.file(
-                          File(localPath),
-                          width: kChatInlineImageW,
-                          height: kChatInlineImageH,
-                          fit: BoxFit.cover,
-                          errorBuilder: (_, __, ___) => Padding(
-                            padding: const EdgeInsets.all(8),
-                            child: Center(
-                              child: Text(
-                                message.text ?? src,
-                                style: TextStyle(color: fg),
-                                textAlign: TextAlign.center,
-                              ),
-                            ),
-                          ),
-                        );
-                      } else {
-                        imageWidget = Image.network(
-                          src,
-                          width: kChatInlineImageW,
-                          height: kChatInlineImageH,
-                          fit: BoxFit.cover,
-                          headers: {
-                            'Authorization': 'Bearer ${widget.accessToken}',
-                          },
-                          loadingBuilder: (c, child, progress) {
-                            if (progress == null) {
-                              return child;
-                            }
-                            return DecoratedBox(
-                              decoration: BoxDecoration(
-                                color: fg.withValues(alpha: 0.12),
-                              ),
-                              child: const Center(
-                                child: CircularProgressIndicator(strokeWidth: 2),
-                              ),
-                            );
-                          },
-                          errorBuilder: (_, __, ___) => Padding(
-                            padding: const EdgeInsets.all(8),
-                            child: Center(
-                              child: Text(
-                                message.text ?? src,
-                                style: TextStyle(color: fg),
-                                textAlign: TextAlign.center,
-                              ),
-                            ),
-                          ),
-                        );
-                      }
                       final captionWidget = buildMediaCaptionWidget(
                         message.metadata?['caption'] as String?,
                         fg,
@@ -1294,22 +1238,19 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
                                   onPrimaryBubble: isSentByMe,
                                   onTap: _replyQuoteTapHandler(context, message),
                                 ),
-                              ClipRRect(
-                                borderRadius: BorderRadius.circular(8),
-                                child: SizedBox(
-                                  width: kChatInlineImageW,
-                                  height: kChatInlineImageH,
-                                  child: GestureDetector(
-                                    onTap: localPath != null
-                                        ? null
-                                        : () => openChatFullscreenImage(
-                                              context,
-                                              url: src,
-                                              accessToken: widget.accessToken,
-                                            ),
-                                    child: imageWidget,
-                                  ),
-                                ),
+                              ThreadImageBubble(
+                                source: src,
+                                chatRepository:
+                                    context.read<ThreadCubit>().chatRepository,
+                                accessToken: widget.accessToken,
+                                foreground: fg,
+                                onTap: src.startsWith('file://')
+                                    ? null
+                                    : () => openChatFullscreenImage(
+                                          context,
+                                          url: src,
+                                          accessToken: widget.accessToken,
+                                        ),
                               ),
                               if (captionWidget != null) captionWidget,
                               CustomTimeAndStatus(

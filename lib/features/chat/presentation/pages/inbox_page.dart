@@ -190,7 +190,7 @@ class _ChatsTab extends StatelessWidget {
             child: CircularProgressIndicator(color: AppColors.primary),
           );
         }
-        if (state.error != null) {
+        if (state.error != null && state.items.isEmpty) {
           return _ErrorState(message: state.error!);
         }
         if (state.items.isEmpty) {

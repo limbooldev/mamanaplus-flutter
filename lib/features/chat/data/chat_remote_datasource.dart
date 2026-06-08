@@ -364,7 +364,10 @@ class ChatRemoteDataSource {
     final res = await _dio.get<Uint8List>(
       '/v1/media/download',
       queryParameters: {'object_key': objectKey},
-      options: Options(responseType: ResponseType.bytes),
+      options: Options(
+        responseType: ResponseType.bytes,
+        headers: {'Accept': '*/*'},
+      ),
     );
     final data = res.data;
     if (data == null) {

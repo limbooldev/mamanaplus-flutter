@@ -320,6 +320,7 @@ class ThreadCubit extends Cubit<ThreadState> {
       } catch (_) {}
     }
     emit(state.copyWith(loading: true));
+    await _reloadLocal();
     unawaited(_hydrateHeader(prefetched: prefetchedConv));
     unawaited(_resolveDmPeerUserId(prefetched: prefetchedConv));
     unawaited(_loadMyDisplayName());
@@ -607,7 +608,17 @@ class ThreadCubit extends Cubit<ThreadState> {
         await _repo.markRead(conversationId, local.first.id);
       }
     } catch (e) {
-      emit(state.copyWith(loading: false, error: e.toString()));
+      final local = await _repo.loadMessagesLocal(conversationId);
+      final pending = await _repo.loadOutboxLocal(conversationId);
+      if (local.isNotEmpty || pending.isNotEmpty) {
+        emit(state.copyWith(
+          messages: local,
+          pending: pending,
+          loading: false,
+        ));
+      } else {
+        emit(state.copyWith(loading: false, error: e.toString()));
+      }
     }
   }
 
@@ -634,7 +645,17 @@ class ThreadCubit extends Cubit<ThreadState> {
         await _repo.markRead(conversationId, local.first.id);
       }
     } catch (e) {
-      emit(state.copyWith(loading: false, error: e.toString()));
+      final local = await _repo.loadMessagesLocal(conversationId);
+      final pending = await _repo.loadOutboxLocal(conversationId);
+      if (local.isNotEmpty || pending.isNotEmpty) {
+        emit(state.copyWith(
+          messages: local,
+          pending: pending,
+          loading: false,
+        ));
+      } else {
+        emit(state.copyWith(loading: false, error: e.toString()));
+      }
     }
   }
 
