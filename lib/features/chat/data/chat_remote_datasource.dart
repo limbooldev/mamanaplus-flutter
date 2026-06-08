@@ -190,6 +190,17 @@ class ChatRemoteDataSource {
     );
   }
 
+  Future<List<Map<String, dynamic>>> fetchMessageReceipts(
+    int conversationId,
+    int messageId,
+  ) async {
+    final res = await _dio.get<Map<String, dynamic>>(
+      '/v1/conversations/$conversationId/messages/$messageId/receipts',
+    );
+    final items = res.data?['items'] as List<dynamic>? ?? [];
+    return items.map((e) => e as Map<String, dynamic>).toList();
+  }
+
   Future<void> sendTyping(int conversationId, bool typing) async {
     await _dio.post<void>(
       '/v1/conversations/$conversationId/typing',

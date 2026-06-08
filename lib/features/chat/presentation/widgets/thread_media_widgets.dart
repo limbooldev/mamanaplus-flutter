@@ -598,6 +598,7 @@ class ThreadVideoBubble extends StatefulWidget {
     required this.bubble,
     required this.foreground,
     required this.isSentByMe,
+    this.onStatusTap,
   });
 
   final VideoMessage message;
@@ -605,6 +606,7 @@ class ThreadVideoBubble extends StatefulWidget {
   final Color bubble;
   final Color foreground;
   final bool isSentByMe;
+  final VoidCallback? onStatusTap;
 
   @override
   State<ThreadVideoBubble> createState() => _ThreadVideoBubbleState();
@@ -753,6 +755,7 @@ class _ThreadVideoBubbleState extends State<ThreadVideoBubble> {
                 textStyle: theme.typography.labelSmall.copyWith(
                   color: widget.foreground.withValues(alpha: 0.9),
                 ),
+                onStatusTap: widget.onStatusTap,
               ),
           ],
         ),
@@ -772,6 +775,7 @@ class ThreadAudioBubble extends StatefulWidget {
     required this.bubble,
     required this.foreground,
     required this.isSentByMe,
+    this.onStatusTap,
     this.voiceCacheOverride,
     this.onLayoutSettled,
   });
@@ -782,6 +786,7 @@ class ThreadAudioBubble extends StatefulWidget {
   final Color bubble;
   final Color foreground;
   final bool isSentByMe;
+  final VoidCallback? onStatusTap;
 
   /// In tests, bypasses [ChatRepository.downloadVoiceToCache].
   final Future<File> Function(String objectKey)? voiceCacheOverride;
@@ -1157,6 +1162,7 @@ class _ThreadAudioBubbleState extends State<ThreadAudioBubble> {
                                     textStyle: theme.typography.labelSmall.copyWith(
                                       color: widget.foreground.withValues(alpha: 0.9),
                                     ),
+                                    onStatusTap: widget.onStatusTap,
                                   )
                                 : const SizedBox.shrink(),
                           ),

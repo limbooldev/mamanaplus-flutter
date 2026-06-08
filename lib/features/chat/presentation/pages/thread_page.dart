@@ -415,7 +415,8 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
         .join('~');
     final reads =
         s.readCursorByUserId.entries.map((e) => '${e.key}:${e.value}').join(',');
-    return '$parts^$pendingParts#$reads';
+    final members = s.memberPresence.keys.join(',');
+    return '$parts^$pendingParts#$reads@$members';
   }
 
   ReplyPreviewMapContext _replyPreviewMapContext(ThreadCubit cubit) {
@@ -431,6 +432,115 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
     );
   }
 
+  int _seenByCountFromMessage(Message message) {
+    return (message.metadata?['seenByCount'] as num?)?.toInt() ?? 0;
+  }
+
+  VoidCallback? _groupSeenTapHandler(BuildContext context, Message message) {
+    final cubit = context.read<ThreadCubit>();
+    if (cubit.effectiveConversationType != 'group') return null;
+    final msgId = int.tryParse(message.id);
+    if (msgId == null || _seenByCountFromMessage(message) <= 0) return null;
+    return () => unawaited(_showSeenBySheet(context, msgId));
+  }
+
+  Widget _messageTimeAndStatus(
+    BuildContext context,
+    Message message, {
+    required bool isSentByMe,
+    required TextStyle textStyle,
+    bool isEdited = false,
+  }) {
+    return CustomTimeAndStatus(
+      time: message.resolvedTime,
+      status: isSentByMe ? message.resolvedStatus : null,
+      showStatus: isSentByMe,
+      isEdited: isEdited,
+      textStyle: textStyle,
+      onStatusTap: isSentByMe ? _groupSeenTapHandler(context, message) : null,
+    );
+  }
+
+  Future<void> _showSeenBySheet(BuildContext context, int messageId) async {
+    final repo = context.read<ThreadCubit>().chatRepository;
+    if (!context.mounted) return;
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetCtx) {
+        return SafeArea(
+          child: FutureBuilder<List<Map<String, dynamic>>>(
+            future: repo.fetchMessageReceipts(widget.conversationId, messageId),
+            builder: (ctx, snap) {
+              if (snap.connectionState != ConnectionState.done) {
+                return const Padding(
+                  padding: EdgeInsets.all(32),
+                  child: Center(child: CircularProgressIndicator()),
+                );
+              }
+              if (snap.hasError) {
+                return Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Text('Could not load read receipts'),
+                );
+              }
+              final items = snap.data ?? [];
+              if (items.isEmpty) {
+                return const Padding(
+                  padding: EdgeInsets.all(24),
+                  child: Text('No one has read this message yet'),
+                );
+              }
+              return Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(24, 8, 24, 12),
+                    child: Text(
+                      'Seen by',
+                      style: Theme.of(sheetCtx).textTheme.titleMedium,
+                    ),
+                  ),
+                  Flexible(
+                    child: ListView.separated(
+                      shrinkWrap: true,
+                      itemCount: items.length,
+                      separatorBuilder: (_, __) => const Divider(height: 1),
+                      itemBuilder: (_, i) {
+                        final row = items[i];
+                        final name =
+                            (row['display_name'] as String?)?.trim() ??
+                            'User ${row['user_id']}';
+                        final readAt = DateTime.tryParse(
+                          row['read_at'] as String? ?? '',
+                        )?.toLocal();
+                        final timeLabel = readAt != null
+                            ? MaterialLocalizations.of(sheetCtx).formatTimeOfDay(
+                                TimeOfDay.fromDateTime(readAt),
+                              )
+                            : '';
+                        return ListTile(
+                          title: Text(name),
+                          trailing: timeLabel.isEmpty
+                              ? null
+                              : Text(
+                                  timeLabel,
+                                  style: Theme.of(sheetCtx).textTheme.bodySmall,
+                                ),
+                        );
+                      },
+                    ),
+                  ),
+                ],
+              );
+            },
+          ),
+        );
+      },
+    );
+  }
+
   Future<void> _syncChatMessages(ThreadState state) async {
     if (!mounted) return;
     final cubit = context.read<ThreadCubit>();
@@ -440,6 +550,11 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
       state.messages,
       myUserId: widget.myUserId,
       readReceiptForOwn: (id) => state.readReceiptForOwnMessage(id, convType),
+      seenByCountForOwn: (id) =>
+          state.seenByCountForMessage(id, convType, widget.myUserId),
+      isSeenByEveryoneForOwn: (id) =>
+          state.isSeenByEveryoneForMessage(id, convType, widget.myUserId),
+      conversationType: convType,
       apiBaseUrl: widget.apiBaseUrl,
       replyPreview: previewCtx,
     );
@@ -986,6 +1101,9 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
                           time: message.resolvedTime,
                           status: isSentByMe ? message.resolvedStatus : null,
                           showStatus: isSentByMe,
+                          onStatusTap: isSentByMe
+                              ? _groupSeenTapHandler(context, message)
+                              : null,
                           footerTextStyle: theme.typography.labelSmall.copyWith(
                             color: fg.withValues(alpha: 0.85),
                           ),
@@ -1020,10 +1138,10 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
                             children: [
                               Text(emoji, style: const TextStyle(fontSize: 56)),
                               const SizedBox(height: 2),
-                              CustomTimeAndStatus(
-                                time: message.resolvedTime,
-                                status: isSentByMe ? message.resolvedStatus : null,
-                                showStatus: isSentByMe,
+                              _messageTimeAndStatus(
+                                context,
+                                message,
+                                isSentByMe: isSentByMe,
                                 textStyle: theme.typography.labelSmall.copyWith(
                                   color: fg.withValues(alpha: 0.85),
                                 ),
@@ -1173,12 +1291,10 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
                                       .copyWith(color: fg),
                                 ),
                                 const SizedBox(height: 2),
-                                CustomTimeAndStatus(
-                                  time: message.resolvedTime,
-                                  status: isSentByMe
-                                      ? message.resolvedStatus
-                                      : null,
-                                  showStatus: isSentByMe,
+                                _messageTimeAndStatus(
+                                  context,
+                                  message,
+                                  isSentByMe: isSentByMe,
                                   isEdited:
                                       (message.metadata?['mamanaIsEdited']
                                           as bool?) ??
@@ -1253,12 +1369,10 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
                                         ),
                               ),
                               if (captionWidget != null) captionWidget,
-                              CustomTimeAndStatus(
-                                time: message.resolvedTime,
-                                status: isSentByMe
-                                    ? message.resolvedStatus
-                                    : null,
-                                showStatus: isSentByMe,
+                              _messageTimeAndStatus(
+                                context,
+                                message,
+                                isSentByMe: isSentByMe,
                                 textStyle: theme.typography.labelSmall.copyWith(
                                   color: fg.withValues(alpha: 0.9),
                                 ),
@@ -1286,6 +1400,9 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
                             bubble: bubble,
                             foreground: fg,
                             isSentByMe: isSentByMe,
+                            onStatusTap: isSentByMe
+                                ? _groupSeenTapHandler(context, message)
+                                : null,
                           ),
                         ),
                       );
@@ -1330,6 +1447,9 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
                                 bubble: bubble,
                                 foreground: fg,
                                 isSentByMe: isSentByMe,
+                                onStatusTap: isSentByMe
+                                    ? _groupSeenTapHandler(context, message)
+                                    : null,
                                 onLayoutSettled:
                                     _isAtBottom ? _scheduleScrollToBottom : null,
                               ),

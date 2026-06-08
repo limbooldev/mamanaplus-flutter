@@ -97,12 +97,27 @@ String _mediaDownloadUrl(String apiBaseUrl, String objectKey) {
   return '$base/v1/media/download?object_key=${Uri.encodeComponent(objectKey)}';
 }
 
+Map<String, dynamic> _withSeenMeta(
+  Map<String, dynamic> meta, {
+  required bool mine,
+  required int messageId,
+  int Function(int)? seenByCountForOwn,
+}) {
+  if (!mine || seenByCountForOwn == null) return meta;
+  final count = seenByCountForOwn(messageId);
+  if (count <= 0) return meta;
+  return {...meta, 'seenByCount': count};
+}
+
 /// Converts local rows (newest-first) to [Message] list in **chronological** order
 /// (oldest → newest) for [InMemoryChatController] + default [ChatAnimatedList].
 List<Message> mapLocalMessagesToChatMessages(
   List<LocalMessage> newestFirst, {
   required int myUserId,
   required bool Function(int messageId) readReceiptForOwn,
+  int Function(int messageId)? seenByCountForOwn,
+  bool Function(int messageId)? isSeenByEveryoneForOwn,
+  String? conversationType,
   required String apiBaseUrl,
   ReplyPreviewMapContext? replyPreview,
 }) {
@@ -112,14 +127,25 @@ List<Message> mapLocalMessagesToChatMessages(
     final authorId = '${m.senderId}';
     final replyTo =
         m.replyToMessageId != null ? '${m.replyToMessageId}' : null;
-    final meta = _mergeReplyPreviewMetadata(
+    var meta = _mergeReplyPreviewMetadata(
       m,
       newestFirst,
       replyPreview,
     );
+    meta = _withSeenMeta(
+      meta,
+      mine: mine,
+      messageId: m.id,
+      seenByCountForOwn: seenByCountForOwn,
+    );
     final MessageStatus? status;
     if (mine) {
-      final seen = readReceiptForOwn(m.id) || m.receiptReadAt != null;
+      final isPrivate = conversationType == 'private';
+      final isGroup = conversationType == 'group';
+      final seenByEveryone = isSeenByEveryoneForOwn?.call(m.id) ?? false;
+      final seen = readReceiptForOwn(m.id) ||
+          (isPrivate && m.receiptReadAt != null) ||
+          (isGroup && seenByEveryone);
       if (seen) {
         status = MessageStatus.seen;
       } else if (m.receiptDeliveredAt != null) {

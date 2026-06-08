@@ -66,6 +66,7 @@ class CustomTimeAndStatus extends StatelessWidget {
     this.showStatus = true,
     this.isEdited = false,
     this.textStyle,
+    this.onStatusTap,
   });
 
   final DateTime? time;
@@ -74,6 +75,8 @@ class CustomTimeAndStatus extends StatelessWidget {
   final bool showStatus;
   final bool isEdited;
   final TextStyle? textStyle;
+  /// When set, the status icon becomes tappable (e.g. group read-receipt list).
+  final VoidCallback? onStatusTap;
 
   @override
   Widget build(BuildContext context) {
@@ -94,7 +97,14 @@ class CustomTimeAndStatus extends StatelessWidget {
           Text(timeFormat.format(time!.toLocal()), style: textStyle),
         if (showStatus && status != null) ...[
           const SizedBox(width: 4),
-          MessageStatusIcon(status: status!, baseColor: color),
+          if (onStatusTap != null)
+            GestureDetector(
+              onTap: onStatusTap,
+              behavior: HitTestBehavior.opaque,
+              child: MessageStatusIcon(status: status!, baseColor: color),
+            )
+          else
+            MessageStatusIcon(status: status!, baseColor: color),
         ],
       ],
     );

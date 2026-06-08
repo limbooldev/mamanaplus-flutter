@@ -900,6 +900,12 @@ class ChatRepository {
   Future<void> markRead(int conversationId, int lastReadMessageId) =>
       _remote.markRead(conversationId, lastReadMessageId);
 
+  Future<List<Map<String, dynamic>>> fetchMessageReceipts(
+    int conversationId,
+    int messageId,
+  ) =>
+      _remote.fetchMessageReceipts(conversationId, messageId);
+
   Future<void> typing(int conversationId, bool typing) async {
     try {
       await _remote.sendTyping(conversationId, typing);

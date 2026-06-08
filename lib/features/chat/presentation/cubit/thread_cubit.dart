@@ -260,6 +260,39 @@ class ThreadState extends Equatable {
     return peerMax >= messageId;
   }
 
+  /// Group: count other members whose read cursor has reached [messageId].
+  int seenByCountForMessage(
+    int messageId,
+    String? conversationType,
+    int myUserId,
+  ) {
+    if (conversationType != 'group') return 0;
+    final others = memberPresence.keys.where((id) => id != myUserId);
+    if (others.isEmpty) {
+      return readCursorByUserId.values
+          .where((cursor) => cursor >= messageId)
+          .length;
+    }
+    return others
+        .where((id) => (readCursorByUserId[id] ?? 0) >= messageId)
+        .length;
+  }
+
+  /// Group: true when every other member has read up to [messageId].
+  bool isSeenByEveryoneForMessage(
+    int messageId,
+    String? conversationType,
+    int myUserId,
+  ) {
+    if (conversationType != 'group') return false;
+    final others = memberPresence.keys.where((id) => id != myUserId).toList();
+    if (others.isEmpty) return false;
+    for (final id in others) {
+      if ((readCursorByUserId[id] ?? 0) < messageId) return false;
+    }
+    return true;
+  }
+
   @override
   List<Object?> get props => [
         messages,
@@ -461,7 +494,10 @@ class ThreadCubit extends Cubit<ThreadState> {
             deliveredAt: deliveredAt,
           );
         }
-        if (readAt != null) {
+        // Private DMs: persist read_at on the message row for Seen ticks.
+        // Groups: track per-member cursors only (readCursorByUserId) so one
+        // reader does not flip the whole bubble to Seen.
+        if (readAt != null && effectiveConversationType != 'group') {
           await _repo.applyReadReceipt(
             conversationId: conversationId,
             messageId: mid,

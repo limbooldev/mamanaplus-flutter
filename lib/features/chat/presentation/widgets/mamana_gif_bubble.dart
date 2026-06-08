@@ -18,6 +18,7 @@ class MamanaGifBubble extends StatelessWidget {
     this.status,
     this.showStatus = false,
     this.footerTextStyle,
+    this.onStatusTap,
   });
 
   final String url;
@@ -31,6 +32,7 @@ class MamanaGifBubble extends StatelessWidget {
   final MessageStatus? status;
   final bool showStatus;
   final TextStyle? footerTextStyle;
+  final VoidCallback? onStatusTap;
 
   @override
   Widget build(BuildContext context) {
@@ -106,6 +108,7 @@ class MamanaGifBubble extends StatelessWidget {
                   status: status,
                   showStatus: showStatus,
                   textStyle: footerStyle,
+                  onStatusTap: onStatusTap,
                 ),
               ),
             ],

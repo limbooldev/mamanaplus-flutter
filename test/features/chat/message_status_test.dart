@@ -2,6 +2,7 @@ import 'package:flutter_chat_core/flutter_chat_core.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mamana_plus/core/database/app_database.dart';
 import 'package:mamana_plus/features/chat/media_constants.dart';
+import 'package:mamana_plus/features/chat/domain/member_presence.dart';
 import 'package:mamana_plus/features/chat/presentation/cubit/thread_cubit.dart';
 import 'package:mamana_plus/features/chat/presentation/mappers/local_message_to_chat_message.dart';
 import 'package:mamana_plus/features/chat/presentation/widgets/reply_quote.dart';
@@ -103,7 +104,7 @@ void main() {
       expect(messages.single.status, MessageStatus.delivered);
     });
 
-    test('read_at present → Seen', () {
+    test('read_at present in private DM → Seen', () {
       final messages = mapLocalMessagesToChatMessages(
         [
           _localMessage(
@@ -115,10 +116,62 @@ void main() {
         ],
         myUserId: _myUserId,
         readReceiptForOwn: (_) => false,
+        conversationType: 'private',
         apiBaseUrl: _apiBaseUrl,
       );
 
       expect(messages.single.status, MessageStatus.seen);
+    });
+
+    test('read_at present in group with partial readers → Delivered (not Seen)', () {
+      final messages = mapLocalMessagesToChatMessages(
+        [
+          _localMessage(
+            id: 1,
+            senderId: _myUserId,
+            receiptDeliveredAt: DateTime(2026, 5, 11, 22, 1),
+            receiptReadAt: DateTime(2026, 5, 11, 22, 2),
+          ),
+        ],
+        myUserId: _myUserId,
+        readReceiptForOwn: (_) => false,
+        conversationType: 'group',
+        apiBaseUrl: _apiBaseUrl,
+      );
+
+      expect(messages.single.status, MessageStatus.delivered);
+    });
+
+    test('group seen by everyone → Seen (blue tick)', () {
+      final messages = mapLocalMessagesToChatMessages(
+        [
+          _localMessage(
+            id: 10,
+            senderId: _myUserId,
+            receiptDeliveredAt: DateTime(2026, 5, 11, 22, 1),
+          ),
+        ],
+        myUserId: _myUserId,
+        readReceiptForOwn: (_) => false,
+        isSeenByEveryoneForOwn: (id) => id == 10,
+        conversationType: 'group',
+        apiBaseUrl: _apiBaseUrl,
+      );
+
+      expect(messages.single.status, MessageStatus.seen);
+    });
+
+    test('group embeds seenByCount in metadata when readers exist', () {
+      final messages = mapLocalMessagesToChatMessages(
+        [_localMessage(id: 10, senderId: _myUserId)],
+        myUserId: _myUserId,
+        readReceiptForOwn: (_) => false,
+        seenByCountForOwn: (id) => id == 10 ? 2 : 0,
+        conversationType: 'group',
+        apiBaseUrl: _apiBaseUrl,
+      );
+
+      expect(messages.single.metadata?['seenByCount'], 2);
     });
 
     test('peer cursor advanced past message id (DM) → Seen even without per-message read_at', () {
@@ -350,6 +403,43 @@ void main() {
       expect(s.readReceiptForOwnMessage(99, 'private'), isTrue);
       expect(s.readReceiptForOwnMessage(50, 'private'), isTrue);
       expect(s.readReceiptForOwnMessage(100, 'private'), isFalse);
+    });
+
+    test('seenByCountForMessage counts other members at or past message id', () {
+      const s = ThreadState(
+        readCursorByUserId: {7: 99, 8: 50, 9: 100},
+        memberPresence: {
+          7: MemberPresence(online: false),
+          8: MemberPresence(online: false),
+          9: MemberPresence(online: false),
+        },
+      );
+      expect(s.seenByCountForMessage(50, 'group', _myUserId), 3);
+      expect(s.seenByCountForMessage(99, 'group', _myUserId), 2);
+      expect(s.seenByCountForMessage(100, 'group', _myUserId), 1);
+      expect(s.seenByCountForMessage(50, 'private', _myUserId), 0);
+    });
+
+    test('isSeenByEveryoneForMessage true only when all others read', () {
+      const allRead = ThreadState(
+        readCursorByUserId: {7: 100, 8: 100},
+        memberPresence: {
+          7: MemberPresence(online: false),
+          8: MemberPresence(online: false),
+          _myUserId: MemberPresence(online: false),
+        },
+      );
+      expect(allRead.isSeenByEveryoneForMessage(100, 'group', _myUserId), isTrue);
+      expect(allRead.isSeenByEveryoneForMessage(101, 'group', _myUserId), isFalse);
+
+      const partial = ThreadState(
+        readCursorByUserId: {7: 100, 8: 50},
+        memberPresence: {
+          7: MemberPresence(online: false),
+          8: MemberPresence(online: false),
+        },
+      );
+      expect(partial.isSeenByEveryoneForMessage(100, 'group', _myUserId), isFalse);
     });
   });
 }
