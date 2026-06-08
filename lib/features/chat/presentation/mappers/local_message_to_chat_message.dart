@@ -30,6 +30,7 @@ class ReplyPreviewMapContext {
     required this.myDisplayName,
     required this.userNameYou,
     required this.userFallback,
+    this.memberDisplayNameFor,
   });
 
   final int myUserId;
@@ -39,6 +40,9 @@ class ReplyPreviewMapContext {
   final String? myDisplayName;
   final String userNameYou;
   final String Function(String) userFallback;
+
+  /// Group: resolve a member's display name by user id (null → use fallback).
+  final String? Function(int userId)? memberDisplayNameFor;
 }
 
 Map<String, dynamic> _withMediaCaptionMeta(
@@ -80,6 +84,7 @@ Map<String, dynamic> _mergeReplyPreviewMetadata(
     myDisplayName: ctx.myDisplayName,
     userNameYou: ctx.userNameYou,
     userFallback: ctx.userFallback,
+    memberDisplayNameFor: ctx.memberDisplayNameFor,
   );
   return meta;
 }

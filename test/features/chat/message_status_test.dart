@@ -335,6 +335,43 @@ void main() {
       expect(preview?.subtitle, 'my earlier text');
     });
 
+    test('reply to group member uses member display name in metadata', () {
+      const peerId = 6;
+      final parent = _localMessage(
+        id: 30,
+        senderId: peerId,
+        body: 'group message',
+      );
+      final reply = _localMessage(
+        id: 31,
+        senderId: _myUserId,
+        body: 'my reply',
+        replyToMessageId: 30,
+      );
+
+      final messages = mapLocalMessagesToChatMessages(
+        [reply, parent],
+        myUserId: _myUserId,
+        readReceiptForOwn: (_) => false,
+        apiBaseUrl: _apiBaseUrl,
+        replyPreview: ReplyPreviewMapContext(
+          myUserId: _myUserId,
+          apiBaseUrl: _apiBaseUrl,
+          headerTitle: 'Private Group',
+          conversationType: 'group',
+          myDisplayName: 'Masoud',
+          userNameYou: 'You',
+          userFallback: (id) => 'User $id',
+          memberDisplayNameFor: (id) => id == peerId ? 'Amin' : null,
+        ),
+      );
+
+      final mapped = messages.singleWhere((m) => m.id == '31');
+      final preview = replyPreviewDataFromMetadata(mapped.metadata);
+      expect(preview?.authorName, 'Amin');
+      expect(preview?.subtitle, 'group message');
+    });
+
     test('pending outbox reply to own message includes metadata', () {
       final parent = _localMessage(
         id: 20,

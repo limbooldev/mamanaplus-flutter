@@ -599,6 +599,7 @@ class ThreadVideoBubble extends StatefulWidget {
     required this.foreground,
     required this.isSentByMe,
     this.onStatusTap,
+    this.senderNameHeader,
   });
 
   final VideoMessage message;
@@ -607,6 +608,7 @@ class ThreadVideoBubble extends StatefulWidget {
   final Color foreground;
   final bool isSentByMe;
   final VoidCallback? onStatusTap;
+  final Widget? senderNameHeader;
 
   @override
   State<ThreadVideoBubble> createState() => _ThreadVideoBubbleState();
@@ -678,9 +680,14 @@ class _ThreadVideoBubbleState extends State<ThreadVideoBubble> {
           borderRadius: BorderRadius.circular(12),
         ),
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.end,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           mainAxisSize: MainAxisSize.min,
           children: [
+            if (widget.senderNameHeader != null)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(2, 2, 2, 4),
+                child: widget.senderNameHeader!,
+              ),
             if (_loading)
               SizedBox(
                 width: kChatInlineVideoW,
@@ -776,6 +783,7 @@ class ThreadAudioBubble extends StatefulWidget {
     required this.foreground,
     required this.isSentByMe,
     this.onStatusTap,
+    this.senderNameHeader,
     this.voiceCacheOverride,
     this.onLayoutSettled,
   });
@@ -787,6 +795,7 @@ class ThreadAudioBubble extends StatefulWidget {
   final Color foreground;
   final bool isSentByMe;
   final VoidCallback? onStatusTap;
+  final Widget? senderNameHeader;
 
   /// In tests, bypasses [ChatRepository.downloadVoiceToCache].
   final Future<File> Function(String objectKey)? voiceCacheOverride;
@@ -1090,6 +1099,7 @@ class _ThreadAudioBubbleState extends State<ThreadAudioBubble> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              if (widget.senderNameHeader != null) widget.senderNameHeader!,
               Row(
                 children: [
                   if (_loading)

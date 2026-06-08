@@ -6,12 +6,14 @@ class MemberPresence extends Equatable {
     required this.online,
     this.lastSeenAt,
     this.displayName,
+    this.avatarMediaKey,
   });
 
   final bool online;
   final DateTime? lastSeenAt;
   final String? displayName;
+  final String? avatarMediaKey;
 
   @override
-  List<Object?> get props => [online, lastSeenAt, displayName];
+  List<Object?> get props => [online, lastSeenAt, displayName, avatarMediaKey];
 }

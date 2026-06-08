@@ -111,10 +111,12 @@ MemberPresence? _memberPresenceFromUserMap(dynamic user) {
   if (user is! Map) return null;
   final id = _jsonInt(user['id']);
   if (id == null) return null;
+  final avatar = (user['avatar_media_key'] as String?)?.trim();
   return MemberPresence(
     online: user['online'] == true,
     lastSeenAt: _parseLastSeenAt(user['last_seen_at']),
     displayName: (user['display_name'] as String?)?.trim(),
+    avatarMediaKey: avatar != null && avatar.isNotEmpty ? avatar : null,
   );
 }
 
@@ -448,6 +450,7 @@ class ThreadCubit extends Cubit<ThreadState> {
             online: online,
             lastSeenAt: lastSeen ?? prev?.lastSeenAt,
             displayName: prev?.displayName,
+            avatarMediaKey: prev?.avatarMediaKey,
           );
           emit(state.copyWith(memberPresence: next));
         }

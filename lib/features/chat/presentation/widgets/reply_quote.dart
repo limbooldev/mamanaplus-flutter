@@ -66,6 +66,7 @@ String authorDisplayNameForMessage({
   required String? myDisplayName,
   required String userNameYou,
   required String Function(String) userFallback,
+  String? Function(int userId)? memberDisplayNameFor,
 }) {
   if (message.senderId == myUserId) {
     final name = myDisplayName?.trim();
@@ -73,6 +74,12 @@ String authorDisplayNameForMessage({
       return name;
     }
     return userNameYou;
+  }
+  if (conversationType == 'group') {
+    final memberName = memberDisplayNameFor?.call(message.senderId)?.trim();
+    if (memberName != null && memberName.isNotEmpty) {
+      return memberName;
+    }
   }
   if (conversationType == 'private' &&
       headerTitle != null &&
@@ -103,6 +110,7 @@ void attachReplyPreviewMetadata(
   required String? myDisplayName,
   required String userNameYou,
   required String Function(String) userFallback,
+  String? Function(int userId)? memberDisplayNameFor,
 }) {
   if (m.replyToMessageId == null) {
     return;
@@ -120,6 +128,7 @@ void attachReplyPreviewMetadata(
     myDisplayName: myDisplayName,
     userNameYou: userNameYou,
     userFallback: userFallback,
+    memberDisplayNameFor: memberDisplayNameFor,
   );
   metadata[kMetaReplyAuthor] = data.authorName;
   metadata[kMetaReplySubtitle] = data.subtitle;
@@ -152,6 +161,7 @@ ReplyPreviewData replyPreviewDataForMessage({
   required String? myDisplayName,
   required String userNameYou,
   required String Function(String) userFallback,
+  String? Function(int userId)? memberDisplayNameFor,
 }) {
   final authorName = authorDisplayNameForMessage(
     message: message,
@@ -161,6 +171,7 @@ ReplyPreviewData replyPreviewDataForMessage({
     myDisplayName: myDisplayName,
     userNameYou: userNameYou,
     userFallback: userFallback,
+    memberDisplayNameFor: memberDisplayNameFor,
   );
   final subtitle = subtitleForLocalMessage(message);
   final media = parseMediaBody(message);
@@ -194,6 +205,7 @@ ReplyPreviewData? replyPreviewDataForId(
   required String? myDisplayName,
   required String userNameYou,
   required String Function(String) userFallback,
+  String? Function(int userId)? memberDisplayNameFor,
 }) {
   if (replyToMessageId == null || replyToMessageId.isEmpty) {
     return null;
@@ -215,6 +227,7 @@ ReplyPreviewData? replyPreviewDataForId(
     myDisplayName: myDisplayName,
     userNameYou: userNameYou,
     userFallback: userFallback,
+    memberDisplayNameFor: memberDisplayNameFor,
   );
 }
 

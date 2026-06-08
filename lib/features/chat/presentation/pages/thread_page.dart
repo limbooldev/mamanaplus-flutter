@@ -23,6 +23,7 @@ import '../../../../shared/ui/ui.dart';
 import '../../conversation_preview.dart';
 import '../../data/chat_mute_prefs.dart';
 import '../../data/chat_repository.dart';
+import '../../domain/member_presence.dart';
 import '../cubit/network_status_cubit.dart';
 import '../cubit/thread_cubit.dart';
 import '../mappers/local_message_to_chat_message.dart';
@@ -125,6 +126,9 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
 
   static const _atBottomThreshold = 150.0;
   static const _scrollToBottomLayoutPasses = 8;
+  static const _groupAvatarSize = 32.0;
+  static const _groupAvatarGap = 8.0;
+  static const _groupAvatarSlot = _groupAvatarSize + _groupAvatarGap;
 
   @override
   void initState() {
@@ -415,7 +419,12 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
         .join('~');
     final reads =
         s.readCursorByUserId.entries.map((e) => '${e.key}:${e.value}').join(',');
-    final members = s.memberPresence.keys.join(',');
+    final members = s.memberPresence.entries
+        .map(
+          (e) =>
+              '${e.key}:${e.value.displayName}:${e.value.avatarMediaKey}',
+        )
+        .join(',');
     return '$parts^$pendingParts#$reads@$members';
   }
 
@@ -429,6 +438,13 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
       myDisplayName: cubit.state.myDisplayName,
       userNameYou: l10n.userNameYou,
       userFallback: l10n.userFallback,
+      memberDisplayNameFor: (userId) {
+        final name = cubit.state.memberPresence[userId]?.displayName?.trim();
+        if (name == null || name.isEmpty) {
+          return null;
+        }
+        return name;
+      },
     );
   }
 
@@ -458,6 +474,99 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
       isEdited: isEdited,
       textStyle: textStyle,
       onStatusTap: isSentByMe ? _groupSeenTapHandler(context, message) : null,
+    );
+  }
+
+  bool _isGroupThread(BuildContext context) =>
+      context.read<ThreadCubit>().effectiveConversationType == 'group';
+
+  MemberPresence? _memberPresenceForAuthorId(
+    BuildContext context,
+    String authorId,
+  ) {
+    final uid = int.tryParse(authorId);
+    if (uid == null) return null;
+    return context.read<ThreadCubit>().state.memberPresence[uid];
+  }
+
+  String _displayNameForAuthorId(BuildContext context, String authorId) {
+    final l10n = AppLocalizations.of(context)!;
+    final name = _memberPresenceForAuthorId(context, authorId)?.displayName?.trim();
+    if (name != null && name.isNotEmpty) return name;
+    return l10n.userFallback(authorId);
+  }
+
+  Widget _groupSenderAvatar(BuildContext context, String authorId) {
+    final member = _memberPresenceForAuthorId(context, authorId);
+    return UserAvatar(
+      displayName: _displayNameForAuthorId(context, authorId),
+      avatarMediaKey: member?.avatarMediaKey,
+      size: _groupAvatarSize,
+    );
+  }
+
+  bool _showGroupSenderInBubble(
+    BuildContext context, {
+    required bool isSentByMe,
+    required MessageGroupStatus? groupStatus,
+  }) {
+    return _isGroupThread(context) &&
+        !isSentByMe &&
+        groupStatus?.isFirst != false;
+  }
+
+  Widget _groupSenderNameInBubble({
+    required BuildContext context,
+    required Message message,
+    required TextStyle style,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 4),
+      child: Align(
+        alignment: AlignmentDirectional.centerStart,
+        child: Text(
+          _displayNameForAuthorId(context, message.authorId),
+          style: style,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
+      ),
+    );
+  }
+
+  /// Wraps an incoming group bubble with the sender avatar on the **first**
+  /// message in a block (WhatsApp-style). Sender name is rendered inside the
+  /// bubble by each message builder.
+  Widget _groupIncomingMessageShell({
+    required BuildContext context,
+    required Message message,
+    required bool isSentByMe,
+    required MessageGroupStatus? groupStatus,
+    required Widget bubble,
+  }) {
+    if (!_isGroupThread(context) || isSentByMe) {
+      return Align(
+        alignment: isSentByMe ? Alignment.centerRight : Alignment.centerLeft,
+        child: bubble,
+      );
+    }
+
+    final isFirstInGroup = groupStatus?.isFirst != false;
+
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (isFirstInGroup)
+            _groupSenderAvatar(context, message.authorId)
+          else
+            const SizedBox(width: _groupAvatarSize),
+          const SizedBox(width: _groupAvatarGap),
+          Flexible(child: bubble),
+        ],
+      ),
     );
   }
 
@@ -658,17 +767,14 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
       myDisplayName: ctx.myDisplayName,
       userNameYou: ctx.userNameYou,
       userFallback: ctx.userFallback,
+      memberDisplayNameFor: ctx.memberDisplayNameFor,
     );
   }
 
   ReplyPreviewData? _replyPreviewForChatMessage(Message message) {
-    final fromMeta = replyPreviewDataFromMetadata(message.metadata);
-    if (fromMeta != null) {
-      return fromMeta;
-    }
     final cubit = context.read<ThreadCubit>();
     final ctx = _replyPreviewMapContext(cubit);
-    return replyPreviewDataForId(
+    final live = replyPreviewDataForId(
       message.replyToMessageId,
       cubit.state.messages,
       myUserId: ctx.myUserId,
@@ -678,7 +784,22 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
       myDisplayName: ctx.myDisplayName,
       userNameYou: ctx.userNameYou,
       userFallback: ctx.userFallback,
+      memberDisplayNameFor: ctx.memberDisplayNameFor,
     );
+    final fromMeta = replyPreviewDataFromMetadata(message.metadata);
+    if (live != null && fromMeta != null) {
+      final parentId = int.tryParse(message.replyToMessageId ?? '');
+      final hasParent =
+          parentId != null && cubit.state.messages.any((m) => m.id == parentId);
+      if (hasParent) {
+        return ReplyPreviewData(
+          authorName: live.authorName,
+          subtitle: fromMeta.subtitle.isNotEmpty ? fromMeta.subtitle : live.subtitle,
+          thumbnailUrl: fromMeta.thumbnailUrl ?? live.thumbnailUrl,
+        );
+      }
+    }
+    return live ?? fromMeta;
   }
 
   bool _hasReplyQuote(Message message) {
@@ -990,18 +1111,49 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
                     final cubit = context.read<ThreadCubit>();
                     final s = cubit.state;
                     final isMe = id == '${widget.myUserId}';
+                    final uid = int.tryParse(id);
+                    String name;
                     String? imageSource;
-                    final key = isMe
-                        ? s.myAvatarMediaKey
-                        : (s.dmPeerUserId?.toString() == id
-                            ? s.peerAvatarMediaKey
-                            : null);
-                    if (key != null && key.isNotEmpty) {
-                      imageSource = socialMediaResolveUrl(widget.apiBaseUrl, key);
+
+                    if (isMe) {
+                      name = l10n.userNameYou;
+                      final key = s.myAvatarMediaKey;
+                      if (key != null && key.isNotEmpty) {
+                        imageSource =
+                            socialMediaResolveUrl(widget.apiBaseUrl, key);
+                      }
+                    } else if (uid != null) {
+                      final member = s.memberPresence[uid];
+                      if (member != null) {
+                        final dn = member.displayName?.trim();
+                        name = (dn != null && dn.isNotEmpty)
+                            ? dn
+                            : l10n.userFallback(id);
+                        final key = member.avatarMediaKey;
+                        if (key != null && key.isNotEmpty) {
+                          imageSource =
+                              socialMediaResolveUrl(widget.apiBaseUrl, key);
+                        }
+                      } else if (s.dmPeerUserId?.toString() == id) {
+                        final dn = s.headerTitle?.trim();
+                        name = (dn != null && dn.isNotEmpty)
+                            ? dn
+                            : l10n.userFallback(id);
+                        final key = s.peerAvatarMediaKey;
+                        if (key != null && key.isNotEmpty) {
+                          imageSource =
+                              socialMediaResolveUrl(widget.apiBaseUrl, key);
+                        }
+                      } else {
+                        name = l10n.userFallback(id);
+                      }
+                    } else {
+                      name = l10n.userFallback(id);
                     }
+
                     return User(
                       id: id,
-                      name: isMe ? l10n.userNameYou : l10n.userFallback(id),
+                      name: name,
                       imageSource: imageSource,
                     );
                   },
@@ -1051,6 +1203,11 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
                             ? theme.colors.primary
                             : theme.colors.surfaceContainerHigh;
                         final fg = isSentByMe ? theme.colors.onPrimary : theme.colors.onSurface;
+                        final showGroupSender = _showGroupSenderInBubble(
+                          context,
+                          isSentByMe: isSentByMe,
+                          groupStatus: groupStatus,
+                        );
                         return Align(
                           alignment:
                               isSentByMe ? Alignment.centerRight : Alignment.centerLeft,
@@ -1063,16 +1220,31 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
                                 color: bubble,
                                 borderRadius: BorderRadius.circular(12),
                               ),
-                              child: Row(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
-                                  Icon(Icons.auto_stories_outlined, color: fg, size: 22),
-                                  const SizedBox(width: 8),
-                                  Flexible(
-                                    child: Text(
-                                      text.isEmpty ? 'Story' : text,
-                                      style: TextStyle(color: fg),
+                                  if (showGroupSender)
+                                    _groupSenderNameInBubble(
+                                      context: context,
+                                      message: message,
+                                      style: theme.typography.labelMedium.copyWith(
+                                        color: AppColors.primary,
+                                        fontWeight: FontWeight.w600,
+                                      ),
                                     ),
+                                  Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(Icons.auto_stories_outlined, color: fg, size: 22),
+                                      const SizedBox(width: 8),
+                                      Flexible(
+                                        child: Text(
+                                          text.isEmpty ? 'Story' : text,
+                                          style: TextStyle(color: fg),
+                                        ),
+                                      ),
+                                    ],
                                   ),
                                 ],
                               ),
@@ -1104,6 +1276,20 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
                           onStatusTap: isSentByMe
                               ? _groupSeenTapHandler(context, message)
                               : null,
+                          senderNameHeader: _showGroupSenderInBubble(
+                            context,
+                            isSentByMe: isSentByMe,
+                            groupStatus: groupStatus,
+                          )
+                              ? _groupSenderNameInBubble(
+                                  context: context,
+                                  message: message,
+                                  style: theme.typography.labelMedium.copyWith(
+                                    color: AppColors.primary,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                )
+                              : null,
                           footerTextStyle: theme.typography.labelSmall.copyWith(
                             color: fg.withValues(alpha: 0.85),
                           ),
@@ -1120,6 +1306,11 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
                       final fg = isSentByMe
                           ? theme.colors.onPrimary
                           : theme.colors.onSurface;
+                      final showGroupSender = _showGroupSenderInBubble(
+                        context,
+                        isSentByMe: isSentByMe,
+                        groupStatus: groupStatus,
+                      );
                       return Align(
                         alignment:
                             isSentByMe ? Alignment.centerRight : Alignment.centerLeft,
@@ -1136,6 +1327,18 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
                             crossAxisAlignment: CrossAxisAlignment.end,
                             mainAxisSize: MainAxisSize.min,
                             children: [
+                              if (showGroupSender)
+                                Align(
+                                  alignment: AlignmentDirectional.centerStart,
+                                  child: _groupSenderNameInBubble(
+                                    context: context,
+                                    message: message,
+                                    style: theme.typography.labelMedium.copyWith(
+                                      color: AppColors.primary,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ),
                               Text(emoji, style: const TextStyle(fontSize: 56)),
                               const SizedBox(height: 2),
                               _messageTimeAndStatus(
@@ -1164,6 +1367,28 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
                       // tap [GestureDetector] wired to [onMessageLongPress]. Re-wrap so
                       // actions (copy, reply, etc.) still fire.
                       final msgId = int.tryParse(message.id);
+                      final isGroupIncoming =
+                          _isGroupThread(context) && !isSentByMe;
+                      final bubble = ConstrainedBox(
+                        constraints: BoxConstraints(maxWidth: maxBubbleW),
+                        child: _wrapScrollTargetHighlight(
+                          message.id,
+                          _SwipeReplyDetector(
+                            isSentByMe: isSentByMe,
+                            onSwipeReply: () {
+                              final id = int.tryParse(message.id);
+                              if (id == null) return;
+                              final cubit = context.read<ThreadCubit>();
+                              final local =
+                                  _localById(cubit.state.messages, id);
+                              if (local == null) return;
+                              HapticFeedback.selectionClick();
+                              cubit.setReplyTo(local);
+                            },
+                            child: child,
+                          ),
+                        ),
+                      );
                       return ChatMessage(
                         message: message,
                         index: index,
@@ -1178,30 +1403,13 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
                                 key: _dayLabelKeyFor(createdAt),
                                 label: _formatDayLabel(createdAt),
                               ),
-                            Align(
-                          alignment:
-                              isSentByMe ? Alignment.centerRight : Alignment.centerLeft,
-                          child: ConstrainedBox(
-                            constraints: BoxConstraints(maxWidth: maxBubbleW),
-                            child: _wrapScrollTargetHighlight(
-                              message.id,
-                              _SwipeReplyDetector(
-                                isSentByMe: isSentByMe,
-                                onSwipeReply: () {
-                                  final id = int.tryParse(message.id);
-                                  if (id == null) return;
-                                  final cubit = context.read<ThreadCubit>();
-                                  final local =
-                                      _localById(cubit.state.messages, id);
-                                  if (local == null) return;
-                                  HapticFeedback.selectionClick();
-                                  cubit.setReplyTo(local);
-                                },
-                                child: child,
-                              ),
+                            _groupIncomingMessageShell(
+                              context: context,
+                              message: message,
+                              isSentByMe: isSentByMe,
+                              groupStatus: groupStatus,
+                              bubble: bubble,
                             ),
-                          ),
-                        ),
                             // Reaction bar shown below the bubble.
                             if (msgId != null)
                               BlocSelector<ThreadCubit, ThreadState,
@@ -1210,7 +1418,11 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
                                     s.reactions[msgId] ?? const [],
                                 builder: (ctx, reactions) => Padding(
                                   padding: EdgeInsets.only(
-                                    left: isSentByMe ? 0 : 8,
+                                    left: isSentByMe
+                                        ? 0
+                                        : (isGroupIncoming
+                                            ? _groupAvatarSlot
+                                            : 8),
                                     right: isSentByMe ? 8 : 0,
                                   ),
                                   child: ReactionBar(
@@ -1246,6 +1458,15 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
                           _hasReplyQuote(message) && replyPreview != null;
                       final groupedFollowUp =
                           groupStatus?.isFirst == false;
+                      final showGroupSender = _showGroupSenderInBubble(
+                        context,
+                        isSentByMe: isSentByMe,
+                        groupStatus: groupStatus,
+                      );
+                      final groupSenderStyle = theme.typography.labelMedium.copyWith(
+                        color: AppColors.primary,
+                        fontWeight: FontWeight.w600,
+                      );
                       return Align(
                         alignment:
                             isSentByMe ? Alignment.centerRight : Alignment.centerLeft,
@@ -1272,6 +1493,12 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
                               crossAxisAlignment: CrossAxisAlignment.stretch,
                               mainAxisSize: MainAxisSize.min,
                               children: [
+                                if (showGroupSender)
+                                  _groupSenderNameInBubble(
+                                    context: context,
+                                    message: message,
+                                    style: groupSenderStyle,
+                                  ),
                                 if (showReply)
                                   ReplyQuote(
                                     data: replyPreview!,
@@ -1327,6 +1554,11 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
                         message.metadata?['caption'] as String?,
                         fg,
                       );
+                      final showGroupSender = _showGroupSenderInBubble(
+                        context,
+                        isSentByMe: isSentByMe,
+                        groupStatus: groupStatus,
+                      );
                       return Align(
                         alignment:
                             isSentByMe ? Alignment.centerRight : Alignment.centerLeft,
@@ -1343,6 +1575,19 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
                             crossAxisAlignment: CrossAxisAlignment.end,
                             mainAxisSize: MainAxisSize.min,
                             children: [
+                              if (showGroupSender)
+                                Align(
+                                  alignment: AlignmentDirectional.centerStart,
+                                  widthFactor: 1,
+                                  child: _groupSenderNameInBubble(
+                                    context: context,
+                                    message: message,
+                                    style: theme.typography.labelMedium.copyWith(
+                                      color: AppColors.primary,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ),
                               if (showReply)
                                 ReplyQuote(
                                   data: replyPreview!,
@@ -1403,6 +1648,20 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
                             onStatusTap: isSentByMe
                                 ? _groupSeenTapHandler(context, message)
                                 : null,
+                            senderNameHeader: _showGroupSenderInBubble(
+                              context,
+                              isSentByMe: isSentByMe,
+                              groupStatus: groupStatus,
+                            )
+                                ? _groupSenderNameInBubble(
+                                    context: context,
+                                    message: message,
+                                    style: theme.typography.labelMedium.copyWith(
+                                      color: AppColors.primary,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  )
+                                : null,
                           ),
                         ),
                       );
@@ -1449,6 +1708,20 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
                                 isSentByMe: isSentByMe,
                                 onStatusTap: isSentByMe
                                     ? _groupSeenTapHandler(context, message)
+                                    : null,
+                                senderNameHeader: _showGroupSenderInBubble(
+                                  context,
+                                  isSentByMe: isSentByMe,
+                                  groupStatus: groupStatus,
+                                )
+                                    ? _groupSenderNameInBubble(
+                                        context: context,
+                                        message: message,
+                                        style: theme.typography.labelMedium.copyWith(
+                                          color: AppColors.primary,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      )
                                     : null,
                                 onLayoutSettled:
                                     _isAtBottom ? _scheduleScrollToBottom : null,

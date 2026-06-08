@@ -19,6 +19,7 @@ class MamanaGifBubble extends StatelessWidget {
     this.showStatus = false,
     this.footerTextStyle,
     this.onStatusTap,
+    this.senderNameHeader,
   });
 
   final String url;
@@ -33,6 +34,7 @@ class MamanaGifBubble extends StatelessWidget {
   final bool showStatus;
   final TextStyle? footerTextStyle;
   final VoidCallback? onStatusTap;
+  final Widget? senderNameHeader;
 
   @override
   Widget build(BuildContext context) {
@@ -72,11 +74,21 @@ class MamanaGifBubble extends StatelessWidget {
             borderRadius: BorderRadius.circular(12),
           ),
           child: Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             mainAxisSize: MainAxisSize.min,
             children: [
+              if (senderNameHeader != null)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(8, 8, 8, 0),
+                  child: senderNameHeader!,
+                ),
               ClipRRect(
-                borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
+                borderRadius: BorderRadius.vertical(
+                  top: senderNameHeader != null
+                      ? Radius.zero
+                      : const Radius.circular(12),
+                  bottom: const Radius.circular(12),
+                ),
                 child: SizedBox(
                   width: displayW,
                   height: displayH,
