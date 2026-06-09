@@ -288,6 +288,7 @@ class ChatRemoteDataSource {
     required int byteSize,
     int? conversationId,
     String? purpose,
+    int? durationMs,
   }) async {
     final data = <String, dynamic>{
       'content_type': contentType,
@@ -298,6 +299,9 @@ class ChatRemoteDataSource {
     }
     if (purpose != null && purpose.isNotEmpty) {
       data['purpose'] = purpose;
+    }
+    if (durationMs != null && durationMs > 0) {
+      data['duration_ms'] = durationMs;
     }
     final res = await _dio.post<Map<String, dynamic>>(
       '/v1/media/presign',

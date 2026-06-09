@@ -806,7 +806,7 @@ class ThreadCubit extends Cubit<ThreadState> {
     final mime = lookupMimeType(path) ?? 'application/octet-stream';
     final replyId = state.replyTo?.id;
     emit(state.copyWith(replyTo: null, error: null));
-    unawaited(_repo.sendMediaOptimistic(
+    await _repo.sendMediaOptimistic(
       localId: _newLocalId(),
       conversationId: conversationId,
       path: path,
@@ -815,7 +815,7 @@ class ThreadCubit extends Cubit<ThreadState> {
       durationMs: durationMs,
       replyToMessageId: replyId,
       caption: caption,
-    ));
+    );
   }
 
   Future<void> sendSticker({required String stickerId, required String emoji}) async {

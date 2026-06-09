@@ -8,6 +8,7 @@ import 'package:path_provider/path_provider.dart';
 
 import '../../../core/api_config.dart';
 import '../../../core/database/app_database.dart';
+import '../../../core/media/media_upload_processor.dart';
 import '../../../core/token_refresh.dart';
 import '../../../core/token_storage.dart';
 import '../conversation_preview.dart';
@@ -192,13 +193,31 @@ class ChatRepository {
     int? replyToMessageId,
     String? caption,
   }) async {
+    var effectivePath = path;
+    var effectiveMime = mime;
+    var effectiveDuration = durationMs;
+
+    if (kind == 'video') {
+      final processed = await MediaUploadProcessor.compressVideoForUpload(path);
+      effectivePath = processed.path;
+      effectiveMime = processed.mimeType;
+      effectiveDuration = processed.durationMs;
+    } else if (kind == 'image' && MediaUploadProcessor.isCompressibleImageMime(mime)) {
+      final processed = await MediaUploadProcessor.compressImageFile(
+        path,
+        mimeType: mime,
+      );
+      effectivePath = processed.path;
+      effectiveMime = processed.mimeType;
+    }
+
     await enqueuePendingMediaSend(
       localId: localId,
       conversationId: conversationId,
-      mediaPath: path,
-      mediaMime: mime,
+      mediaPath: effectivePath,
+      mediaMime: effectiveMime,
       mediaKind: kind,
-      mediaDurationMs: durationMs,
+      mediaDurationMs: effectiveDuration,
       replyToMessageId: replyToMessageId,
       caption: caption,
     );
@@ -789,9 +808,13 @@ class ChatRepository {
     required List<int> bytes,
     required String mimeType,
   }) async {
+    final compressed = await MediaUploadProcessor.compressImageBytes(
+      bytes,
+      mimeType: mimeType,
+    );
     final presign = await _remote.presignMedia(
-      contentType: mimeType,
-      byteSize: bytes.length,
+      contentType: compressed.mimeType,
+      byteSize: compressed.bytes.length,
       conversationId: conversationId,
     );
     final uploadUrl = presign['upload_url'] as String;
@@ -808,7 +831,7 @@ class ChatRepository {
     await _remote.uploadMediaPut(
       uploadUrl: uploadUrl,
       headers: headers,
-      bytes: bytes,
+      bytes: compressed.bytes,
       bearerToken: access,
     );
     if (!isLocal) {
@@ -895,10 +918,22 @@ class ChatRepository {
     int? replyToMessageId,
     String? caption,
   }) async {
+    var uploadBytes = bytes;
+    var uploadMime = mimeType;
+    if (kind == 'image' && MediaUploadProcessor.isCompressibleImageMime(mimeType)) {
+      final compressed = await MediaUploadProcessor.compressImageBytes(
+        bytes,
+        mimeType: mimeType,
+      );
+      uploadBytes = compressed.bytes;
+      uploadMime = compressed.mimeType;
+    }
+
     final presign = await _remote.presignMedia(
-      contentType: mimeType,
-      byteSize: bytes.length,
+      contentType: uploadMime,
+      byteSize: uploadBytes.length,
       conversationId: conversationId,
+      durationMs: kind == 'video' ? durationMs : null,
     );
     final uploadUrl = presign['upload_url'] as String;
     final headers = Map<String, String>.from(
@@ -914,7 +949,7 @@ class ChatRepository {
     await _remote.uploadMediaPut(
       uploadUrl: uploadUrl,
       headers: headers,
-      bytes: bytes,
+      bytes: uploadBytes,
       bearerToken: access,
     );
     if (!isLocal) {
@@ -922,7 +957,7 @@ class ChatRepository {
     }
     final body = jsonEncode({
       'object_key': objectKey,
-      'mime': mimeType,
+      'mime': uploadMime,
       'kind': kind,
       if (durationMs != null && durationMs > 0) 'duration_ms': durationMs,
       if (caption != null && caption.trim().isNotEmpty) 'caption': caption.trim(),

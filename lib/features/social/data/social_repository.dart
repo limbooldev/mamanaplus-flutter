@@ -2,6 +2,7 @@ import 'package:dio/dio.dart';
 
 import '../../chat/data/chat_remote_datasource.dart';
 import '../../../core/jwt_util.dart';
+import '../../../core/media/media_upload_processor.dart';
 import '../../../core/token_storage.dart';
 import '../domain/social_models.dart';
 
@@ -31,9 +32,20 @@ class SocialRepository {
     List<int> bytes,
     String contentType,
   ) async {
+    final compressed = await MediaUploadProcessor.compressImageBytes(
+      bytes,
+      mimeType: contentType,
+    );
+    final uploadMime = MediaUploadProcessor.isCompressibleImageMime(contentType)
+        ? compressed.mimeType
+        : contentType;
+    final uploadBytes = MediaUploadProcessor.isCompressibleImageMime(contentType)
+        ? compressed.bytes
+        : bytes;
+
     final presign = await _mediaApi.presignMedia(
-      contentType: contentType,
-      byteSize: bytes.length,
+      contentType: uploadMime,
+      byteSize: uploadBytes.length,
       purpose: 'social',
     );
     final uploadUrl = presign['upload_url'] as String;
@@ -50,7 +62,7 @@ class SocialRepository {
     await _mediaApi.uploadMediaPut(
       uploadUrl: uploadUrl,
       headers: headers,
-      bytes: bytes,
+      bytes: uploadBytes,
       bearerToken: access,
     );
     if (!isLocal) {

@@ -15,6 +15,7 @@ import 'package:giphy_get/giphy_get.dart';
 import '../../../../core/formatting/chat_day_label.dart';
 import '../../../../core/api_config.dart';
 import '../../../../core/giphy_config.dart';
+import '../../../../core/media/media_upload_processor.dart';
 import '../../../../core/notification_dismiss.dart';
 import '../../../../core/database/app_database.dart';
 import '../../../../core/jwt_util.dart';
@@ -1950,6 +1951,41 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
     );
   }
 
+  Future<void> _maybeWarnLargeMediaFile(BuildContext context, String path) async {
+    if (!await MediaUploadProcessor.shouldWarnLargeFile(path)) return;
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text(
+          'Large file selected — it will be compressed before sending.',
+        ),
+        duration: Duration(seconds: 3),
+      ),
+    );
+  }
+
+  Future<void> _showVideoTooLongDialog(
+    BuildContext context,
+    VideoDurationExceededException error,
+  ) {
+    return showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Video too long'),
+        content: Text(
+          'Videos must be ${MediaUploadLimits.maxVideoDurationSec} seconds or '
+          'shorter. This clip is about ${(error.durationMs / 1000).ceil()} seconds.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('OK'),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _openAttachmentSheet(BuildContext context) async {
     final picked = await showModalBottomSheet<String>(
       context: context,
@@ -1984,6 +2020,8 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
         final x = await picker.pickImage(source: ImageSource.gallery);
         if (x == null) break;
         if (!context.mounted) return;
+        await _maybeWarnLargeMediaFile(context, x.path);
+        if (!context.mounted) return;
         final picked = await openMediaCaptionPreview(
           context,
           path: x.path,
@@ -2001,6 +2039,8 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
         final x = await picker.pickImage(source: ImageSource.camera);
         if (x == null) break;
         if (!context.mounted) return;
+        await _maybeWarnLargeMediaFile(context, x.path);
+        if (!context.mounted) return;
         final picked = await openMediaCaptionPreview(
           context,
           path: x.path,
@@ -2017,6 +2057,16 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
       case 'video':
         final x = await picker.pickVideo(source: ImageSource.gallery);
         if (x == null) break;
+        if (!context.mounted) return;
+        try {
+          await MediaUploadProcessor.readVideoDurationMs(x.path);
+        } on VideoDurationExceededException catch (e) {
+          if (!context.mounted) return;
+          await _showVideoTooLongDialog(context, e);
+          break;
+        }
+        if (!context.mounted) return;
+        await _maybeWarnLargeMediaFile(context, x.path);
         if (!context.mounted) return;
         final picked = await openMediaCaptionPreview(
           context,
