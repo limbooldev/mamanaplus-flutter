@@ -498,10 +498,14 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
 
   Widget _groupSenderAvatar(BuildContext context, String authorId) {
     final member = _memberPresenceForAuthorId(context, authorId);
-    return UserAvatar(
-      displayName: _displayNameForAuthorId(context, authorId),
-      avatarMediaKey: member?.avatarMediaKey,
-      size: _groupAvatarSize,
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () => _openUserProfile(context, authorId),
+      child: UserAvatar(
+        displayName: _displayNameForAuthorId(context, authorId),
+        avatarMediaKey: member?.avatarMediaKey,
+        size: _groupAvatarSize,
+      ),
     );
   }
 
@@ -524,11 +528,15 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
       padding: const EdgeInsets.only(bottom: 4),
       child: Align(
         alignment: AlignmentDirectional.centerStart,
-        child: Text(
-          _displayNameForAuthorId(context, message.authorId),
-          style: style,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: () => _openUserProfile(context, message.authorId),
+          child: Text(
+            _displayNameForAuthorId(context, message.authorId),
+            style: style,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
         ),
       ),
     );
@@ -1501,7 +1509,7 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
                                   ),
                                 if (showReply)
                                   ReplyQuote(
-                                    data: replyPreview!,
+                                    data: replyPreview,
                                     accentColor: isSentByMe
                                         ? fg.withValues(alpha: 0.85)
                                         : AppColors.primary,
@@ -1590,7 +1598,7 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
                                 ),
                               if (showReply)
                                 ReplyQuote(
-                                  data: replyPreview!,
+                                  data: replyPreview,
                                   accentColor: isSentByMe
                                       ? fg.withValues(alpha: 0.85)
                                       : AppColors.primary,
@@ -1689,7 +1697,7 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
                                 Padding(
                                   padding: const EdgeInsets.fromLTRB(8, 4, 8, 0),
                                   child: ReplyQuote(
-                                    data: replyPreview!,
+                                    data: replyPreview,
                                     accentColor: isSentByMe
                                         ? fg.withValues(alpha: 0.85)
                                         : AppColors.primary,
@@ -1876,12 +1884,18 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
     context.pushGroupDetail(widget.conversationId);
   }
 
-  void _openDmPeerProfile(BuildContext context, int peerId) {
+  void _openUserProfile(BuildContext context, String authorId) {
+    final userId = int.tryParse(authorId);
+    if (userId == null) return;
     Navigator.of(context).push<void>(
       MaterialPageRoute<void>(
-        builder: (_) => UserProfilePage(userId: peerId),
+        builder: (_) => UserProfilePage(userId: userId),
       ),
     );
+  }
+
+  void _openDmPeerProfile(BuildContext context, int peerId) {
+    _openUserProfile(context, peerId.toString());
   }
 
   Future<void> _openGroupMessageSearch(BuildContext context) async {
