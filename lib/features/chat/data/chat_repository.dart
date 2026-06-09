@@ -246,6 +246,11 @@ class ChatRepository {
     _outboxChangesCtrl.add(conversationId);
   }
 
+  /// Receipt timestamps that arrived over WS before the message row existed
+  /// locally (e.g. fast delivered ack while the send response is still in flight).
+  final _pendingReceiptDelivered = <int, DateTime>{};
+  final _pendingReceiptRead = <int, DateTime>{};
+
   /// Updates the per-message `delivered_at` from a `receipt_update` WS event.
   /// Preserves all other fields (avoids the `insertOrReplace` null overwrite
   /// that [cacheMessages] would do).
@@ -254,11 +259,19 @@ class ChatRepository {
     required int messageId,
     required DateTime deliveredAt,
   }) async {
-    await (_db.update(_db.localMessages)
+    final count = await (_db.update(_db.localMessages)
           ..where((t) => t.id.equals(messageId)))
         .write(LocalMessagesCompanion(
       receiptDeliveredAt: Value(deliveredAt),
     ));
+    if (count == 0) {
+      final prev = _pendingReceiptDelivered[messageId];
+      if (prev == null || deliveredAt.isAfter(prev)) {
+        _pendingReceiptDelivered[messageId] = deliveredAt;
+      }
+    } else {
+      _pendingReceiptDelivered.remove(messageId);
+    }
   }
 
   /// Updates per-message `read_at` from a `receipt_update` WS event.
@@ -267,11 +280,19 @@ class ChatRepository {
     required int messageId,
     required DateTime readAt,
   }) async {
-    await (_db.update(_db.localMessages)
+    final count = await (_db.update(_db.localMessages)
           ..where((t) => t.id.equals(messageId)))
         .write(LocalMessagesCompanion(
       receiptReadAt: Value(readAt),
     ));
+    if (count == 0) {
+      final prev = _pendingReceiptRead[messageId];
+      if (prev == null || readAt.isAfter(prev)) {
+        _pendingReceiptRead[messageId] = readAt;
+      }
+    } else {
+      _pendingReceiptRead.remove(messageId);
+    }
   }
 
   Future<void> flushPendingSends(int conversationId) async {
@@ -428,6 +449,16 @@ class ChatRepository {
           recDel = DateTime.tryParse(receipt['delivered_at'] as String? ?? '');
           recRead = DateTime.tryParse(receipt['read_at'] as String? ?? '');
         }
+        final pendingDel = _pendingReceiptDelivered[id];
+        if (pendingDel != null &&
+            (recDel == null || pendingDel.isAfter(recDel))) {
+          recDel = pendingDel;
+        }
+        final pendingRead = _pendingReceiptRead[id];
+        if (pendingRead != null &&
+            (recRead == null || pendingRead.isAfter(recRead))) {
+          recRead = pendingRead;
+        }
         // Preserve existing receipt timestamps when the new payload omits them
         // or carries an older value.
         final prev = existingById[id];
@@ -465,6 +496,11 @@ class ChatRepository {
           ),
           mode: InsertMode.insertOrReplace,
         );
+        if (_pendingReceiptDelivered.containsKey(id) ||
+            _pendingReceiptRead.containsKey(id)) {
+          _pendingReceiptDelivered.remove(id);
+          _pendingReceiptRead.remove(id);
+        }
       }
     });
     await _touchConversationPreviewFromMessages(conversationId, items);
@@ -695,15 +731,19 @@ class ChatRepository {
     return m;
   }
 
+  Future<void> deleteLocalMessage(int messageId) async {
+    await (_db.delete(
+      _db.localMessages,
+    )..where((t) => t.id.equals(messageId))).go();
+  }
+
   Future<void> deleteMessage(
     int conversationId,
     int messageId, {
     String scope = 'for_me',
   }) async {
     await _remote.deleteMessage(conversationId, messageId, scope: scope);
-    await (_db.delete(
-      _db.localMessages,
-    )..where((t) => t.id.equals(messageId))).go();
+    await deleteLocalMessage(messageId);
   }
 
   Future<Map<String, dynamic>> getGroup(int conversationId) =>

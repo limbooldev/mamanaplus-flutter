@@ -337,12 +337,162 @@ class ThreadCubit extends Cubit<ThreadState> {
   StreamSubscription<int>? _outboxSub;
   StreamSubscription<void>? _reconnectSub;
   bool _typingActive = false;
+  Future<void> _socketEventChain = Future<void>.value();
 
   /// Route extra and/or local inbox cache (`private` / `group`).
   String? _resolvedConversationType;
 
   String? get effectiveConversationType =>
       _resolvedConversationType ?? conversationType;
+
+  void _enqueueSocketEvent(Future<void> Function() handler) {
+    _socketEventChain = _socketEventChain.then((_) => handler()).catchError((_) {});
+  }
+
+  Future<void> _handleSocketEvent(Map<String, dynamic> event) async {
+    final type = event['type'] as String?;
+    final payload = event['payload'];
+    if (type == 'new_message' && payload is Map<String, dynamic>) {
+      final cid = _jsonInt(payload['conversation_id']);
+      if (cid != conversationId) return;
+      final msg = payload['message'] as Map<String, dynamic>?;
+      if (msg == null) return;
+      if (state.messageSearchQuery != null) {
+        await _reloadMessagesFromRemote();
+      } else {
+        // Write first, then read — avoids race between async cache and reload.
+        await _repo.cacheMessages(conversationId, [msg]);
+        await _reloadLocal();
+      }
+      final msgId = _jsonInt(msg['id']);
+      final senderId = _jsonInt(msg['sender_id']);
+      // Send `receipt:delivered` so the sender's bubble flips Sent → Delivered
+      // in real time. Idempotent on the backend (see `MarkMessagesDelivered`).
+      if (msgId != null && senderId != null && senderId != myUserId) {
+        _repo.socket.sendDeliveredAck(conversationId, [msgId]);
+      }
+      // Mark new message as read immediately (user is in the thread).
+      if (msgId != null) {
+        unawaited(_repo.markRead(conversationId, msgId));
+      }
+    } else if (type == 'message_edited' && payload is Map<String, dynamic>) {
+      final cid = _jsonInt(payload['conversation_id']);
+      if (cid != conversationId) return;
+      final msg = payload['message'] as Map<String, dynamic>?;
+      if (msg == null) return;
+      await _repo.cacheMessages(conversationId, [msg]);
+      await _reloadLocal();
+    } else if (type == 'message_deleted' && payload is Map<String, dynamic>) {
+      final cid = _jsonInt(payload['conversation_id']);
+      if (cid != conversationId) return;
+      final mid = _jsonInt(payload['message_id']);
+      if (mid == null) return;
+      final hadMessage = state.messages.any((m) => m.id == mid);
+      await _repo.deleteLocalMessage(mid);
+      if (hadMessage) await _reloadLocal();
+    } else if (type == 'typing' && payload is Map<String, dynamic>) {
+      final cid = _jsonInt(payload['conversation_id']);
+      final uid = _jsonInt(payload['user_id']);
+      final typing = payload['typing'] as bool? ?? false;
+      if (cid != conversationId || uid == null || uid == myUserId) return;
+      final next = Set<int>.from(state.typingUserIds);
+      if (typing) {
+        next.add(uid);
+      } else {
+        next.remove(uid);
+      }
+      emit(state.copyWith(typingUserIds: next));
+    } else if (type == 'presence' && payload is Map<String, dynamic>) {
+      final uid = _jsonInt(payload['user_id']);
+      if (uid == null || uid == myUserId) return;
+      final online = payload['online'] == true;
+      final lastSeen = _parseLastSeenAt(payload['last_seen_at']);
+      if (effectiveConversationType == 'private' &&
+          uid == state.dmPeerUserId) {
+        emit(state.copyWith(
+          peerOnline: online,
+          peerLastSeenAt: lastSeen ?? state.peerLastSeenAt,
+        ));
+      } else if (effectiveConversationType == 'group') {
+        final prev = state.memberPresence[uid];
+        final next = Map<int, MemberPresence>.from(state.memberPresence);
+        next[uid] = MemberPresence(
+          online: online,
+          lastSeenAt: lastSeen ?? prev?.lastSeenAt,
+          displayName: prev?.displayName,
+          avatarMediaKey: prev?.avatarMediaKey,
+        );
+        emit(state.copyWith(memberPresence: next));
+      }
+    } else if (type == 'reaction_added' && payload is Map<String, dynamic>) {
+      final cid = _jsonInt(payload['conversation_id']);
+      if (cid != conversationId) return;
+      final mid = _jsonInt(payload['message_id']);
+      final uid = _jsonInt(payload['user_id']);
+      final emoji = (payload['emoji'] as String?)?.trim() ?? '';
+      if (mid == null || uid == null || emoji.isEmpty) return;
+      final prev = List<MessageReaction>.from(state.reactions[mid] ?? []);
+      final reaction = MessageReaction(userId: uid, emoji: emoji);
+      if (!prev.contains(reaction)) {
+        prev.add(reaction);
+        emit(state.copyWith(reactions: {...state.reactions, mid: prev}));
+      }
+    } else if (type == 'reaction_removed' && payload is Map<String, dynamic>) {
+      final cid = _jsonInt(payload['conversation_id']);
+      if (cid != conversationId) return;
+      final mid = _jsonInt(payload['message_id']);
+      final uid = _jsonInt(payload['user_id']);
+      final emoji = (payload['emoji'] as String?)?.trim() ?? '';
+      if (mid == null || uid == null || emoji.isEmpty) return;
+      final prev = List<MessageReaction>.from(state.reactions[mid] ?? []);
+      prev.removeWhere((r) => r.userId == uid && r.emoji == emoji);
+      emit(state.copyWith(reactions: {...state.reactions, mid: prev}));
+    } else if (type == 'receipt_update' && payload is Map<String, dynamic>) {
+      final cid = _jsonInt(payload['conversation_id']);
+      if (cid != conversationId) return;
+      final uid = _jsonInt(payload['user_id']);
+      final mid = _jsonInt(payload['message_id']);
+      if (uid == null || mid == null || uid == myUserId) return;
+      final deliveredAt =
+          DateTime.tryParse(payload['delivered_at'] as String? ?? '');
+      final readAt = DateTime.tryParse(payload['read_at'] as String? ?? '');
+
+      // Per-message receipts: write delivered_at / read_at to the matching
+      // LocalMessage so the bubble flips Sent → Delivered → Seen even without
+      // a follow-up REST fetch.
+      if (deliveredAt != null) {
+        await _repo.applyDeliveredReceipt(
+          conversationId: conversationId,
+          messageId: mid,
+          deliveredAt: deliveredAt,
+        );
+      }
+      // Private DMs: persist read_at on the message row for Seen ticks.
+      // Groups: track per-member cursors only (readCursorByUserId) so one
+      // reader does not flip the whole bubble to Seen.
+      if (readAt != null && effectiveConversationType != 'group') {
+        await _repo.applyReadReceipt(
+          conversationId: conversationId,
+          messageId: mid,
+          readAt: readAt,
+        );
+      }
+
+      final prev = state.readCursorByUserId[uid] ?? 0;
+      final next = readAt != null && mid > prev ? mid : prev;
+      final newCursor = {...state.readCursorByUserId, uid: next};
+      // Load fresh messages first, then emit ONCE with both cursor + messages.
+      // Previously two separate emits (cursor, then reload) caused two concurrent
+      // setMessages calls that raced and clobbered each other.
+      final local = await _repo.loadMessagesLocal(conversationId);
+      final pending = await _repo.loadOutboxLocal(conversationId);
+      emit(state.copyWith(
+        readCursorByUserId: newCursor,
+        messages: local,
+        pending: pending,
+      ));
+    }
+  }
 
   Future<void> init() async {
     _resolvedConversationType =
@@ -387,141 +537,8 @@ class ThreadCubit extends Cubit<ThreadState> {
       }
     });
 
-    _sub = _repo.socket.events.listen((event) async {
-      final type = event['type'] as String?;
-      final payload = event['payload'];
-      if (type == 'new_message' && payload is Map<String, dynamic>) {
-        final cid = _jsonInt(payload['conversation_id']);
-        if (cid != conversationId) return;
-        final msg = payload['message'] as Map<String, dynamic>?;
-        if (msg == null) return;
-        if (state.messageSearchQuery != null) {
-          await _reloadMessagesFromRemote();
-        } else {
-          // Write first, then read — avoids race between async cache and reload.
-          await _repo.cacheMessages(conversationId, [msg]);
-          await _reloadLocal();
-        }
-        final msgId = _jsonInt(msg['id']);
-        final senderId = _jsonInt(msg['sender_id']);
-        // Send `receipt:delivered` so the sender's bubble flips Sent → Delivered
-        // in real time. Idempotent on the backend (see `MarkMessagesDelivered`).
-        if (msgId != null && senderId != null && senderId != myUserId) {
-          _repo.socket.sendDeliveredAck(conversationId, [msgId]);
-        }
-        // Mark new message as read immediately (user is in the thread).
-        if (msgId != null) {
-          unawaited(_repo.markRead(conversationId, msgId));
-        }
-      } else if (type == 'message_edited' && payload is Map<String, dynamic>) {
-        final cid = _jsonInt(payload['conversation_id']);
-        if (cid != conversationId) return;
-        final msg = payload['message'] as Map<String, dynamic>?;
-        if (msg == null) return;
-        await _repo.cacheMessages(conversationId, [msg]);
-        await _reloadLocal();
-      } else if (type == 'typing' && payload is Map<String, dynamic>) {
-        final cid = _jsonInt(payload['conversation_id']);
-        final uid = _jsonInt(payload['user_id']);
-        final typing = payload['typing'] as bool? ?? false;
-        if (cid != conversationId || uid == null || uid == myUserId) return;
-        final next = Set<int>.from(state.typingUserIds);
-        if (typing) {
-          next.add(uid);
-        } else {
-          next.remove(uid);
-        }
-        emit(state.copyWith(typingUserIds: next));
-      } else if (type == 'presence' && payload is Map<String, dynamic>) {
-        final uid = _jsonInt(payload['user_id']);
-        if (uid == null || uid == myUserId) return;
-        final online = payload['online'] == true;
-        final lastSeen = _parseLastSeenAt(payload['last_seen_at']);
-        if (effectiveConversationType == 'private' &&
-            uid == state.dmPeerUserId) {
-          emit(state.copyWith(
-            peerOnline: online,
-            peerLastSeenAt: lastSeen ?? state.peerLastSeenAt,
-          ));
-        } else if (effectiveConversationType == 'group') {
-          final prev = state.memberPresence[uid];
-          final next = Map<int, MemberPresence>.from(state.memberPresence);
-          next[uid] = MemberPresence(
-            online: online,
-            lastSeenAt: lastSeen ?? prev?.lastSeenAt,
-            displayName: prev?.displayName,
-            avatarMediaKey: prev?.avatarMediaKey,
-          );
-          emit(state.copyWith(memberPresence: next));
-        }
-      } else if (type == 'reaction_added' && payload is Map<String, dynamic>) {
-        final cid = _jsonInt(payload['conversation_id']);
-        if (cid != conversationId) return;
-        final mid = _jsonInt(payload['message_id']);
-        final uid = _jsonInt(payload['user_id']);
-        final emoji = (payload['emoji'] as String?)?.trim() ?? '';
-        if (mid == null || uid == null || emoji.isEmpty) return;
-        final prev = List<MessageReaction>.from(state.reactions[mid] ?? []);
-        final reaction = MessageReaction(userId: uid, emoji: emoji);
-        if (!prev.contains(reaction)) {
-          prev.add(reaction);
-          emit(state.copyWith(reactions: {...state.reactions, mid: prev}));
-        }
-      } else if (type == 'reaction_removed' && payload is Map<String, dynamic>) {
-        final cid = _jsonInt(payload['conversation_id']);
-        if (cid != conversationId) return;
-        final mid = _jsonInt(payload['message_id']);
-        final uid = _jsonInt(payload['user_id']);
-        final emoji = (payload['emoji'] as String?)?.trim() ?? '';
-        if (mid == null || uid == null || emoji.isEmpty) return;
-        final prev = List<MessageReaction>.from(state.reactions[mid] ?? []);
-        prev.removeWhere((r) => r.userId == uid && r.emoji == emoji);
-        emit(state.copyWith(reactions: {...state.reactions, mid: prev}));
-      } else if (type == 'receipt_update' && payload is Map<String, dynamic>) {
-        final cid = _jsonInt(payload['conversation_id']);
-        if (cid != conversationId) return;
-        final uid = _jsonInt(payload['user_id']);
-        final mid = _jsonInt(payload['message_id']);
-        if (uid == null || mid == null || uid == myUserId) return;
-        final deliveredAt =
-            DateTime.tryParse(payload['delivered_at'] as String? ?? '');
-        final readAt = DateTime.tryParse(payload['read_at'] as String? ?? '');
-
-        // Per-message receipts: write delivered_at / read_at to the matching
-        // LocalMessage so the bubble flips Sent → Delivered → Seen even without
-        // a follow-up REST fetch.
-        if (deliveredAt != null) {
-          await _repo.applyDeliveredReceipt(
-            conversationId: conversationId,
-            messageId: mid,
-            deliveredAt: deliveredAt,
-          );
-        }
-        // Private DMs: persist read_at on the message row for Seen ticks.
-        // Groups: track per-member cursors only (readCursorByUserId) so one
-        // reader does not flip the whole bubble to Seen.
-        if (readAt != null && effectiveConversationType != 'group') {
-          await _repo.applyReadReceipt(
-            conversationId: conversationId,
-            messageId: mid,
-            readAt: readAt,
-          );
-        }
-
-        final prev = state.readCursorByUserId[uid] ?? 0;
-        final next = readAt != null && mid > prev ? mid : prev;
-        final newCursor = {...state.readCursorByUserId, uid: next};
-        // Load fresh messages first, then emit ONCE with both cursor + messages.
-        // Previously two separate emits (cursor, then reload) caused two concurrent
-        // setMessages calls that raced and clobbered each other.
-        final local = await _repo.loadMessagesLocal(conversationId);
-        final pending = await _repo.loadOutboxLocal(conversationId);
-        emit(state.copyWith(
-          readCursorByUserId: newCursor,
-          messages: local,
-          pending: pending,
-        ));
-      }
+    _sub = _repo.socket.events.listen((event) {
+      _enqueueSocketEvent(() => _handleSocketEvent(event));
     });
   }
 
