@@ -257,13 +257,36 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get blockPeerConfirmMessage =>
-      'They will not be able to message you. You can unblock later from settings when that is available.';
+      'They will not be able to message you. You can unblock them anytime from this chat or their profile.';
 
   @override
   String get buttonBlock => 'Block';
 
   @override
+  String get buttonUnblock => 'Unblock';
+
+  @override
   String get snackBlocked => 'Blocked';
+
+  @override
+  String get snackUnblocked => 'Unblocked';
+
+  @override
+  String get unblockConfirmTitle => 'Unblock this person?';
+
+  @override
+  String get unblockConfirmMessage => 'They will be able to message you again.';
+
+  @override
+  String get snackSendBlocked =>
+      'You can\'t send messages to this person right now.';
+
+  @override
+  String get snackBlockedByPeer =>
+      'You can no longer send messages to this person.';
+
+  @override
+  String get profileBlockedByMeBanner => 'You\'ve blocked this user.';
 
   @override
   String get tabChats => 'Chats';

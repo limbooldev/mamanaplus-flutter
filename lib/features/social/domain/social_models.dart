@@ -149,6 +149,7 @@ class UserProfile {
     required this.postsCount,
     required this.following,
     required this.hiddenByMe,
+    required this.blockedByMe,
     required this.isSelf,
   });
 
@@ -162,11 +163,13 @@ class UserProfile {
   final int postsCount;
   final bool following;
   final bool hiddenByMe;
+  final bool blockedByMe;
   final bool isSelf;
 
   UserProfile copyWith({
     bool? following,
     bool? hiddenByMe,
+    bool? blockedByMe,
     bool? profileApproved,
     int? followersCount,
     int? followingCount,
@@ -183,6 +186,7 @@ class UserProfile {
       postsCount: postsCount ?? this.postsCount,
       following: following ?? this.following,
       hiddenByMe: hiddenByMe ?? this.hiddenByMe,
+      blockedByMe: blockedByMe ?? this.blockedByMe,
       isSelf: isSelf,
     );
   }
@@ -199,6 +203,7 @@ class UserProfile {
       postsCount: (j['posts_count'] as num?)?.toInt() ?? 0,
       following: j['following'] == true,
       hiddenByMe: j['hidden_by_me'] == true,
+      blockedByMe: j['blocked_by_me'] == true,
       isSelf: j['is_self'] == true,
     );
   }

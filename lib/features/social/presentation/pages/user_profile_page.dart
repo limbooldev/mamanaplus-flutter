@@ -31,7 +31,8 @@ class _UserProfilePageState extends State<UserProfilePage> {
   final List<SocialPost> _posts = [];
   bool _loadingProfile = true;
   bool _loadingPosts = false;
-  bool _blocked = false;
+  bool _blockedByMe = false;
+  bool _blockedByThem = false;
   String? _error;
   int _page = 1;
   bool _hasMore = true;
@@ -61,13 +62,14 @@ class _UserProfilePageState extends State<UserProfilePage> {
     setState(() {
       _loadingProfile = true;
       _error = null;
-      _blocked = false;
+      _blockedByMe = false;
+      _blockedByThem = false;
       _posts.clear();
       _page = 1;
       _hasMore = true;
     });
     await _loadProfile();
-    if (_error == null && !_blocked) {
+    if (_error == null && !_blockedByThem && !_blockedByMe) {
       await _loadPosts(reset: true);
     }
   }
@@ -79,14 +81,16 @@ class _UserProfilePageState extends State<UserProfilePage> {
       if (!mounted) return;
       setState(() {
         _profile = p;
+        _blockedByMe = p.blockedByMe;
         _loadingProfile = false;
       });
+      if (p.blockedByMe) return;
     } on DioException catch (e) {
       if (!mounted) return;
       final code = e.response?.statusCode;
       if (code == 403) {
         setState(() {
-          _blocked = true;
+          _blockedByThem = true;
           _loadingProfile = false;
           _error = 'You cannot view this profile.';
         });
@@ -134,7 +138,7 @@ class _UserProfilePageState extends State<UserProfilePage> {
       if (!mounted) return;
       if (e.response?.statusCode == 403) {
         setState(() {
-          _blocked = true;
+          _blockedByThem = true;
           _loadingPosts = false;
         });
         return;
@@ -196,14 +200,100 @@ class _UserProfilePageState extends State<UserProfilePage> {
   }
 
   Future<void> _messageUser() async {
+    if (_blockedByMe) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("You can't send messages to this person right now."),
+        ),
+      );
+      return;
+    }
     final messenger = ScaffoldMessenger.of(context);
     try {
       final dm = await context.read<ChatRepository>().createDm(widget.userId);
       final cid = (dm['id'] as num).toInt();
       if (!mounted) return;
       await context.pushThread<void>(cid, conversationType: 'private');
+    } on DioException catch (e) {
+      if (e.response?.statusCode == 403) {
+        messenger.showSnackBar(
+          const SnackBar(
+            content: Text("You can't send messages to this person right now."),
+          ),
+        );
+        return;
+      }
+      messenger.showSnackBar(SnackBar(content: Text(e.toString())));
     } catch (e) {
       messenger.showSnackBar(SnackBar(content: Text(e.toString())));
+    }
+  }
+
+  Future<void> _toggleBlock({required bool block}) async {
+    if (_actionBusy) return;
+    setState(() => _actionBusy = true);
+    final chatRepo = context.read<ChatRepository>();
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      if (block) {
+        await chatRepo.blockUser(widget.userId);
+        if (!mounted) return;
+        setState(() {
+          _blockedByMe = true;
+          _posts.clear();
+        });
+        messenger.showSnackBar(const SnackBar(content: Text('Blocked')));
+      } else {
+        await chatRepo.unblockUser(widget.userId);
+        if (!mounted) return;
+        setState(() => _blockedByMe = false);
+        messenger.showSnackBar(const SnackBar(content: Text('Unblocked')));
+        await _refreshAll();
+      }
+    } catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text(e.toString())));
+    } finally {
+      if (mounted) setState(() => _actionBusy = false);
+    }
+  }
+
+  Future<void> _confirmBlockUser() async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Block this person?'),
+        content: const Text(
+          'They will not be able to message you. You can unblock them anytime from their profile.',
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: AppColors.error),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Block'),
+          ),
+        ],
+      ),
+    );
+    if (ok == true && mounted) {
+      await _toggleBlock(block: true);
+    }
+  }
+
+  Future<void> _confirmUnblockUser() async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Unblock this person?'),
+        content: const Text('They will be able to message you again.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Unblock')),
+        ],
+      ),
+    );
+    if (ok == true && mounted) {
+      await _toggleBlock(block: false);
     }
   }
 
@@ -292,7 +382,7 @@ class _UserProfilePageState extends State<UserProfilePage> {
         body: const Center(child: CircularProgressIndicator()),
       );
     }
-    if (_blocked || _error != null) {
+    if (_blockedByThem || (_error != null && !_blockedByMe)) {
       return Scaffold(
         appBar: AppBar(title: const Text('Profile')),
         body: Center(
@@ -342,18 +432,54 @@ class _UserProfilePageState extends State<UserProfilePage> {
                       onSelected: (v) async {
                         if (v == 'hide') await _toggleHide(p);
                         if (v == 'report') await _reportUser();
+                        if (v == 'block') await _confirmBlockUser();
+                        if (v == 'unblock') await _confirmUnblockUser();
                       },
                       itemBuilder: (ctx) => [
                         PopupMenuItem(
                           value: 'hide',
                           child: Text(p.hiddenByMe ? 'Unhide from feed' : 'Hide from feed'),
                         ),
+                        PopupMenuItem(
+                          value: _blockedByMe ? 'unblock' : 'block',
+                          child: Text(_blockedByMe ? 'Unblock' : 'Block'),
+                        ),
                         const PopupMenuItem(value: 'report', child: Text('Report user')),
                       ],
                     ),
                 ],
               ),
-              SliverToBoxAdapter(child: _igProfileBlock(context, theme, p, isSelf: isSelf, me: me)),
+              if (_blockedByMe)
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                    child: Material(
+                      color: theme.colorScheme.errorContainer.withValues(alpha: 0.35),
+                      borderRadius: BorderRadius.circular(8),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                        child: Text(
+                          "You've blocked this user.",
+                          style: GoogleFonts.inter(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w500,
+                            color: theme.colorScheme.onErrorContainer,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              SliverToBoxAdapter(
+                child: _igProfileBlock(
+                  context,
+                  theme,
+                  p,
+                  isSelf: isSelf,
+                  me: me,
+                  blockedByMe: _blockedByMe,
+                ),
+              ),
               const SliverToBoxAdapter(child: _IgPostsTabStrip()),
               if (_posts.isEmpty && !_loadingPosts)
                 SliverToBoxAdapter(
@@ -437,6 +563,7 @@ class _UserProfilePageState extends State<UserProfilePage> {
     UserProfile p, {
     required bool isSelf,
     required int? me,
+    required bool blockedByMe,
   }) {
     final fmt = NumberFormat('#,###');
     final onSurface = theme.colorScheme.onSurface;
@@ -637,7 +764,7 @@ class _UserProfilePageState extends State<UserProfilePage> {
                 ),
               ],
             )
-          else if (me != null)
+          else if (me != null && !blockedByMe)
             Row(
               children: [
                 Expanded(

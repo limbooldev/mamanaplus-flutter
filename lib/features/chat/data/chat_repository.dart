@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:dio/dio.dart';
 import 'package:drift/drift.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
@@ -49,6 +50,12 @@ class ChatRepository {
       StreamController<int>.broadcast();
 
   Stream<int> get outboxChangedFor => _outboxChangesCtrl.stream;
+
+  /// Emits [conversationId] when the server rejects a send with HTTP 403 blocked.
+  final StreamController<int> _sendBlockedByPeerCtrl =
+      StreamController<int>.broadcast();
+
+  Stream<int> get sendBlockedByPeerFor => _sendBlockedByPeerCtrl.stream;
 
   /// Prevents the same outbox row from being delivered twice when reconnect
   /// triggers concurrent flushes and an in-flight optimistic send overlaps.
@@ -385,8 +392,13 @@ class ChatRepository {
         await cacheMessages(current.conversationId, [m]);
       }
       await _deleteOutbox(current.localId, current.conversationId);
-    } catch (_) {
-      await _markOutboxFailed(row.localId, row.conversationId);
+    } catch (e) {
+      if (_isSendBlockedError(e)) {
+        _sendBlockedByPeerCtrl.add(row.conversationId);
+        await _deleteOutbox(row.localId, row.conversationId);
+      } else {
+        await _markOutboxFailed(row.localId, row.conversationId);
+      }
     } finally {
       _endOutboxSend(row.localId);
     }
@@ -1023,6 +1035,20 @@ class ChatRepository {
 
   Future<void> unblockUser(int userId) => _remote.unblockUser(userId);
 
+  Future<Map<String, dynamic>> fetchUserProfile(int userId) =>
+      _remote.fetchUserProfile(userId);
+
+  bool _isSendBlockedError(Object e) {
+    if (e is! DioException) return false;
+    if (e.response?.statusCode != 403) return false;
+    final data = e.response?.data;
+    if (data is Map) {
+      final err = data['error']?.toString();
+      if (err == 'blocked') return true;
+    }
+    return e.response?.statusCode == 403;
+  }
+
   /// Returns users from `GET /v1/users/search` (id + display_name).
   Future<List<Map<String, dynamic>>> searchUsersDirectory(
     String q, {
@@ -1065,6 +1091,7 @@ class ChatRepository {
   void dispose() {
     _reconnectSub?.cancel();
     _outboxChangesCtrl.close();
+    _sendBlockedByPeerCtrl.close();
   }
 }
 

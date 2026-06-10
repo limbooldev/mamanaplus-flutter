@@ -124,6 +124,8 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
   Timer? _stickyDateHideTimer;
   var _scrollIdleListenerAttached = false;
   var _stickyDateUpdateScheduled = false;
+  int _lastBlockedSendAttempts = 0;
+  var _wasBlockedByPeer = false;
 
   static const _atBottomThreshold = 150.0;
   static const _scrollToBottomLayoutPasses = 8;
@@ -1045,14 +1047,24 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
             },
           ),
           BlocBuilder<ThreadCubit, ThreadState>(
-            buildWhen: (a, b) => a.dmPeerUserId != b.dmPeerUserId,
+            buildWhen: (a, b) =>
+                a.dmPeerUserId != b.dmPeerUserId ||
+                a.peerBlockedByMe != b.peerBlockedByMe,
             builder: (context, state) {
               final peerId = state.dmPeerUserId;
               if (peerId == null) return const SizedBox.shrink();
               return IconButton(
-                icon: const Icon(Icons.block_outlined),
-                tooltip: l10n.buttonBlock,
-                onPressed: () => _confirmBlockDmPeer(context, peerId),
+                icon: Icon(
+                  state.peerBlockedByMe
+                      ? Icons.block
+                      : Icons.block_outlined,
+                ),
+                tooltip: state.peerBlockedByMe
+                    ? l10n.buttonUnblock
+                    : l10n.buttonBlock,
+                onPressed: () => state.peerBlockedByMe
+                    ? _confirmUnblockDmPeer(context)
+                    : _confirmBlockDmPeer(context, peerId),
               );
             },
           ),
@@ -1082,12 +1094,29 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
         children: [
           Expanded(
             child: BlocConsumer<ThreadCubit, ThreadState>(
-              listenWhen: (p, c) => p.error != c.error,
+              listenWhen: (p, c) =>
+                  p.error != c.error ||
+                  p.blockedSendAttempts != c.blockedSendAttempts ||
+                  p.blockedByPeer != c.blockedByPeer,
               listener: (context, state) {
                 if (state.error != null) {
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(content: Text(state.error!)),
                   );
+                }
+                if (state.blockedSendAttempts != _lastBlockedSendAttempts) {
+                  _lastBlockedSendAttempts = state.blockedSendAttempts;
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text(l10n.snackSendBlocked)),
+                  );
+                }
+                if (state.blockedByPeer && !_wasBlockedByPeer) {
+                  _wasBlockedByPeer = true;
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text(l10n.snackBlockedByPeer)),
+                  );
+                } else if (!state.blockedByPeer) {
+                  _wasBlockedByPeer = false;
                 }
               },
               builder: (context, state) {
@@ -2321,11 +2350,56 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
       ),
     );
     if (ok == true && context.mounted) {
-      await context.read<ChatRepository>().blockUser(peerUserId);
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(l10n.snackBlocked)),
-        );
+      try {
+        await context.read<ThreadCubit>().blockPeer();
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(l10n.snackBlocked)),
+          );
+        }
+      } catch (e) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(e.toString())),
+          );
+        }
+      }
+    }
+  }
+
+  Future<void> _confirmUnblockDmPeer(BuildContext context) async {
+    final l10n = AppLocalizations.of(context)!;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(l10n.unblockConfirmTitle),
+        content: Text(l10n.unblockConfirmMessage),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text(l10n.buttonCancel),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text(l10n.buttonUnblock),
+          ),
+        ],
+      ),
+    );
+    if (ok == true && context.mounted) {
+      try {
+        await context.read<ThreadCubit>().unblockPeer();
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(l10n.snackUnblocked)),
+          );
+        }
+      } catch (e) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(e.toString())),
+          );
+        }
       }
     }
   }

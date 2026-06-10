@@ -216,6 +216,11 @@ class ChatRemoteDataSource {
     await _dio.delete<void>('/v1/users/$userId/block');
   }
 
+  Future<Map<String, dynamic>> fetchUserProfile(int userId) async {
+    final res = await _dio.get<Map<String, dynamic>>('/v1/users/$userId/profile');
+    return res.data!;
+  }
+
   /// Directory search for pickers. Server requires [q] length ≥ 2 (after trim).
   Future<Map<String, dynamic>> searchUsers({
     required String q,

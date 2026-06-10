@@ -535,7 +535,7 @@ abstract class AppLocalizations {
   /// No description provided for @blockPeerConfirmMessage.
   ///
   /// In en, this message translates to:
-  /// **'They will not be able to message you. You can unblock later from settings when that is available.'**
+  /// **'They will not be able to message you. You can unblock them anytime from this chat or their profile.'**
   String get blockPeerConfirmMessage;
 
   /// No description provided for @buttonBlock.
@@ -544,11 +544,53 @@ abstract class AppLocalizations {
   /// **'Block'**
   String get buttonBlock;
 
+  /// No description provided for @buttonUnblock.
+  ///
+  /// In en, this message translates to:
+  /// **'Unblock'**
+  String get buttonUnblock;
+
   /// No description provided for @snackBlocked.
   ///
   /// In en, this message translates to:
   /// **'Blocked'**
   String get snackBlocked;
+
+  /// No description provided for @snackUnblocked.
+  ///
+  /// In en, this message translates to:
+  /// **'Unblocked'**
+  String get snackUnblocked;
+
+  /// No description provided for @unblockConfirmTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Unblock this person?'**
+  String get unblockConfirmTitle;
+
+  /// No description provided for @unblockConfirmMessage.
+  ///
+  /// In en, this message translates to:
+  /// **'They will be able to message you again.'**
+  String get unblockConfirmMessage;
+
+  /// No description provided for @snackSendBlocked.
+  ///
+  /// In en, this message translates to:
+  /// **'You can\'t send messages to this person right now.'**
+  String get snackSendBlocked;
+
+  /// No description provided for @snackBlockedByPeer.
+  ///
+  /// In en, this message translates to:
+  /// **'You can no longer send messages to this person.'**
+  String get snackBlockedByPeer;
+
+  /// No description provided for @profileBlockedByMeBanner.
+  ///
+  /// In en, this message translates to:
+  /// **'You\'ve blocked this user.'**
+  String get profileBlockedByMeBanner;
 
   /// No description provided for @tabChats.
   ///

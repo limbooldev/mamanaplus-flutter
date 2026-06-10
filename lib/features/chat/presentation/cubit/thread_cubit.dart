@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:dio/dio.dart';
 import 'package:equatable/equatable.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:mime/mime.dart';
@@ -162,6 +163,9 @@ class ThreadState extends Equatable {
     this.memberPresence = const {},
     this.messageSearchQuery,
     this.reactions = const {},
+    this.peerBlockedByMe = false,
+    this.blockedByPeer = false,
+    this.blockedSendAttempts = 0,
   });
 
   final List<LocalMessage> messages;
@@ -207,6 +211,15 @@ class ThreadState extends Equatable {
   /// updated in real time via `reaction_added` / `reaction_removed` WS events.
   final Map<int, List<MessageReaction>> reactions;
 
+  /// Private DM: viewer has blocked the peer.
+  final bool peerBlockedByMe;
+
+  /// Private DM: peer has blocked the viewer (or messaging is forbidden).
+  final bool blockedByPeer;
+
+  /// Increments on each blocked send attempt to trigger UI toast listeners.
+  final int blockedSendAttempts;
+
   ThreadState copyWith({
     List<LocalMessage>? messages,
     List<MessageOutboxData>? pending,
@@ -227,6 +240,9 @@ class ThreadState extends Equatable {
     String? messageSearchQuery,
     bool clearMessageSearch = false,
     Map<int, List<MessageReaction>>? reactions,
+    bool? peerBlockedByMe,
+    bool? blockedByPeer,
+    int? blockedSendAttempts,
   }) =>
       ThreadState(
         messages: messages ?? this.messages,
@@ -250,6 +266,9 @@ class ThreadState extends Equatable {
         messageSearchQuery:
             clearMessageSearch ? null : (messageSearchQuery ?? this.messageSearchQuery),
         reactions: reactions ?? this.reactions,
+        peerBlockedByMe: peerBlockedByMe ?? this.peerBlockedByMe,
+        blockedByPeer: blockedByPeer ?? this.blockedByPeer,
+        blockedSendAttempts: blockedSendAttempts ?? this.blockedSendAttempts,
       );
 
   /// Private DM: max peer read cursor from `receipt_update` — double-check when read up to [messageId].
@@ -315,6 +334,9 @@ class ThreadState extends Equatable {
         memberPresence,
         messageSearchQuery,
         reactions,
+        peerBlockedByMe,
+        blockedByPeer,
+        blockedSendAttempts,
       ];
 }
 
@@ -335,6 +357,7 @@ class ThreadCubit extends Cubit<ThreadState> {
   ChatRepository get chatRepository => _repo;
   StreamSubscription<Map<String, dynamic>>? _sub;
   StreamSubscription<int>? _outboxSub;
+  StreamSubscription<int>? _sendBlockedSub;
   StreamSubscription<void>? _reconnectSub;
   bool _typingActive = false;
   Future<void> _socketEventChain = Future<void>.value();
@@ -511,6 +534,8 @@ class ThreadCubit extends Cubit<ThreadState> {
     unawaited(_loadMyDisplayName());
     if (_resolvedConversationType == 'group') {
       unawaited(_loadGroupPresence());
+    } else if (_resolvedConversationType == 'private') {
+      unawaited(_loadDmBlockStatus());
     }
     await _reloadMessagesFromRemote();
 
@@ -519,6 +544,12 @@ class ThreadCubit extends Cubit<ThreadState> {
     _outboxSub =
         _repo.outboxChangedFor.where((id) => id == conversationId).listen((_) {
       unawaited(_reloadLocal());
+    });
+
+    _sendBlockedSub = _repo.sendBlockedByPeerFor
+        .where((id) => id == conversationId)
+        .listen((_) {
+      emit(state.copyWith(blockedByPeer: true, error: null));
     });
 
     // Every time the WebSocket re-establishes, re-fetch messages from REST. The
@@ -566,6 +597,51 @@ class ThreadCubit extends Cubit<ThreadState> {
         emit(state.copyWith(dmPeerUserId: id));
       }
     } catch (_) {}
+  }
+
+  Future<void> _loadDmBlockStatus() async {
+    var peerId = state.dmPeerUserId;
+    if (peerId == null) {
+      await _resolveDmPeerUserId();
+      peerId = state.dmPeerUserId;
+    }
+    if (peerId == null) return;
+    try {
+      final profile = await _repo.fetchUserProfile(peerId);
+      if (!isClosed) {
+        emit(state.copyWith(
+          peerBlockedByMe: profile['blocked_by_me'] == true,
+        ));
+      }
+    } on DioException catch (e) {
+      if (e.response?.statusCode == 403 && !isClosed) {
+        emit(state.copyWith(blockedByPeer: true));
+      }
+    } catch (_) {}
+  }
+
+  Future<void> blockPeer() async {
+    final peerId = state.dmPeerUserId;
+    if (peerId == null) return;
+    await _repo.blockUser(peerId);
+    emit(state.copyWith(peerBlockedByMe: true, error: null));
+  }
+
+  Future<void> unblockPeer() async {
+    final peerId = state.dmPeerUserId;
+    if (peerId == null) return;
+    await _repo.unblockUser(peerId);
+    emit(state.copyWith(peerBlockedByMe: false, error: null));
+  }
+
+  bool _isMessagingBlocked() =>
+      state.peerBlockedByMe || state.blockedByPeer;
+
+  void _notifyBlockedSendAttempt() {
+    emit(state.copyWith(
+      blockedSendAttempts: state.blockedSendAttempts + 1,
+      error: null,
+    ));
   }
 
   Future<void> _loadMyDisplayName() async {
@@ -785,6 +861,10 @@ class ThreadCubit extends Cubit<ThreadState> {
   Future<void> send(String text) async {
     final body = text.trim();
     if (body.isEmpty) return;
+    if (_isMessagingBlocked()) {
+      _notifyBlockedSendAttempt();
+      return;
+    }
     final replyId = state.replyTo?.id;
     // Clear the reply chip immediately — bubble already appears via outbox.
     emit(state.copyWith(replyTo: null, error: null));
@@ -803,6 +883,10 @@ class ThreadCubit extends Cubit<ThreadState> {
     int? durationMs,
     String? caption,
   }) async {
+    if (_isMessagingBlocked()) {
+      _notifyBlockedSendAttempt();
+      return;
+    }
     final mime = lookupMimeType(path) ?? 'application/octet-stream';
     final replyId = state.replyTo?.id;
     emit(state.copyWith(replyTo: null, error: null));
@@ -819,6 +903,10 @@ class ThreadCubit extends Cubit<ThreadState> {
   }
 
   Future<void> sendSticker({required String stickerId, required String emoji}) async {
+    if (_isMessagingBlocked()) {
+      _notifyBlockedSendAttempt();
+      return;
+    }
     final body = jsonEncode({'sticker_id': stickerId, 'emoji': emoji});
     final replyId = state.replyTo?.id;
     emit(state.copyWith(replyTo: null, error: null));
@@ -841,6 +929,10 @@ class ThreadCubit extends Cubit<ThreadState> {
     required String kind,
   }) async {
     if (url.trim().isEmpty || gifId.trim().isEmpty) return;
+    if (_isMessagingBlocked()) {
+      _notifyBlockedSendAttempt();
+      return;
+    }
     final body = jsonEncode({
       'gif_id': gifId,
       'url': url,
@@ -912,6 +1004,7 @@ class ThreadCubit extends Cubit<ThreadState> {
     }
     _sub?.cancel();
     _outboxSub?.cancel();
+    _sendBlockedSub?.cancel();
     _reconnectSub?.cancel();
     return super.close();
   }
