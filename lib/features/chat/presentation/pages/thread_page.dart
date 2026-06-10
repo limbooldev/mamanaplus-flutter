@@ -96,7 +96,8 @@ class _ThreadScaffold extends StatefulWidget {
   State<_ThreadScaffold> createState() => _ThreadScaffoldState();
 }
 
-class _ThreadScaffoldState extends State<_ThreadScaffold> {
+class _ThreadScaffoldState extends State<_ThreadScaffold>
+    with WidgetsBindingObserver {
   final _composerController = TextEditingController();
   final _composerFocusNode = FocusNode();
   late final InMemoryChatController _chatController;
@@ -136,12 +137,20 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _chatController = InMemoryChatController();
     _listScrollController = ScrollController();
     _listScrollController.addListener(_onListScroll);
     _composerController.addListener(_handleComposerTextChanged);
     _composerFocusNode.addListener(_onComposerFocusChanged);
     dismissConversationNotification(widget.conversationId);
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      dismissConversationNotification(widget.conversationId);
+    }
   }
 
   void _onListScroll() {
@@ -374,6 +383,7 @@ class _ThreadScaffoldState extends State<_ThreadScaffold> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _scrollHighlightTimer?.cancel();
     _stickyDateHideTimer?.cancel();
     _typingIdleTimer?.cancel();

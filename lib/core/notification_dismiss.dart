@@ -30,10 +30,19 @@ Future<void> dismissConversationNotification(int conversationId) async {
     return;
   }
   if (Platform.isAndroid) {
-    await _plugin
+    final androidPlugin = _plugin
         .resolvePlatformSpecificImplementation<
-            AndroidFlutterLocalNotificationsPlugin>()
-        ?.cancel(0, tag: 'conv-$conversationId');
+            AndroidFlutterLocalNotificationsPlugin>();
+    if (androidPlugin == null) {
+      return;
+    }
+    final tag = 'conv-$conversationId';
+    final active = await androidPlugin.getActiveNotifications();
+    for (final n in active) {
+      if (n.tag == tag) {
+        await androidPlugin.cancel(n.id ?? 0, tag: tag);
+      }
+    }
   } else if (Platform.isIOS) {
     await _plugin.cancelAll();
   }
