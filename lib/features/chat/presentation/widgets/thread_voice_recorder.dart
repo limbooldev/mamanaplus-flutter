@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:just_audio/just_audio.dart';
@@ -120,6 +121,7 @@ class ThreadVoiceRecorderController extends ChangeNotifier {
 
   static const cancelDragThreshold = 80.0;
   static const lockDragThreshold = 80.0;
+  static const maxRecordingDuration = Duration(minutes: 2);
 
   VoiceRecorderUiState _state = VoiceRecorderUiState.idle;
   VoiceRecorderUiState get state => _state;
@@ -130,7 +132,6 @@ class ThreadVoiceRecorderController extends ChangeNotifier {
   Duration get duration => _duration;
 
   Timer? _timer;
-  Stopwatch? _stopwatch;
   int _recordSession = 0;
   StreamSubscription<Amplitude>? _amplitudeSub;
   final List<double> _amplitudeSamples = [];
@@ -159,7 +160,6 @@ class ThreadVoiceRecorderController extends ChangeNotifier {
   @override
   void dispose() {
     _timer?.cancel();
-    _stopwatch?.stop();
     unawaited(_amplitudeSub?.cancel());
     unawaited(_disposePreviewPlayer());
     _backend.dispose();
@@ -208,15 +208,20 @@ class ThreadVoiceRecorderController extends ChangeNotifier {
         notifyListeners();
       }
     });
-    _stopwatch = Stopwatch()..start();
-    _timer = Timer.periodic(const Duration(seconds: 1), (_) {
-      final sw = _stopwatch;
-      if (sw == null) return;
-      _duration = sw.elapsed;
-      notifyListeners();
-    });
+    _timer = Timer.periodic(const Duration(seconds: 1), (_) => _onRecordingTimerTick());
     notifyListeners();
   }
+
+  void _onRecordingTimerTick() {
+    _duration += const Duration(seconds: 1);
+    notifyListeners();
+    if (_duration >= maxRecordingDuration) {
+      unawaited(_finishAndSend());
+    }
+  }
+
+  @visibleForTesting
+  void tickRecordingSecondForTest() => _onRecordingTimerTick();
 
   /// [totalOffset] is finger position minus pointer-down position.
   void updateDragFromStart(Offset totalOffset, {required bool isRtl}) {
@@ -357,8 +362,6 @@ class ThreadVoiceRecorderController extends ChangeNotifier {
   Future<void> _stopTimerAndAmplitude() async {
     _timer?.cancel();
     _timer = null;
-    _stopwatch?.stop();
-    _stopwatch = null;
     await _amplitudeSub?.cancel();
     _amplitudeSub = null;
   }
@@ -407,8 +410,6 @@ class ThreadVoiceRecorderController extends ChangeNotifier {
     _recordSession++;
     _timer?.cancel();
     _timer = null;
-    _stopwatch?.stop();
-    _stopwatch = null;
     _state = VoiceRecorderUiState.idle;
     _filePath = null;
     _duration = Duration.zero;
@@ -586,6 +587,9 @@ class ThreadVoiceRecorderHoldContent extends StatelessWidget {
     final isRtl = Directionality.of(context) == TextDirection.rtl;
     final cancelSlide = isRtl ? controller.dragOffset.dx : -controller.dragOffset.dx;
     final slideX = cancelSlide.clamp(0.0, 120.0);
+    final remaining =
+        ThreadVoiceRecorderController.maxRecordingDuration - controller.duration;
+    final nearLimit = remaining <= const Duration(seconds: 10);
 
     return SizedBox(
       height: 48,
@@ -594,9 +598,11 @@ class ThreadVoiceRecorderHoldContent extends StatelessWidget {
           _PulsingDot(color: AppColors.error),
           const SizedBox(width: 8),
           Text(
-            formatVoiceDuration(controller.duration),
+            nearLimit
+                ? '0:${remaining.inSeconds.toString().padLeft(2, '0')}'
+                : formatVoiceDuration(controller.duration),
             style: TextStyle(
-              color: cancelArmed ? AppColors.error : onSurfaceColor,
+              color: (cancelArmed || nearLimit) ? AppColors.error : onSurfaceColor,
               fontSize: 16,
               fontWeight: FontWeight.w500,
             ),

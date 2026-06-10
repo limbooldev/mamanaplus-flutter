@@ -134,6 +134,25 @@ void main() {
       expect(backend.isRecording, isFalse);
     });
 
+    test('auto sends when max recording duration is reached', () async {
+      final c = newController();
+      addTearDown(c.dispose);
+
+      await c.beginRecording();
+      expect(c.state, VoiceRecorderUiState.recording);
+
+      final maxSeconds = ThreadVoiceRecorderController.maxRecordingDuration.inSeconds;
+      for (var i = 0; i < maxSeconds; i++) {
+        c.tickRecordingSecondForTest();
+      }
+      await Future<void>.delayed(Duration.zero);
+
+      expect(c.state, VoiceRecorderUiState.idle);
+      expect(sentPath, '/tmp/voice_test.m4a');
+      expect(sentDuration, ThreadVoiceRecorderController.maxRecordingDuration);
+      expect(backend.isRecording, isFalse);
+    });
+
     test('formatVoiceDuration formats mm:ss', () {
       expect(formatVoiceDuration(const Duration(seconds: 37)), '0:37');
       expect(formatVoiceDuration(const Duration(minutes: 1, seconds: 5)), '1:05');
