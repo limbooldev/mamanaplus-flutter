@@ -129,6 +129,7 @@ class _ThreadScaffoldState extends State<_ThreadScaffold>
   var _wasBlockedByPeer = false;
 
   static const _atBottomThreshold = 150.0;
+  static const _loadOlderThreshold = 300.0;
   static const _scrollToBottomLayoutPasses = 8;
   static const _groupAvatarSize = 32.0;
   static const _groupAvatarGap = 8.0;
@@ -164,6 +165,10 @@ class _ThreadScaffoldState extends State<_ThreadScaffold>
         _isAtBottom = atBottom;
         if (atBottom) _unreadInboundCount = 0;
       });
+    }
+    // Default (non-reversed) list: oldest messages at scroll offset 0.
+    if (pos.pixels <= _loadOlderThreshold) {
+      context.read<ThreadCubit>().loadOlderMessages();
     }
     if (pos.isScrollingNotifier.value) {
       _scheduleStickyDateUpdate();
@@ -1909,6 +1914,46 @@ class _ThreadScaffoldState extends State<_ThreadScaffold>
                         label: _stickyDateLabel,
                       ),
                     ),
+                    if (state.loadingOlder)
+                      const Positioned(
+                        top: 0,
+                        left: 0,
+                        right: 0,
+                        child: Padding(
+                          padding: EdgeInsets.symmetric(vertical: 12),
+                          child: Center(
+                            child: SizedBox(
+                              width: 22,
+                              height: 22,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            ),
+                          ),
+                        ),
+                      ),
+                    if (!state.loadingOlder &&
+                        !state.hasMore &&
+                        !state.loading &&
+                        state.messages.isNotEmpty &&
+                        state.messageSearchQuery == null)
+                      Positioned(
+                        top: 0,
+                        left: 0,
+                        right: 0,
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 10),
+                          child: Center(
+                            child: Text(
+                              'Beginning of conversation',
+                              style: GoogleFonts.inter(
+                                fontSize: 12,
+                                color: isDark
+                                    ? AppColors.subtitleDark
+                                    : AppColors.subtitleLight,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
                   ],
                 );
               },

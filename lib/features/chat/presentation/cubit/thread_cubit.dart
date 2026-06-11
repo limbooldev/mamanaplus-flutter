@@ -166,6 +166,9 @@ class ThreadState extends Equatable {
     this.peerBlockedByMe = false,
     this.blockedByPeer = false,
     this.blockedSendAttempts = 0,
+    this.hasMore = false,
+    this.loadingOlder = false,
+    this.oldestCursor,
   });
 
   final List<LocalMessage> messages;
@@ -220,6 +223,15 @@ class ThreadState extends Equatable {
   /// Increments on each blocked send attempt to trigger UI toast listeners.
   final int blockedSendAttempts;
 
+  /// More older messages available on the server (cursor pagination).
+  final bool hasMore;
+
+  /// True while fetching the next page of older messages.
+  final bool loadingOlder;
+
+  /// `next_cursor` from the last page; passed as `cursor` on the next fetch.
+  final String? oldestCursor;
+
   ThreadState copyWith({
     List<LocalMessage>? messages,
     List<MessageOutboxData>? pending,
@@ -243,6 +255,10 @@ class ThreadState extends Equatable {
     bool? peerBlockedByMe,
     bool? blockedByPeer,
     int? blockedSendAttempts,
+    bool? hasMore,
+    bool? loadingOlder,
+    String? oldestCursor,
+    bool clearOldestCursor = false,
   }) =>
       ThreadState(
         messages: messages ?? this.messages,
@@ -269,6 +285,10 @@ class ThreadState extends Equatable {
         peerBlockedByMe: peerBlockedByMe ?? this.peerBlockedByMe,
         blockedByPeer: blockedByPeer ?? this.blockedByPeer,
         blockedSendAttempts: blockedSendAttempts ?? this.blockedSendAttempts,
+        hasMore: hasMore ?? this.hasMore,
+        loadingOlder: loadingOlder ?? this.loadingOlder,
+        oldestCursor:
+            clearOldestCursor ? null : (oldestCursor ?? this.oldestCursor),
       );
 
   /// Private DM: max peer read cursor from `receipt_update` — double-check when read up to [messageId].
@@ -337,6 +357,9 @@ class ThreadState extends Equatable {
         peerBlockedByMe,
         blockedByPeer,
         blockedSendAttempts,
+        hasMore,
+        loadingOlder,
+        oldestCursor,
       ];
 }
 
@@ -764,6 +787,8 @@ class ThreadCubit extends Cubit<ThreadState> {
           .map((e) => e as Map<String, dynamic>)
           .toList();
       final newReactions = _parseReactionsFromItems(items);
+      final hasMore = data['has_more'] == true;
+      final oldestCursor = data['next_cursor'] as String?;
       await _repo.cacheMessages(conversationId, items);
       final local = await _repo.loadMessagesLocal(conversationId);
       final pending = await _repo.loadOutboxLocal(conversationId);
@@ -771,6 +796,9 @@ class ThreadCubit extends Cubit<ThreadState> {
         messages: local,
         pending: pending,
         loading: false,
+        hasMore: hasMore,
+        oldestCursor: oldestCursor,
+        clearOldestCursor: oldestCursor == null,
         reactions: {...state.reactions, ...newReactions},
       ));
       if (local.isNotEmpty) {
@@ -788,6 +816,39 @@ class ThreadCubit extends Cubit<ThreadState> {
       } else {
         emit(state.copyWith(loading: false, error: e.toString()));
       }
+    }
+  }
+
+  /// Fetches the next page of older messages when the user scrolls toward history.
+  Future<void> loadOlderMessages() async {
+    if (!state.hasMore || state.loading || state.loadingOlder) return;
+    if (state.messageSearchQuery != null) return;
+    emit(state.copyWith(loadingOlder: true, error: null));
+    try {
+      final data = await _repo.fetchMessages(
+        conversationId,
+        cursor: state.oldestCursor,
+        direction: 'older',
+      );
+      final items = (data['items'] as List<dynamic>? ?? [])
+          .map((e) => e as Map<String, dynamic>)
+          .toList();
+      await _repo.cacheMessages(conversationId, items);
+      final local = await _repo.loadMessagesLocal(conversationId);
+      final pending = await _repo.loadOutboxLocal(conversationId);
+      final newReactions = _parseReactionsFromItems(items);
+      final oldestCursor = data['next_cursor'] as String?;
+      emit(state.copyWith(
+        messages: local,
+        pending: pending,
+        loadingOlder: false,
+        hasMore: data['has_more'] == true,
+        oldestCursor: oldestCursor,
+        clearOldestCursor: oldestCursor == null,
+        reactions: {...state.reactions, ...newReactions},
+      ));
+    } catch (e) {
+      emit(state.copyWith(loadingOlder: false, error: e.toString()));
     }
   }
 
