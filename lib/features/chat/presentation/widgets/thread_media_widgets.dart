@@ -433,8 +433,8 @@ class _ChatFullscreenVideoPageState extends State<_ChatFullscreenVideoPage> {
   }
 }
 
-/// Inline image bubble: pending uploads use [Image.file]; server media streams via
-/// authenticated [Image.network] using a fresh access token from [ChatRepository].
+/// Inline image bubble: pending uploads use [Image.file]; server media is downloaded
+/// once via [ChatRepository.downloadImageToCache] then rendered from disk.
 class ThreadImageBubble extends StatefulWidget {
   const ThreadImageBubble({
     super.key,
@@ -457,6 +457,7 @@ class ThreadImageBubble extends StatefulWidget {
 
 class _ThreadImageBubbleState extends State<ThreadImageBubble> {
   File? _localFile;
+  File? _cachedFile;
   Map<String, String>? _authHeaders;
   var _useLocalFile = false;
   var _authReady = false;
@@ -494,6 +495,7 @@ class _ThreadImageBubbleState extends State<ThreadImageBubble> {
       _authReady = false;
       _networkFailed = false;
       _localFile = null;
+      _cachedFile = null;
       _authHeaders = null;
       _useLocalFile = false;
     });
@@ -512,6 +514,16 @@ class _ThreadImageBubbleState extends State<ThreadImageBubble> {
       }
       if (!uri.isScheme('http') && !uri.isScheme('https')) {
         throw UnsupportedError('Unsupported image URI: ${widget.source}');
+      }
+      final objectKey = parseObjectKeyFromMediaDownloadUrl(widget.source);
+      if (objectKey != null) {
+        final file = await widget.chatRepository.downloadImageToCache(objectKey);
+        if (!mounted) return;
+        setState(() {
+          _cachedFile = file;
+          _authReady = true;
+        });
+        return;
       }
       final token =
           await widget.chatRepository.getFreshAccessToken() ?? widget.accessToken;
@@ -553,6 +565,15 @@ class _ThreadImageBubbleState extends State<ThreadImageBubble> {
     } else if (_useLocalFile && _localFile != null) {
       child = Image.file(
         _localFile!,
+        width: kChatInlineImageW,
+        height: kChatInlineImageH,
+        fit: BoxFit.cover,
+        errorBuilder: (_, __, ___) =>
+            _placeholder(icon: Icons.broken_image_outlined, onTap: _prepare),
+      );
+    } else if (_cachedFile != null) {
+      child = Image.file(
+        _cachedFile!,
         width: kChatInlineImageW,
         height: kChatInlineImageH,
         fit: BoxFit.cover,
