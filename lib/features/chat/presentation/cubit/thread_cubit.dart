@@ -750,7 +750,30 @@ class ThreadCubit extends Cubit<ThreadState> {
   Future<void> _reloadLocal() async {
     final local = await _repo.loadMessagesLocal(conversationId);
     final pending = await _repo.loadOutboxLocal(conversationId);
-    emit(state.copyWith(messages: local, pending: pending));
+    // Parse reactions cached alongside each message so the reaction bars are
+    // rendered on first paint (from local DB) rather than appearing only after
+    // the remote fetch completes, which caused messages to jump down.
+    final cachedReactions = <int, List<MessageReaction>>{};
+    for (final msg in local) {
+      final json = msg.reactionsJson;
+      if (json != null && json.isNotEmpty) {
+        try {
+          final list = jsonDecode(json) as List<dynamic>;
+          if (list.isNotEmpty) {
+            cachedReactions[msg.id] = list
+                .map((e) => MessageReaction.fromJson(e as Map<String, dynamic>))
+                .toList();
+          }
+        } catch (_) {}
+      }
+    }
+    emit(state.copyWith(
+      messages: local,
+      pending: pending,
+      reactions: cachedReactions.isNotEmpty
+          ? {...state.reactions, ...cachedReactions}
+          : state.reactions,
+    ));
   }
 
   Future<void> _syncNewerAfterReconnect() async {

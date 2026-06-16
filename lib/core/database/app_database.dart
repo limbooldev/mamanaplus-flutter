@@ -35,6 +35,9 @@ class LocalMessages extends Table {
   /// From API `receipt`: for own messages in a DM = peer delivery/read; for others = local read state.
   DateTimeColumn get receiptDeliveredAt => dateTime().nullable()();
   DateTimeColumn get receiptReadAt => dateTime().nullable()();
+  /// Serialised JSON array of `{user_id, emoji}` objects from the API `reactions` field.
+  /// Cached so reactions are available immediately from local DB before the remote fetch completes.
+  TextColumn get reactionsJson => text().nullable()();
   @override
   Set<Column> get primaryKey => {id};
 }
@@ -83,7 +86,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(_openConnection());
 
   @override
-  int get schemaVersion => 8;
+  int get schemaVersion => 9;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -120,6 +123,9 @@ class AppDatabase extends _$AppDatabase {
           }
           if (from < 8) {
             await m.addColumn(messageOutbox, messageOutbox.mediaCaption);
+          }
+          if (from < 9) {
+            await m.addColumn(localMessages, localMessages.reactionsJson);
           }
         },
       );

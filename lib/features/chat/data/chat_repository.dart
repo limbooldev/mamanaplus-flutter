@@ -506,6 +506,10 @@ class ChatRepository {
             recRead = prev.receiptReadAt;
           }
         }
+        final rawReactions = m['reactions'] as List<dynamic>?;
+        final reactionsJson = (rawReactions != null && rawReactions.isNotEmpty)
+            ? jsonEncode(rawReactions)
+            : null;
         b.insert(
           _db.localMessages,
           LocalMessagesCompanion.insert(
@@ -524,6 +528,7 @@ class ChatRepository {
             editedAt: Value(editedAt),
             receiptDeliveredAt: Value(recDel),
             receiptReadAt: Value(recRead),
+            reactionsJson: Value(reactionsJson),
           ),
           mode: InsertMode.insertOrReplace,
         );

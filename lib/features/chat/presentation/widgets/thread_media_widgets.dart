@@ -636,53 +636,10 @@ class ThreadVideoBubble extends StatefulWidget {
 }
 
 class _ThreadVideoBubbleState extends State<ThreadVideoBubble> {
-  VideoPlayerController? _c;
-  bool _loading = true;
-  String? _err;
-
-  @override
-  void initState() {
-    super.initState();
-    _init();
-  }
-
-  Future<void> _init() async {
-    try {
-      final source = widget.message.source;
-      final uri = Uri.parse(source);
-      // Pending media bubbles point at a local file:// URL while the upload is
-      // still running. Switch the player to a `.file()` controller in that case
-      // — `networkUrl` would throw on a non-http scheme.
-      final ctrl = uri.scheme == 'file'
-          ? VideoPlayerController.file(File(uri.toFilePath()))
-          : VideoPlayerController.networkUrl(
-              uri,
-              httpHeaders: {'Authorization': 'Bearer ${widget.accessToken}'},
-            );
-      await ctrl.initialize();
-      if (!mounted) return;
-      await ctrl.setVolume(0);
-      await ctrl.pause();
-      await ctrl.seekTo(Duration.zero);
-      if (!mounted) return;
-      setState(() {
-        _c = ctrl;
-        _loading = false;
-      });
-    } catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _loading = false;
-        _err = '$e';
-      });
-    }
-  }
-
-  @override
-  void dispose() {
-    _c?.dispose();
-    super.dispose();
-  }
+  // The inline bubble never initialises a VideoPlayerController — tapping
+  // immediately opens the full-screen player which handles initialisation
+  // there. This avoids spawning N ExoPlayer instances simultaneously when
+  // a thread with several video messages is first opened.
 
   @override
   Widget build(BuildContext context) {
@@ -709,57 +666,26 @@ class _ThreadVideoBubbleState extends State<ThreadVideoBubble> {
                 padding: const EdgeInsets.fromLTRB(2, 2, 2, 4),
                 child: widget.senderNameHeader!,
               ),
-            if (_loading)
-              SizedBox(
+            ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: SizedBox(
                 width: kChatInlineVideoW,
                 height: kChatInlineVideoH,
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    color: widget.foreground.withValues(alpha: 0.08),
-                    borderRadius: BorderRadius.circular(8),
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () => openChatFullscreenVideo(
+                    context,
+                    url: widget.message.source,
+                    accessToken: widget.accessToken,
                   ),
-                  child: const Center(
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  ),
-                ),
-              )
-            else if (_err != null)
-              Padding(
-                padding: const EdgeInsets.all(8),
-                child: Text(_err!, style: TextStyle(color: widget.foreground)),
-              )
-            else if (_c != null)
-              ClipRRect(
-                borderRadius: BorderRadius.circular(8),
-                child: SizedBox(
-                  width: kChatInlineVideoW,
-                  height: kChatInlineVideoH,
-                  child: GestureDetector(
-                    behavior: HitTestBehavior.opaque,
-                    onTap: () {
-                      openChatFullscreenVideo(
-                        context,
-                        url: widget.message.source,
-                        accessToken: widget.accessToken,
-                      );
-                    },
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: widget.foreground.withValues(alpha: 0.08),
+                    ),
                     child: Stack(
                       fit: StackFit.expand,
                       alignment: Alignment.center,
                       children: [
-                        FittedBox(
-                          fit: BoxFit.cover,
-                          clipBehavior: Clip.hardEdge,
-                          child: SizedBox(
-                            width: _c!.value.size.width > 0
-                                ? _c!.value.size.width
-                                : kChatInlineVideoW,
-                            height: _c!.value.size.height > 0
-                                ? _c!.value.size.height
-                                : kChatInlineVideoH,
-                            child: VideoPlayer(_c!),
-                          ),
-                        ),
                         Icon(
                           Icons.play_circle_fill,
                           size: 52,
@@ -773,6 +699,7 @@ class _ThreadVideoBubbleState extends State<ThreadVideoBubble> {
                   ),
                 ),
               ),
+            ),
             if (captionWidget != null) captionWidget,
             if (widget.isSentByMe)
               CustomTimeAndStatus(

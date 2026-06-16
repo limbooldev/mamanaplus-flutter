@@ -123,6 +123,7 @@ class _ThreadScaffoldState extends State<_ThreadScaffold>
   var _stickyDateVisible = false;
   String? _stickyDateLabel;
   Timer? _stickyDateHideTimer;
+  Timer? _syncDebounce;
   var _scrollIdleListenerAttached = false;
   var _stickyDateUpdateScheduled = false;
   int _lastBlockedSendAttempts = 0;
@@ -130,7 +131,7 @@ class _ThreadScaffoldState extends State<_ThreadScaffold>
 
   static const _atBottomThreshold = 150.0;
   static const _loadOlderThreshold = 300.0;
-  static const _scrollToBottomLayoutPasses = 8;
+  static const _scrollToBottomLayoutPasses = 3;
   static const _groupAvatarSize = 32.0;
   static const _groupAvatarGap = 8.0;
   static const _groupAvatarSlot = _groupAvatarSize + _groupAvatarGap;
@@ -158,16 +159,16 @@ class _ThreadScaffoldState extends State<_ThreadScaffold>
     if (!_listScrollController.hasClients) return;
     _ensureScrollIdleListener();
     final pos = _listScrollController.position;
-    final gap = pos.maxScrollExtent - pos.pixels;
-    final atBottom = gap <= _atBottomThreshold;
+    // Reversed list: visual bottom = offset 0, visual top = maxScrollExtent.
+    final atBottom = pos.pixels <= _atBottomThreshold;
     if (atBottom != _isAtBottom) {
       setState(() {
         _isAtBottom = atBottom;
         if (atBottom) _unreadInboundCount = 0;
       });
     }
-    // Default (non-reversed) list: oldest messages at scroll offset 0.
-    if (pos.pixels <= _loadOlderThreshold) {
+    // Reversed list: older messages are at the visual top = high scroll offset.
+    if (pos.maxScrollExtent - pos.pixels <= _loadOlderThreshold) {
       context.read<ThreadCubit>().loadOlderMessages();
     }
     if (pos.isScrollingNotifier.value) {
@@ -279,10 +280,9 @@ class _ThreadScaffoldState extends State<_ThreadScaffold>
 
   void _jumpToListBottom() {
     if (!_listScrollController.hasClients) return;
-    final max = _listScrollController.position.maxScrollExtent;
-    if (max <= 0) return;
-    if ((_listScrollController.offset - max).abs() > 0.5) {
-      _listScrollController.jumpTo(max);
+    // Reversed list: visual bottom = scroll offset 0.
+    if (_listScrollController.offset > 0.5) {
+      _listScrollController.jumpTo(0);
     }
   }
 
@@ -391,6 +391,7 @@ class _ThreadScaffoldState extends State<_ThreadScaffold>
     WidgetsBinding.instance.removeObserver(this);
     _scrollHighlightTimer?.cancel();
     _stickyDateHideTimer?.cancel();
+    _syncDebounce?.cancel();
     _typingIdleTimer?.cancel();
     if (_scrollIdleListenerAttached && _listScrollController.hasClients) {
       _listScrollController.position.isScrollingNotifier
@@ -423,25 +424,26 @@ class _ThreadScaffoldState extends State<_ThreadScaffold>
   }
 
   String _chatSignature(ThreadState s) {
+    // Exclude message body — it never changes after a message is sent.
+    // This avoids O(n * body_length) string allocation on every state emit
+    // (e.g. receipt updates, presence changes, header hydration during init).
     final parts = s.messages
         .map(
           (m) =>
-              '${m.id}|${m.body}|${m.contentType}|${m.replyToMessageId}|${m.receiptDeliveredAt}|${m.receiptReadAt}',
+              '${m.id}|${m.contentType}|${m.replyToMessageId}|${m.receiptDeliveredAt}|${m.receiptReadAt}',
         )
         .join('~');
     final pendingParts = s.pending
         .map(
           (r) =>
-              'p:${r.localId}|${r.body}|${r.contentType}|${r.replyToMessageId}|${r.mediaPath}|${r.lastErrorAt}',
+              'p:${r.localId}|${r.contentType}|${r.mediaPath}|${r.lastErrorAt}',
         )
         .join('~');
     final reads =
         s.readCursorByUserId.entries.map((e) => '${e.key}:${e.value}').join(',');
+    // Only track member count + name/avatar changes, not the full map serialisation.
     final members = s.memberPresence.entries
-        .map(
-          (e) =>
-              '${e.key}:${e.value.displayName}:${e.value.avatarMediaKey}',
-        )
+        .map((e) => '${e.key}:${e.value.displayName}:${e.value.avatarMediaKey}')
         .join(',');
     return '$parts^$pendingParts#$reads@$members';
   }
@@ -1141,13 +1143,18 @@ class _ThreadScaffoldState extends State<_ThreadScaffold>
                 final sig = _chatSignature(state);
                 if (sig != _lastChatSyncSig) {
                   _lastChatSyncSig = sig;
-                  // Capture `state` here so each distinct state (including the
-                  // transient "pending/clock" state) is processed individually.
+                  // Debounce: when multiple states fire in rapid succession
+                  // (e.g. during init — local load, remote fetch, header hydration,
+                  // presence load all emit within the same frame), cancel the
+                  // previous pending sync and only process the latest state.
                   final capturedState = state;
-                  WidgetsBinding.instance.addPostFrameCallback((_) {
-                    if (mounted) {
-                      unawaited(_syncChatMessages(capturedState));
-                    }
+                  _syncDebounce?.cancel();
+                  _syncDebounce = Timer(const Duration(milliseconds: 16), () {
+                    WidgetsBinding.instance.addPostFrameCallback((_) {
+                      if (mounted) {
+                        unawaited(_syncChatMessages(capturedState));
+                      }
+                    });
                   });
                 }
                 final isDark = theme.brightness == Brightness.dark;
@@ -1785,12 +1792,13 @@ class _ThreadScaffoldState extends State<_ThreadScaffold>
                       );
                     },
                     chatAnimatedListBuilder: (ctx, itemBuilder) {
-                      // Default (non-reversed) list: oldest at top, newest above composer.
-                      // ChatAnimatedListReversed + setMessages diffs can hit
-                      // SliverAnimatedList child-order assertions.
+                      // Reversed list: newest messages are rendered at the
+                      // visual bottom (offset 0) so the list starts pinned to
+                      // the bottom with no initial scroll needed.
                       return ChatAnimatedList(
                         scrollController: _listScrollController,
                         itemBuilder: itemBuilder,
+                        reversed: true,
                       );
                     },
                     scrollToBottomBuilder: (ctx, animation, onPressed) {

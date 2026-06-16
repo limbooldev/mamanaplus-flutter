@@ -76,7 +76,12 @@ Future<void> setupPushForAuthenticatedUser({
       chatRepository.syncConversationsFromRemote();
     });
     FirebaseMessaging.onMessageOpenedApp.listen((m) {
-      _openConversationFromData(m.data, authCubit: authCubit, router: router);
+      _openConversationFromData(
+        m.data,
+        authCubit: authCubit,
+        router: router,
+        chatRepository: chatRepository,
+      );
     });
     final initial = await messaging.getInitialMessage();
     if (initial != null) {
@@ -85,17 +90,19 @@ Future<void> setupPushForAuthenticatedUser({
           initial.data,
           authCubit: authCubit,
           router: router,
+          chatRepository: chatRepository,
         );
       });
     }
   }
 }
 
-void _openConversationFromData(
+Future<void> _openConversationFromData(
   Map<String, dynamic> data, {
   required AuthCubit authCubit,
   required GoRouter router,
-}) {
+  required ChatRepository chatRepository,
+}) async {
   if (authCubit.state is! AuthAuthenticated) {
     return;
   }
@@ -104,9 +111,18 @@ void _openConversationFromData(
   if (sid == null || sid <= 0) {
     return;
   }
+  // Look up the conversation type from local cache so ThreadCubit.init()
+  // skips the blocking fetchConversation round-trip it does when type is unknown.
+  final conversationType = await chatRepository.conversationTypeLocal(sid);
+
   // Navigate to inbox first so it sits beneath the thread in the back stack,
   // then push the thread on top. Using go() alone would replace the entire
   // stack and leave nothing to return to when the user presses Back.
   router.go(AppRoutes.inbox);
-  router.push(AppRoutes.thread(sid));
+  router.push(
+    AppRoutes.thread(sid),
+    extra: conversationType != null
+        ? ThreadRouteExtra(conversationType: conversationType)
+        : null,
+  );
 }

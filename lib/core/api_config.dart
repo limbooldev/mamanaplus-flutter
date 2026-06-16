@@ -33,7 +33,7 @@ class ApiConfig {
     } else if (kReleaseMode || kProfileMode) {
       base = _productionBaseUrl;
     } else {
-      base = _defaultDevBaseUrl();
+      base = _productionBaseUrl;
     }
     return ApiConfig(baseUrl: base.replaceAll(RegExp(r'/$'), ''));
   }

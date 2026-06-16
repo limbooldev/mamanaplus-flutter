@@ -53,10 +53,14 @@ class SocialPostImage extends StatelessWidget {
       );
     }
     Widget img;
+    final placeholder = Container(color: Colors.grey.shade200);
+
     if (socialMediaIsRemoteUrl(ref)) {
       img = Image.network(
         ref,
         fit: fit,
+        loadingBuilder: (_, child, progress) =>
+            progress == null ? child : placeholder,
         errorBuilder: (_, __, ___) => Container(
           color: Colors.grey.shade300,
           child: const Icon(Icons.broken_image_outlined),
@@ -77,6 +81,8 @@ class SocialPostImage extends StatelessWidget {
           url,
           fit: fit,
           headers: {'Authorization': 'Bearer ${auth.accessToken}'},
+          loadingBuilder: (_, child, progress) =>
+              progress == null ? child : placeholder,
           errorBuilder: (_, __, ___) => Container(
             color: Colors.grey.shade300,
             child: const Icon(Icons.broken_image_outlined),
