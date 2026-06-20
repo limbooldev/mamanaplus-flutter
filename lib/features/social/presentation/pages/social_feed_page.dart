@@ -174,31 +174,33 @@ class _SocialFeedView extends StatelessWidget {
               ),
             );
           }
+          final itemCount = state.posts.length +
+              ((state.hasMore || state.loadingMore) ? 1 : 0);
           return RefreshIndicator(
             onRefresh: () => context.read<SocialFeedCubit>().refresh(),
-            child: Column(
-              children: [
-                if (state.stories.isNotEmpty)
-                  _StoryStrip(
-                    stories: state.stories,
-                    onOpen: (i) => _onStoryTap(context, state, i),
-                  ),
-                Expanded(
-                  child: NotificationListener<ScrollNotification>(
-                    onNotification: (n) {
-                      if (n is ScrollEndNotification) {
-                        final m = n.metrics;
-                        if (m.pixels >= m.maxScrollExtent - 120) {
-                          context.read<SocialFeedCubit>().loadMore();
-                        }
-                      }
-                      return false;
-                    },
-                    child: ListView.builder(
-                      padding: EdgeInsets.zero,
-                      itemCount: state.posts.length +
-                          ((state.hasMore || state.loadingMore) ? 1 : 0),
-                      itemBuilder: (ctx, i) {
+            child: NotificationListener<ScrollNotification>(
+              onNotification: (n) {
+                if (n is ScrollEndNotification) {
+                  final m = n.metrics;
+                  if (m.pixels >= m.maxScrollExtent - 120) {
+                    context.read<SocialFeedCubit>().loadMore();
+                  }
+                }
+                return false;
+              },
+              child: CustomScrollView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                slivers: [
+                  if (state.stories.isNotEmpty)
+                    SliverToBoxAdapter(
+                      child: _StoryStrip(
+                        stories: state.stories,
+                        onOpen: (i) => _onStoryTap(context, state, i),
+                      ),
+                    ),
+                  SliverList(
+                    delegate: SliverChildBuilderDelegate(
+                      (ctx, i) {
                         if (i >= state.posts.length) {
                           return const Padding(
                             padding: EdgeInsets.symmetric(vertical: 24),
@@ -218,10 +220,11 @@ class _SocialFeedView extends StatelessWidget {
                           onFeedRefresh: () => cubit.refresh(),
                         );
                       },
+                      childCount: itemCount,
                     ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           );
         },

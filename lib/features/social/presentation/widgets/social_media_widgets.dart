@@ -1,8 +1,11 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
 import 'package:provider/provider.dart';
 import 'package:video_player/video_player.dart';
 
@@ -30,6 +33,19 @@ String socialMediaDownloadUrl(String apiBase, String objectKey) {
 String socialMediaResolveUrl(String apiBase, String ref) {
   if (socialMediaIsRemoteUrl(ref)) return ref;
   return socialMediaDownloadUrl(apiBase, ref);
+}
+
+/// Resolves a cached media file path when already on disk (no download).
+Future<File?> socialLookupCachedMediaFile(String objectKey) async {
+  final root = await getTemporaryDirectory();
+  final dir = Directory(p.join(root.path, 'media_cache'));
+  final ext = p.extension(objectKey);
+  final fallback = ext.isNotEmpty ? ext.replaceFirst('.', '') : 'mp4';
+  final suffix = ext.isNotEmpty ? ext : '.$fallback';
+  final safe = objectKey.replaceAll(RegExp(r'[^A-Za-z0-9._-]'), '_');
+  final file = File(p.join(dir.path, '$safe$suffix'));
+  if (file.existsSync() && file.lengthSync() > 0) return file;
+  return null;
 }
 
 /// Thumbnail / inline image: supports plain URLs and private object keys (Bearer).
@@ -169,6 +185,25 @@ class _SocialPostVideoState extends State<SocialPostVideo> {
     });
   }
 
+  @override
+  void didUpdateWidget(SocialPostVideo oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.mediaRef != widget.mediaRef) {
+      _controller?.dispose();
+      _controller = null;
+      _error = null;
+      _init();
+    }
+  }
+
+  Future<void> _warmCache(String objectKey) async {
+    try {
+      await context.read<SocialRepository>().downloadImageToCache(objectKey);
+    } catch (_) {
+      // Cache miss is non-fatal; network playback continues.
+    }
+  }
+
   Future<void> _init() async {
     final ref = widget.mediaRef;
     if (ref == null || ref.isEmpty) {
@@ -190,10 +225,21 @@ class _SocialPostVideoState extends State<SocialPostVideo> {
       headers['Authorization'] = 'Bearer ${auth.accessToken}';
       url = socialMediaResolveUrl(base, ref);
     }
-    final c = VideoPlayerController.networkUrl(
-      Uri.parse(url),
-      httpHeaders: headers,
-    );
+
+    File? cachedFile;
+    if (!socialMediaIsRemoteUrl(ref)) {
+      cachedFile = await socialLookupCachedMediaFile(ref);
+      if (cachedFile == null) {
+        unawaited(_warmCache(ref));
+      }
+    }
+
+    final c = cachedFile != null
+        ? VideoPlayerController.file(cachedFile)
+        : VideoPlayerController.networkUrl(
+            Uri.parse(url),
+            httpHeaders: headers,
+          );
     try {
       await c.initialize();
       if (!mounted) {

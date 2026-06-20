@@ -7,6 +7,10 @@ import 'package:image_picker/image_picker.dart';
 import 'package:mime/mime.dart';
 import 'package:video_player/video_player.dart';
 
+import '../../../../core/media/media_upload_processor.dart';
+import '../../../chat/presentation/widgets/chat_image_editor_flow.dart';
+import '../../../chat/presentation/widgets/chat_video_editor_flow.dart';
+import '../../../chat/presentation/widgets/media_caption_preview.dart';
 import '../../data/social_repository.dart';
 import '../widgets/social_media_widgets.dart';
 
@@ -67,17 +71,95 @@ class _SocialComposerPageState extends State<SocialComposerPage> {
     }
   }
 
+  Future<void> _maybeWarnLargeMediaFile(String path) async {
+    if (!await MediaUploadProcessor.shouldWarnLargeFile(path)) return;
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text(
+          'Large file selected — it will be compressed before uploading.',
+        ),
+        duration: Duration(seconds: 3),
+      ),
+    );
+  }
+
+  Future<void> _showVideoTooLongDialog(VideoDurationExceededException error) {
+    return showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Video too long'),
+        content: Text(
+          'Videos must be ${MediaUploadLimits.maxVideoDurationSec} seconds or '
+          'shorter. This clip is about ${(error.durationMs / 1000).ceil()} seconds.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('OK'),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _pickMedia() async {
     final x = await ImagePicker().pickMedia();
-    if (x == null) return;
+    if (x == null || !mounted) return;
+
     final mime = lookupMimeType(x.path) ?? 'application/octet-stream';
     final isVideo =
         mime.startsWith('video/') || mime == 'application/mp4';
+
+    if (isVideo) {
+      try {
+        await MediaUploadProcessor.readVideoDurationMs(x.path);
+      } on VideoDurationExceededException catch (e) {
+        if (!mounted) return;
+        await _showVideoTooLongDialog(e);
+        return;
+      }
+    }
+
+    await _maybeWarnLargeMediaFile(x.path);
     if (!mounted) return;
+
+    final preview = await openMediaCaptionPreview(
+      context,
+      path: x.path,
+      kind: isVideo ? 'video' : 'image',
+    );
+    if (preview == null || !mounted) return;
+
+    final previewMime =
+        lookupMimeType(preview.path) ?? mime;
     setState(() {
-      _picked = x;
-      _pickedMime = mime;
+      _picked = XFile(preview.path);
+      _pickedMime = previewMime;
       _postType = isVideo ? 'video' : 'image';
+      if (preview.caption != null && preview.caption!.isNotEmpty) {
+        _caption.text = preview.caption!;
+      }
+    });
+  }
+
+  Future<void> _editPickedMedia() async {
+    final picked = _picked;
+    if (picked == null || !mounted) return;
+
+    final isVideo = _postType == 'video';
+    String? edited;
+    if (isVideo) {
+      edited = await openChatVideoEditor(context, picked.path);
+    } else {
+      edited = await openChatImageEditor(context, picked.path);
+    }
+    if (edited == null || !mounted) return;
+
+    final mime = lookupMimeType(edited) ?? _pickedMime ?? 'application/octet-stream';
+    setState(() {
+      _picked = XFile(edited!);
+      _pickedMime = mime;
     });
   }
 
@@ -129,6 +211,11 @@ class _SocialComposerPageState extends State<SocialComposerPage> {
                     '${_postType == 'video' ? 'Video' : 'Image'} · ${_picked!.name}',
                     style: GoogleFonts.inter(fontSize: 13),
                   ),
+                ),
+                IconButton(
+                  tooltip: 'Edit',
+                  onPressed: _busy || _loadingPost ? null : _editPickedMedia,
+                  icon: const Icon(Icons.edit_outlined),
                 ),
                 IconButton(
                   tooltip: 'Remove',

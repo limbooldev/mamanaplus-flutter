@@ -538,11 +538,19 @@ class _ExpandableCaptionState extends State<_ExpandableCaption> {
         TextSpan(
           children: [
             TextSpan(
-              text: widget.username,
+              text: '${widget.username} ',
               style: GoogleFonts.inter(
                 fontWeight: FontWeight.w700,
                 fontSize: 14,
                 color: widget.onSurface,
+              ),
+            ),
+            TextSpan(
+              text: 'No description',
+              style: GoogleFonts.inter(
+                fontSize: 14,
+                fontStyle: FontStyle.italic,
+                color: widget.onSurface.withValues(alpha: 0.55),
               ),
             ),
           ],
