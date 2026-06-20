@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -7,6 +9,7 @@ import 'package:video_player/video_player.dart';
 import '../../../../core/api_config.dart';
 import '../../../../shared/ui/ui.dart';
 import '../../../chat/presentation/cubit/auth_cubit.dart';
+import '../../data/social_repository.dart';
 
 /// Returns true when [ref] is an absolute HTTP(S) URL (legacy / external media).
 bool socialMediaIsRemoteUrl(String? ref) {
@@ -30,7 +33,11 @@ String socialMediaResolveUrl(String apiBase, String ref) {
 }
 
 /// Thumbnail / inline image: supports plain URLs and private object keys (Bearer).
-class SocialPostImage extends StatelessWidget {
+///
+/// Images are shown immediately via [Image.network]. For object keys, a disk
+/// cache is populated in the background so subsequent opens within the same
+/// session prefer [Image.file] over a network request.
+class SocialPostImage extends StatefulWidget {
   const SocialPostImage({
     super.key,
     required this.mediaRef,
@@ -43,8 +50,44 @@ class SocialPostImage extends StatelessWidget {
   final BorderRadius? borderRadius;
 
   @override
+  State<SocialPostImage> createState() => _SocialPostImageState();
+}
+
+class _SocialPostImageState extends State<SocialPostImage> {
+  File? _cachedFile;
+
+  @override
+  void initState() {
+    super.initState();
+    _warmCache();
+  }
+
+  @override
+  void didUpdateWidget(SocialPostImage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.mediaRef != widget.mediaRef) {
+      _cachedFile = null;
+      _warmCache();
+    }
+  }
+
+  /// Download to disk in the background; once done swap Image.network → Image.file.
+  Future<void> _warmCache() async {
+    final ref = widget.mediaRef;
+    if (ref == null || ref.isEmpty || socialMediaIsRemoteUrl(ref)) return;
+    try {
+      final file = await context.read<SocialRepository>().downloadImageToCache(ref);
+      if (mounted && file.existsSync()) {
+        setState(() => _cachedFile = file);
+      }
+    } catch (_) {
+      // Cache miss is non-fatal; Image.network below continues to serve the image.
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final ref = mediaRef;
+    final ref = widget.mediaRef;
     if (ref == null || ref.isEmpty) {
       return Container(
         color: Colors.grey.shade200,
@@ -52,21 +95,30 @@ class SocialPostImage extends StatelessWidget {
         child: const Icon(Icons.image_outlined),
       );
     }
-    Widget img;
-    final placeholder = Container(color: Colors.grey.shade200);
 
-    if (socialMediaIsRemoteUrl(ref)) {
+    final placeholder = Container(color: Colors.grey.shade200);
+    final error = Container(
+      color: Colors.grey.shade300,
+      child: const Icon(Icons.broken_image_outlined),
+    );
+
+    Widget img;
+    if (_cachedFile != null) {
+      img = Image.file(
+        _cachedFile!,
+        fit: widget.fit,
+        errorBuilder: (_, __, ___) => error,
+      );
+    } else if (socialMediaIsRemoteUrl(ref)) {
       img = Image.network(
         ref,
-        fit: fit,
+        fit: widget.fit,
         loadingBuilder: (_, child, progress) =>
             progress == null ? child : placeholder,
-        errorBuilder: (_, __, ___) => Container(
-          color: Colors.grey.shade300,
-          child: const Icon(Icons.broken_image_outlined),
-        ),
+        errorBuilder: (_, __, ___) => error,
       );
     } else {
+      // Object key: show via authenticated network immediately while cache warms.
       final auth = context.watch<AuthCubit>().state;
       if (auth is! AuthAuthenticated) {
         img = Container(
@@ -79,19 +131,17 @@ class SocialPostImage extends StatelessWidget {
         final url = socialMediaResolveUrl(base, ref);
         img = Image.network(
           url,
-          fit: fit,
+          fit: widget.fit,
           headers: {'Authorization': 'Bearer ${auth.accessToken}'},
           loadingBuilder: (_, child, progress) =>
               progress == null ? child : placeholder,
-          errorBuilder: (_, __, ___) => Container(
-            color: Colors.grey.shade300,
-            child: const Icon(Icons.broken_image_outlined),
-          ),
+          errorBuilder: (_, __, ___) => error,
         );
       }
     }
-    if (borderRadius != null) {
-      return ClipRRect(borderRadius: borderRadius!, child: img);
+
+    if (widget.borderRadius != null) {
+      return ClipRRect(borderRadius: widget.borderRadius!, child: img);
     }
     return img;
   }

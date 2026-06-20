@@ -1,4 +1,8 @@
+import 'dart:io';
+
 import 'package:dio/dio.dart';
+import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
 
 import '../../chat/data/chat_remote_datasource.dart';
 import '../../../core/jwt_util.dart';
@@ -69,6 +73,33 @@ class SocialRepository {
       await _mediaApi.completeMediaUpload(objectKey: objectKey);
     }
     return objectKey;
+  }
+
+  /// Downloads a media object to the temp cache dir, reusing an existing file when present.
+  /// Uses the same `media_cache` folder as chat so object keys are shared on disk.
+  Future<File> downloadImageToCache(String objectKey) async {
+    final ext = p.extension(objectKey);
+    final fallback = ext.isNotEmpty ? ext.replaceFirst('.', '') : 'jpg';
+    return downloadMediaToCache(objectKey, fallbackExtension: fallback);
+  }
+
+  Future<File> downloadMediaToCache(
+    String objectKey, {
+    required String fallbackExtension,
+  }) async {
+    final root = await getTemporaryDirectory();
+    final dir = Directory(p.join(root.path, 'media_cache'));
+    await dir.create(recursive: true);
+    final ext = p.extension(objectKey);
+    final suffix = ext.isNotEmpty ? ext : '.$fallbackExtension';
+    final safe = objectKey.replaceAll(RegExp(r'[^A-Za-z0-9._-]'), '_');
+    final file = File(p.join(dir.path, '$safe$suffix'));
+    if (file.existsSync() && file.lengthSync() > 0) {
+      return file;
+    }
+    final bytes = await _mediaApi.downloadMediaBytes(objectKey: objectKey);
+    await file.writeAsBytes(bytes, flush: true);
+    return file;
   }
 
   List<T> _items<T>(Map<String, dynamic> data, T Function(Map<String, dynamic>) f) {
