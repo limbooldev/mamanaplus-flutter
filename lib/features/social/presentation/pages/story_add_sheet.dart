@@ -5,19 +5,14 @@ import 'package:image_picker/image_picker.dart';
 import 'package:mime/mime.dart';
 
 import '../../data/social_repository.dart';
+import 'story_image_preview.dart';
 
-/// Pick an image, upload via presign pipeline, attach to the user's story.
-Future<bool> pickAndUploadStoryMedia(
-  SocialRepository repo,
-  ImageSource source,
-) async {
-  final pick = await ImagePicker().pickImage(source: source, imageQuality: 88);
-  if (pick == null) return false;
-  final bytes = await File(pick.path).readAsBytes();
-  final mime = lookupMimeType(pick.path) ?? 'image/jpeg';
+/// Upload a local image file to the user's story.
+Future<void> uploadStoryImageFromPath(SocialRepository repo, String path) async {
+  final bytes = await File(path).readAsBytes();
+  final mime = lookupMimeType(path) ?? 'image/jpeg';
   final key = await repo.uploadSocialMediaBytes(bytes, mime);
   await repo.addStoryMedia(key);
-  return true;
 }
 
 String? storyUploadErrorMessage(SocialRepository repo, Object error) {
@@ -28,98 +23,74 @@ String? storyUploadErrorMessage(SocialRepository repo, Object error) {
   return error.toString();
 }
 
-/// Camera / gallery bottom sheet for adding a story slide. Returns `true` when added.
+Future<ImageSource?> _pickStorySource(BuildContext context) {
+  return showModalBottomSheet<ImageSource>(
+    context: context,
+    showDragHandle: true,
+    builder: (ctx) => SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              'Add to story',
+              style: Theme.of(ctx).textTheme.titleMedium,
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 16),
+            FilledButton.icon(
+              onPressed: () => Navigator.pop(ctx, ImageSource.camera),
+              icon: const Icon(Icons.photo_camera_outlined),
+              label: const Text('Camera'),
+            ),
+            const SizedBox(height: 12),
+            OutlinedButton.icon(
+              onPressed: () => Navigator.pop(ctx, ImageSource.gallery),
+              icon: const Icon(Icons.photo_library_outlined),
+              label: const Text('Gallery'),
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
+}
+
+/// Pick, preview/edit, upload a story slide. Returns `true` when added.
 Future<bool> showAddStorySheet(
   BuildContext context,
   SocialRepository repo,
 ) async {
-  final added = await showModalBottomSheet<bool>(
-    context: context,
-    showDragHandle: true,
-    builder: (ctx) => _AddStorySheetBody(repo: repo),
-  );
-  return added == true;
-}
+  final source = await _pickStorySource(context);
+  if (source == null || !context.mounted) return false;
 
-class _AddStorySheetBody extends StatefulWidget {
-  const _AddStorySheetBody({required this.repo});
+  final pick = await ImagePicker().pickImage(source: source, imageQuality: 88);
+  if (pick == null || !context.mounted) return false;
 
-  final SocialRepository repo;
+  final path = await openStoryImagePreview(context, pick.path);
+  if (path == null || !context.mounted) return false;
 
-  @override
-  State<_AddStorySheetBody> createState() => _AddStorySheetBodyState();
-}
-
-class _AddStorySheetBodyState extends State<_AddStorySheetBody> {
-  bool _busy = false;
-  String? _error;
-
-  Future<void> _pick(ImageSource source) async {
-    setState(() {
-      _busy = true;
-      _error = null;
-    });
-    try {
-      final added = await pickAndUploadStoryMedia(widget.repo, source);
-      if (!mounted) return;
-      if (added) {
-        Navigator.of(context).pop(true);
-      } else {
-        setState(() => _busy = false);
-      }
-    } catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _busy = false;
-        _error = storyUploadErrorMessage(widget.repo, e);
-      });
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
-        child: _busy
-            ? const SizedBox(
-                height: 120,
-                child: Center(child: CircularProgressIndicator()),
-              )
-            : Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Text(
-                    'Add to story',
-                    style: Theme.of(context).textTheme.titleMedium,
-                    textAlign: TextAlign.center,
-                  ),
-                  const SizedBox(height: 16),
-                  if (_error != null)
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 12),
-                      child: Text(
-                        _error!,
-                        style: TextStyle(color: Theme.of(context).colorScheme.error),
-                        textAlign: TextAlign.center,
-                      ),
-                    ),
-                  FilledButton.icon(
-                    onPressed: () => _pick(ImageSource.camera),
-                    icon: const Icon(Icons.photo_camera_outlined),
-                    label: const Text('Camera'),
-                  ),
-                  const SizedBox(height: 12),
-                  OutlinedButton.icon(
-                    onPressed: () => _pick(ImageSource.gallery),
-                    icon: const Icon(Icons.photo_library_outlined),
-                    label: const Text('Gallery'),
-                  ),
-                ],
-              ),
-      ),
+  try {
+    if (!context.mounted) return false;
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const Center(child: CircularProgressIndicator()),
     );
+    await uploadStoryImageFromPath(repo, path);
+    if (context.mounted) Navigator.of(context).pop();
+    return true;
+  } catch (e) {
+    if (context.mounted) {
+      Navigator.of(context, rootNavigator: true).pop();
+      final message = storyUploadErrorMessage(repo, e);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(message ?? 'Could not add story')),
+      );
+    }
+    return false;
   }
 }
 
