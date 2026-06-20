@@ -12,6 +12,7 @@ import '../cubit/social_feed_cubit.dart';
 import '../widgets/social_feed_post_card.dart';
 import '../widgets/social_media_widgets.dart';
 import 'social_composer_page.dart';
+import 'story_add_sheet.dart';
 import 'story_chain_viewer_page.dart';
 
 class SocialFeedPage extends StatelessWidget {
@@ -32,9 +33,32 @@ class SocialFeedPage extends StatelessWidget {
 class _SocialFeedView extends StatelessWidget {
   const _SocialFeedView();
 
-  void _openChain(BuildContext context, List<StoryRing> rings, int startIndex) {
-    Navigator.of(context).push<void>(
-      MaterialPageRoute<void>(
+  Future<void> _refreshStoriesIfNeeded(BuildContext context, bool changed) async {
+    if (changed && context.mounted) {
+      await context.read<SocialFeedCubit>().refresh();
+    }
+  }
+
+  Future<void> _addStory(BuildContext context) async {
+    final repo = context.read<SocialRepository>();
+    final added = await showAddStorySheet(context, repo);
+    if (!context.mounted) return;
+    await _refreshStoriesIfNeeded(context, added);
+  }
+
+  Future<void> _openChain(
+    BuildContext context,
+    List<StoryRing> rings,
+    int startIndex,
+  ) async {
+    final viewerRings = rings.where((r) => !r.isAddPlaceholder).toList();
+    if (viewerRings.isEmpty) return;
+    final tapped = rings[startIndex];
+    final viewerIndex = viewerRings.indexWhere((r) => r.userId == tapped.userId);
+    if (viewerIndex < 0) return;
+
+    final changed = await Navigator.of(context).push<bool>(
+      MaterialPageRoute<bool>(
         builder: (_) => MultiProvider(
           providers: [
             RepositoryProvider.value(value: context.read<SocialRepository>()),
@@ -42,13 +66,43 @@ class _SocialFeedView extends StatelessWidget {
             Provider.value(value: context.read<StorySeenLocalStore>()),
           ],
           child: StoryChainViewerPage(
-            rings: rings,
-            initialUserIndex: startIndex,
+            rings: viewerRings,
+            initialUserIndex: viewerIndex,
             seenStore: context.read<StorySeenLocalStore>(),
           ),
         ),
       ),
     );
+    if (!context.mounted) return;
+    await _refreshStoriesIfNeeded(context, changed == true);
+  }
+
+  Future<void> _onStoryTap(
+    BuildContext context,
+    SocialFeedLoaded state,
+    int index,
+  ) async {
+    final ring = state.stories[index];
+    final myId = state.myUserId;
+    final isOwn = myId != null && ring.userId == myId;
+
+    if (ring.isAddPlaceholder) {
+      await _addStory(context);
+      return;
+    }
+
+    if (isOwn) {
+      final repo = context.read<SocialRepository>();
+      await showViewOrAddStorySheet(
+        context: context,
+        repo: repo,
+        onView: () => _openChain(context, state.stories, index),
+        onAdd: () => _addStory(context),
+      );
+      return;
+    }
+
+    await _openChain(context, state.stories, index);
   }
 
   @override
@@ -127,7 +181,7 @@ class _SocialFeedView extends StatelessWidget {
                 if (state.stories.isNotEmpty)
                   _StoryStrip(
                     stories: state.stories,
-                    onOpen: (i) => _openChain(context, state.stories, i),
+                    onOpen: (i) => _onStoryTap(context, state, i),
                   ),
                 Expanded(
                   child: NotificationListener<ScrollNotification>(

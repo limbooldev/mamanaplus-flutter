@@ -20,6 +20,7 @@ class SocialFeedLoaded extends SocialFeedState {
     required this.posts,
     required this.stories,
     required this.page,
+    this.myUserId,
     this.loadingMore = false,
     this.hasMore = true,
   });
@@ -27,11 +28,12 @@ class SocialFeedLoaded extends SocialFeedState {
   final List<SocialPost> posts;
   final List<StoryRing> stories;
   final int page;
+  final int? myUserId;
   final bool loadingMore;
   final bool hasMore;
 
   @override
-  List<Object?> get props => [posts, stories, page, loadingMore, hasMore];
+  List<Object?> get props => [posts, stories, page, myUserId, loadingMore, hasMore];
 }
 
 class SocialFeedFailure extends SocialFeedState {
@@ -62,6 +64,7 @@ class SocialFeedCubit extends Cubit<SocialFeedState> {
         posts: posts,
         stories: stories,
         page: 1,
+        myUserId: myId,
         hasMore: posts.length >= 20,
       ));
     } catch (e) {
@@ -76,6 +79,7 @@ class SocialFeedCubit extends Cubit<SocialFeedState> {
       posts: s.posts,
       stories: s.stories,
       page: s.page,
+      myUserId: s.myUserId,
       loadingMore: true,
       hasMore: s.hasMore,
     ));
@@ -86,6 +90,7 @@ class SocialFeedCubit extends Cubit<SocialFeedState> {
           posts: s.posts,
           stories: s.stories,
           page: s.page,
+          myUserId: s.myUserId,
           loadingMore: false,
           hasMore: false,
         ));
@@ -95,6 +100,7 @@ class SocialFeedCubit extends Cubit<SocialFeedState> {
         posts: [...s.posts, ...next],
         stories: s.stories,
         page: s.page + 1,
+        myUserId: s.myUserId,
         loadingMore: false,
         hasMore: next.length >= 20,
       ));
@@ -103,6 +109,7 @@ class SocialFeedCubit extends Cubit<SocialFeedState> {
         posts: s.posts,
         stories: s.stories,
         page: s.page,
+        myUserId: s.myUserId,
         loadingMore: false,
         hasMore: s.hasMore,
       ));
@@ -161,6 +168,7 @@ class SocialFeedCubit extends Cubit<SocialFeedState> {
       posts: next,
       stories: s.stories,
       page: s.page,
+      myUserId: s.myUserId,
       loadingMore: s.loadingMore,
       hasMore: s.hasMore,
     ));
@@ -189,6 +197,7 @@ class SocialFeedCubit extends Cubit<SocialFeedState> {
       posts: s.posts.where((p) => p.id != postId).toList(),
       stories: s.stories,
       page: s.page,
+      myUserId: s.myUserId,
       loadingMore: s.loadingMore,
       hasMore: s.hasMore,
     ));

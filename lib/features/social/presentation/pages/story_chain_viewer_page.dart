@@ -4,12 +4,12 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
+import '../../../../shared/ui/ui.dart';
 import '../../../chat/data/chat_repository.dart';
 import '../../data/social_repository.dart';
 import '../widgets/social_media_widgets.dart';
 import '../../data/story_seen_local_store.dart';
 import '../../domain/social_models.dart';
-import 'story_composer_page.dart';
 
 /// Full-screen stories: swipe horizontally between users; timed vertical slides per user.
 class StoryChainViewerPage extends StatefulWidget {
@@ -32,6 +32,15 @@ class _StoryChainViewerPageState extends State<StoryChainViewerPage> {
   late final PageController _userCtrl = PageController(
     initialPage: widget.initialUserIndex.clamp(0, widget.rings.length - 1),
   );
+  bool _changed = false;
+
+  void _close() {
+    Navigator.of(context).pop(_changed);
+  }
+
+  void _markChanged() {
+    _changed = true;
+  }
 
   @override
   void dispose() {
@@ -51,19 +60,26 @@ class _StoryChainViewerPageState extends State<StoryChainViewerPage> {
           return _UserStorySegment(
             ring: ring,
             seenStore: widget.seenStore,
-            onClose: () => Navigator.of(context).pop(),
+            onClose: _close,
+            onChanged: _markChanged,
             onFinishedUser: () {
               if (userIdx + 1 < widget.rings.length) {
-                _userCtrl.nextPage(duration: const Duration(milliseconds: 280), curve: Curves.easeOut);
+                _userCtrl.nextPage(
+                  duration: const Duration(milliseconds: 280),
+                  curve: Curves.easeOut,
+                );
               } else {
-                Navigator.of(context).pop();
+                _close();
               }
             },
             onPrevUser: () {
               if (userIdx > 0) {
-                _userCtrl.previousPage(duration: const Duration(milliseconds: 280), curve: Curves.easeOut);
+                _userCtrl.previousPage(
+                  duration: const Duration(milliseconds: 280),
+                  curve: Curves.easeOut,
+                );
               } else {
-                Navigator.of(context).pop();
+                _close();
               }
             },
           );
@@ -78,6 +94,7 @@ class _UserStorySegment extends StatefulWidget {
     required this.ring,
     required this.seenStore,
     required this.onClose,
+    required this.onChanged,
     required this.onFinishedUser,
     required this.onPrevUser,
   });
@@ -85,6 +102,7 @@ class _UserStorySegment extends StatefulWidget {
   final StoryRing ring;
   final StorySeenLocalStore seenStore;
   final VoidCallback onClose;
+  final VoidCallback onChanged;
   final VoidCallback onFinishedUser;
   final VoidCallback onPrevUser;
 
@@ -92,13 +110,17 @@ class _UserStorySegment extends StatefulWidget {
   State<_UserStorySegment> createState() => _UserStorySegmentState();
 }
 
-class _UserStorySegmentState extends State<_UserStorySegment> {
+class _UserStorySegmentState extends State<_UserStorySegment>
+    with SingleTickerProviderStateMixin {
   List<StoryMedia> _items = [];
   bool _loading = true;
   String? _error;
   late final PageController _slideCtrl = PageController();
+  late final AnimationController _progress = AnimationController(
+    vsync: this,
+    duration: const Duration(seconds: 5),
+  );
   int _slideIndex = 0;
-  Timer? _timer;
   bool _holding = false;
   int? _myId;
 
@@ -107,7 +129,20 @@ class _UserStorySegmentState extends State<_UserStorySegment> {
   @override
   void initState() {
     super.initState();
+    _progress.addStatusListener(_onProgressCompleted);
     _init();
+  }
+
+  void _onProgressCompleted(AnimationStatus status) {
+    if (status != AnimationStatus.completed || !mounted) return;
+    if (_slideIndex >= _items.length - 1) {
+      widget.onFinishedUser();
+    } else {
+      _slideCtrl.nextPage(
+        duration: const Duration(milliseconds: 220),
+        curve: Curves.easeOut,
+      );
+    }
   }
 
   Future<void> _init() async {
@@ -115,13 +150,6 @@ class _UserStorySegmentState extends State<_UserStorySegment> {
     final me = await social.currentUserId();
     if (!mounted) return;
     setState(() => _myId = me);
-    if (widget.ring.isAddPlaceholder) {
-      setState(() {
-        _loading = false;
-        _items = [];
-      });
-      return;
-    }
     setState(() {
       _loading = true;
       _error = null;
@@ -138,8 +166,8 @@ class _UserStorySegmentState extends State<_UserStorySegment> {
         _items = items;
         _loading = false;
       });
-      if (items.isNotEmpty && !_isOwn) {
-        _armTimer();
+      if (items.isNotEmpty) {
+        _startProgress();
       }
     } catch (e) {
       if (mounted) {
@@ -153,7 +181,8 @@ class _UserStorySegmentState extends State<_UserStorySegment> {
 
   @override
   void dispose() {
-    _timer?.cancel();
+    _progress.removeStatusListener(_onProgressCompleted);
+    _progress.dispose();
     _slideCtrl.dispose();
     super.dispose();
   }
@@ -168,17 +197,12 @@ class _UserStorySegmentState extends State<_UserStorySegment> {
     }
   }
 
-  void _armTimer() {
-    _timer?.cancel();
-    if (_holding || _items.isEmpty || _isOwn) return;
-    _timer = Timer(const Duration(seconds: 5), () {
-      if (!mounted) return;
-      if (_slideIndex >= _items.length - 1) {
-        widget.onFinishedUser();
-      } else {
-        _slideCtrl.nextPage(duration: const Duration(milliseconds: 220), curve: Curves.easeOut);
-      }
-    });
+  void _startProgress() {
+    if (_holding || _items.isEmpty) return;
+    _progress
+      ..stop()
+      ..reset()
+      ..forward();
   }
 
   void _goSlide(int delta) {
@@ -201,10 +225,39 @@ class _UserStorySegmentState extends State<_UserStorySegment> {
 
   Future<void> _deleteCurrent() async {
     if (_items.isEmpty) return;
+    _progress.stop();
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete story?'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const Text('This story will be permanently removed.'),
+            const SizedBox(height: 20),
+            FilledButton(
+              style: FilledButton.styleFrom(backgroundColor: AppColors.error),
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Delete'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancel'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (confirmed != true || !mounted) {
+      if (mounted && !_holding) _startProgress();
+      return;
+    }
     final id = _items[_slideIndex].id;
     try {
       await context.read<SocialRepository>().deleteStoryMedia(id);
       if (!mounted) return;
+      widget.onChanged();
       setState(() {
         _items.removeAt(_slideIndex);
         if (_items.isEmpty) {
@@ -215,10 +268,13 @@ class _UserStorySegmentState extends State<_UserStorySegment> {
           _slideIndex = _items.length - 1;
         }
       });
-      _armTimer();
+      _startProgress();
     } on DioException catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message ?? 'Delete failed')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(e.message ?? 'Delete failed')),
+        );
+        if (!_holding) _startProgress();
       }
     }
   }
@@ -292,44 +348,42 @@ class _UserStorySegmentState extends State<_UserStorySegment> {
     }
   }
 
+  Widget _buildProgressBar() {
+    return AnimatedBuilder(
+      animation: _progress,
+      builder: (_, __) {
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(8, 8, 8, 4),
+          child: Row(
+            children: List.generate(_items.length, (i) {
+              final value = i < _slideIndex
+                  ? 1.0
+                  : i == _slideIndex
+                      ? _progress.value
+                      : 0.0;
+              return Expanded(
+                child: Padding(
+                  padding: EdgeInsets.only(right: i < _items.length - 1 ? 4 : 0),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(2),
+                    child: LinearProgressIndicator(
+                      value: value,
+                      minHeight: 2,
+                      backgroundColor: Colors.white24,
+                      valueColor: const AlwaysStoppedAnimation<Color>(Colors.white),
+                    ),
+                  ),
+                ),
+              );
+            }),
+          ),
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    if (widget.ring.isAddPlaceholder) {
-      return ColoredBox(
-        color: Colors.black,
-        child: SafeArea(
-          child: Column(
-            children: [
-              Row(
-                children: [
-                  IconButton(onPressed: widget.onClose, icon: const Icon(Icons.close, color: Colors.white)),
-                  const Spacer(),
-                ],
-              ),
-              const Spacer(),
-              const Text('Share a moment', style: TextStyle(color: Colors.white70)),
-              const SizedBox(height: 16),
-              FilledButton(
-                onPressed: () async {
-                  final added = await Navigator.of(context).push<bool>(
-                    MaterialPageRoute<bool>(
-                      builder: (_) => RepositoryProvider.value(
-                        value: context.read<SocialRepository>(),
-                        child: const StoryComposerPage(),
-                      ),
-                    ),
-                  );
-                  if (added == true && mounted) widget.onClose();
-                },
-                child: const Text('Add story'),
-              ),
-              const Spacer(),
-            ],
-          ),
-        ),
-      );
-    }
-
     if (_loading) {
       return const ColoredBox(
         color: Colors.black,
@@ -368,11 +422,11 @@ class _UserStorySegmentState extends State<_UserStorySegment> {
       },
       onLongPressStart: (_) {
         setState(() => _holding = true);
-        _timer?.cancel();
+        _progress.stop();
       },
       onLongPressEnd: (_) {
         setState(() => _holding = false);
-        if (!_isOwn) _armTimer();
+        _progress.forward();
       },
       child: Stack(
         fit: StackFit.expand,
@@ -383,7 +437,7 @@ class _UserStorySegmentState extends State<_UserStorySegment> {
             onPageChanged: (i) {
               setState(() => _slideIndex = i);
               unawaited(_safeMarkSeen(_items[i].id));
-              if (!_isOwn) _armTimer();
+              _startProgress();
             },
             itemBuilder: (_, i) {
               final ref = _items[i].mediaUrl;
@@ -397,6 +451,7 @@ class _UserStorySegmentState extends State<_UserStorySegment> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
+                _buildProgressBar(),
                 Row(
                   children: [
                     IconButton(
