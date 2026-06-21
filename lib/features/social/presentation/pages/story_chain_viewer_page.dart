@@ -313,22 +313,28 @@ class _UserStorySegmentState extends State<_UserStorySegment>
 
   Future<void> _sendStoryReply() async {
     if (_isOwn || _items.isEmpty) return;
+    _progress.stop();
     final ctrl = TextEditingController();
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Message'),
-        content: TextField(
-          controller: ctrl,
-          decoration: const InputDecoration(hintText: 'Write a message…'),
-          maxLines: 3,
+    final bool? ok;
+    try {
+      ok = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Message'),
+          content: TextField(
+            controller: ctrl,
+            decoration: const InputDecoration(hintText: 'Write a message…'),
+            maxLines: 3,
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Send')),
+          ],
         ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Send')),
-        ],
-      ),
-    );
+      );
+    } finally {
+      if (mounted && !_holding) _progress.forward();
+    }
     if (ok != true || !mounted) return;
     final body = ctrl.text.trim();
     if (body.isEmpty) return;
