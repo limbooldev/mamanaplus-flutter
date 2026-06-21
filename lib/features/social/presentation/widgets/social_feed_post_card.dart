@@ -11,6 +11,7 @@ import '../../data/social_repository.dart';
 import '../../domain/social_models.dart';
 import '../pages/social_user_list_page.dart';
 import '../pages/user_profile_page.dart';
+import 'like_button.dart';
 import 'social_comments_bottom_sheet.dart';
 import 'social_media_widgets.dart';
 
@@ -389,28 +390,20 @@ class _SocialFeedPostCardState extends State<SocialFeedPostCard> {
         ),
         AspectRatio(
           aspectRatio: 1,
-          child: _FeedMediaPreview(post: post),
+          child: DoubleTapLikeOverlay(
+            isLiked: post.likedByViewer,
+            onLike: widget.onToggleLike,
+            child: _FeedMediaPreview(post: post),
+          ),
         ),
         Padding(
           padding: const EdgeInsets.fromLTRB(4, 4, 8, 0),
           child: Row(
             children: [
-              IconButton(
-                visualDensity: VisualDensity.compact,
-                onPressed: widget.onToggleLike,
-                icon: Icon(
-                  post.likedByViewer ? Icons.favorite : Icons.favorite_border,
-                  color: post.likedByViewer ? Colors.redAccent : onSurface,
-                  size: 26,
-                ),
-              ),
-              Text(
-                '${post.likeCount}',
-                style: GoogleFonts.inter(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w500,
-                  color: onSurface,
-                ),
+              LikeButton(
+                isLiked: post.likedByViewer,
+                likeCount: post.likeCount,
+                onTap: widget.onToggleLike,
               ),
               const SizedBox(width: 4),
               IconButton(

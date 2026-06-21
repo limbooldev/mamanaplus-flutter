@@ -7,6 +7,7 @@ import '../../../../shared/ui/ui.dart';
 import '../../../chat/presentation/cubit/auth_cubit.dart';
 import '../../data/social_repository.dart';
 import '../cubit/social_post_cubit.dart';
+import '../widgets/like_button.dart';
 import '../widgets/social_media_widgets.dart';
 import '../widgets/social_post_comment_widgets.dart';
 import 'social_user_list_page.dart';
@@ -156,13 +157,11 @@ class _PostScaffold extends StatelessWidget {
                 spacing: 8,
                 runSpacing: 8,
                 children: [
-                  FilledButton.tonalIcon(
-                    onPressed: () =>
-                        context.read<SocialPostCubit>().toggleLike(),
-                    icon: Icon(
-                      p.likedByViewer ? Icons.favorite : Icons.favorite_border,
-                    ),
-                    label: Text('${p.likeCount}'),
+                  LikeButton(
+                    isLiked: p.likedByViewer,
+                    likeCount: p.likeCount,
+                    onTap: () => context.read<SocialPostCubit>().toggleLike(),
+                    style: LikeButtonStyle.tonal,
                   ),
                   FilledButton.tonalIcon(
                     onPressed: () =>

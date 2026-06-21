@@ -6,8 +6,8 @@ plugins {
     id("com.google.gms.google-services")
     id("com.google.firebase.crashlytics")
     // END: FlutterFire Configuration
-    id("kotlin-android")
-    // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
+    // The Flutter Gradle Plugin must be applied after the Android plugin.
+    // Built-in Kotlin support is provided by the Flutter Gradle Plugin — no separate kotlin-android plugin needed.
     id("dev.flutter.flutter-gradle-plugin")
 }
 
