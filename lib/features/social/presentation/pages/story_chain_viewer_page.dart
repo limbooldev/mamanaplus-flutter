@@ -3,9 +3,12 @@ import 'dart:async';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:video_player/video_player.dart';
 
+import '../../../../core/api_config.dart';
 import '../../../../shared/ui/ui.dart';
 import '../../../chat/data/chat_repository.dart';
+import '../../../chat/presentation/cubit/auth_cubit.dart';
 import '../../data/social_repository.dart';
 import '../widgets/social_media_widgets.dart';
 import '../../data/story_seen_local_store.dart';
@@ -112,17 +115,21 @@ class _UserStorySegment extends StatefulWidget {
 
 class _UserStorySegmentState extends State<_UserStorySegment>
     with SingleTickerProviderStateMixin {
+  static const Duration _imageSlideDuration = Duration(seconds: 5);
+  static const Duration _maxStoryVideoDuration = Duration(seconds: 15);
+
   List<StoryMedia> _items = [];
   bool _loading = true;
   String? _error;
   late final PageController _slideCtrl = PageController();
   late final AnimationController _progress = AnimationController(
     vsync: this,
-    duration: const Duration(seconds: 5),
+    duration: _imageSlideDuration,
   );
   int _slideIndex = 0;
   bool _holding = false;
   int? _myId;
+  VideoPlayerController? _videoController;
 
   bool get _isOwn => _myId != null && _myId == widget.ring.userId;
 
@@ -184,7 +191,79 @@ class _UserStorySegmentState extends State<_UserStorySegment>
     _progress.removeStatusListener(_onProgressCompleted);
     _progress.dispose();
     _slideCtrl.dispose();
+    _videoController?.dispose();
     super.dispose();
+  }
+
+  Future<void> _disposeVideoController() async {
+    final c = _videoController;
+    _videoController = null;
+    if (c != null) {
+      await c.dispose();
+    }
+  }
+
+  Duration _videoDurationForController(VideoPlayerController c) {
+    final d = c.value.duration;
+    if (d <= Duration.zero) return _imageSlideDuration;
+    return d < _maxStoryVideoDuration ? d : _maxStoryVideoDuration;
+  }
+
+  Future<void> _initVideoForCurrentSlide() async {
+    if (_items.isEmpty) return;
+    final item = _items[_slideIndex];
+    if (!item.isVideo) return;
+
+    final ref = item.mediaUrl;
+    VideoPlayerController? c;
+    try {
+      if (socialMediaIsRemoteUrl(ref)) {
+        c = VideoPlayerController.networkUrl(Uri.parse(ref));
+      } else {
+        final cached = await socialLookupCachedMediaFile(ref);
+        if (cached != null) {
+          c = VideoPlayerController.file(cached);
+        } else {
+          if (!mounted) return;
+          final base = context.read<ApiConfig>().baseUrl;
+          final auth = context.read<AuthCubit>().state;
+          if (auth is! AuthAuthenticated) return;
+          final url = socialMediaResolveUrl(base, ref);
+          c = VideoPlayerController.networkUrl(
+            Uri.parse(url),
+            httpHeaders: {'Authorization': 'Bearer ${auth.accessToken}'},
+          );
+          unawaited(
+            context.read<SocialRepository>().downloadMediaToCache(
+                  ref,
+                  fallbackExtension: 'mp4',
+                ),
+          );
+        }
+      }
+      await c.initialize();
+      if (!mounted) {
+        await c.dispose();
+        return;
+      }
+      setState(() => _videoController = c);
+    } catch (_) {
+      await c?.dispose();
+    }
+  }
+
+  void _pausePlayback() {
+    _progress.stop();
+    _videoController?.pause();
+  }
+
+  void _resumePlayback() {
+    if (_holding) return;
+    _progress.forward();
+    final c = _videoController;
+    if (c != null && c.value.isInitialized && !c.value.isPlaying) {
+      c.play();
+    }
   }
 
   Future<void> _safeMarkSeen(int mediaId) async {
@@ -197,8 +276,32 @@ class _UserStorySegmentState extends State<_UserStorySegment>
     }
   }
 
-  void _startProgress() {
+  Future<void> _startProgress() async {
     if (_holding || _items.isEmpty) return;
+    final item = _items[_slideIndex];
+    if (item.isVideo) {
+      if (_videoController == null || !_videoController!.value.isInitialized) {
+        await _initVideoForCurrentSlide();
+      }
+    } else {
+      await _disposeVideoController();
+    }
+    if (!mounted || _holding || _items.isEmpty) return;
+
+    final duration = item.isVideo &&
+            _videoController != null &&
+            _videoController!.value.isInitialized
+        ? _videoDurationForController(_videoController!)
+        : _imageSlideDuration;
+    _progress.duration = duration;
+
+    if (item.isVideo &&
+        _videoController != null &&
+        _videoController!.value.isInitialized) {
+      await _videoController!.seekTo(Duration.zero);
+      await _videoController!.play();
+    }
+
     _progress
       ..stop()
       ..reset()
@@ -225,7 +328,7 @@ class _UserStorySegmentState extends State<_UserStorySegment>
 
   Future<void> _deleteCurrent() async {
     if (_items.isEmpty) return;
-    _progress.stop();
+    _pausePlayback();
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -313,7 +416,7 @@ class _UserStorySegmentState extends State<_UserStorySegment>
 
   Future<void> _sendStoryReply() async {
     if (_isOwn || _items.isEmpty) return;
-    _progress.stop();
+    _pausePlayback();
     final ctrl = TextEditingController();
     final bool? ok;
     try {
@@ -333,7 +436,7 @@ class _UserStorySegmentState extends State<_UserStorySegment>
         ),
       );
     } finally {
-      if (mounted && !_holding) _progress.forward();
+      if (mounted && !_holding) _resumePlayback();
     }
     if (ok != true || !mounted) return;
     final body = ctrl.text.trim();
@@ -428,11 +531,11 @@ class _UserStorySegmentState extends State<_UserStorySegment>
       },
       onLongPressStart: (_) {
         setState(() => _holding = true);
-        _progress.stop();
+        _pausePlayback();
       },
       onLongPressEnd: (_) {
         setState(() => _holding = false);
-        _progress.forward();
+        _resumePlayback();
       },
       child: Stack(
         fit: StackFit.expand,
@@ -443,12 +546,31 @@ class _UserStorySegmentState extends State<_UserStorySegment>
             onPageChanged: (i) {
               setState(() => _slideIndex = i);
               unawaited(_safeMarkSeen(_items[i].id));
+              unawaited(_disposeVideoController());
               _startProgress();
             },
             itemBuilder: (_, i) {
-              final ref = _items[i].mediaUrl;
+              final item = _items[i];
+              if (item.isVideo) {
+                final c = _videoController;
+                if (i != _slideIndex ||
+                    c == null ||
+                    !c.value.isInitialized) {
+                  return const ColoredBox(
+                    color: Colors.black,
+                    child: Center(child: CircularProgressIndicator()),
+                  );
+                }
+                return Center(
+                  child: AspectRatio(
+                    aspectRatio:
+                        c.value.aspectRatio == 0 ? 9 / 16 : c.value.aspectRatio,
+                    child: VideoPlayer(c),
+                  ),
+                );
+              }
               return SocialPostImage(
-                mediaRef: ref,
+                mediaRef: item.mediaUrl,
                 fit: BoxFit.contain,
               );
             },

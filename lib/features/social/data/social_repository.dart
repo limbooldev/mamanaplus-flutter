@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:dio/dio.dart';
+import 'package:mime/mime.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
@@ -34,23 +35,34 @@ class SocialRepository {
   /// Returns [object_key] to store as `media_url` on the post.
   Future<String> uploadSocialMediaBytes(
     List<int> bytes,
-    String contentType,
-  ) async {
-    final compressed = await MediaUploadProcessor.compressImageBytes(
-      bytes,
-      mimeType: contentType,
-    );
-    final uploadMime = MediaUploadProcessor.isCompressibleImageMime(contentType)
-        ? compressed.mimeType
-        : contentType;
-    final uploadBytes = MediaUploadProcessor.isCompressibleImageMime(contentType)
-        ? compressed.bytes
-        : bytes;
+    String contentType, {
+    int? durationMs,
+  }) async {
+    final isVideo = MediaUploadProcessor.isVideoMime(contentType);
+    late final String uploadMime;
+    late final List<int> uploadBytes;
+
+    if (isVideo) {
+      uploadMime = contentType;
+      uploadBytes = bytes;
+    } else {
+      final compressed = await MediaUploadProcessor.compressImageBytes(
+        bytes,
+        mimeType: contentType,
+      );
+      uploadMime = MediaUploadProcessor.isCompressibleImageMime(contentType)
+          ? compressed.mimeType
+          : contentType;
+      uploadBytes = MediaUploadProcessor.isCompressibleImageMime(contentType)
+          ? compressed.bytes
+          : bytes;
+    }
 
     final presign = await _mediaApi.presignMedia(
       contentType: uploadMime,
       byteSize: uploadBytes.length,
       purpose: 'social',
+      durationMs: isVideo ? durationMs : null,
     );
     final uploadUrl = presign['upload_url'] as String;
     final headers = Map<String, String>.from(
@@ -73,6 +85,26 @@ class SocialRepository {
       await _mediaApi.completeMediaUpload(objectKey: objectKey);
     }
     return objectKey;
+  }
+
+  /// Compresses, uploads, and attaches a story video slide (max 15s).
+  Future<Map<String, int>> uploadStoryVideoFromPath(String path) async {
+    final processed = await MediaUploadProcessor.compressVideoForStoryUpload(path);
+    final bytes = await File(processed.path).readAsBytes();
+    final key = await uploadSocialMediaBytes(
+      bytes,
+      processed.mimeType,
+      durationMs: processed.durationMs,
+    );
+    return addStoryMedia(key, contentType: processed.mimeType);
+  }
+
+  /// Uploads a story image slide from a local file path.
+  Future<Map<String, int>> uploadStoryImageFromPath(String path) async {
+    final bytes = await File(path).readAsBytes();
+    final mime = lookupMimeType(path) ?? 'image/jpeg';
+    final key = await uploadSocialMediaBytes(bytes, mime);
+    return addStoryMedia(key, contentType: mime);
   }
 
   /// Downloads a media object to the temp cache dir, reusing an existing file when present.
@@ -324,10 +356,16 @@ class SocialRepository {
     return _items(res.data ?? {}, StoryMedia.fromJson);
   }
 
-  Future<Map<String, int>> addStoryMedia(String mediaUrl) async {
+  Future<Map<String, int>> addStoryMedia(
+    String mediaUrl, {
+    String contentType = 'image/jpeg',
+  }) async {
     final res = await _dio.post<Map<String, dynamic>>(
       '/v1/social/stories/media',
-      data: {'media_url': mediaUrl},
+      data: {
+        'media_url': mediaUrl,
+        'content_type': contentType,
+      },
     );
     return {
       'story_id': (res.data?['story_id'] as num).toInt(),

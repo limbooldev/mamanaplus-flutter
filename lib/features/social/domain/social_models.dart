@@ -243,6 +243,7 @@ class StoryMedia {
     required this.id,
     required this.storyId,
     required this.mediaUrl,
+    required this.contentType,
     required this.position,
     required this.createdAt,
     required this.seenByMe,
@@ -251,15 +252,20 @@ class StoryMedia {
   final int id;
   final int storyId;
   final String mediaUrl;
+  final String contentType;
   final int position;
   final DateTime createdAt;
   final bool seenByMe;
+
+  bool get isVideo =>
+      contentType.startsWith('video/') || contentType == 'application/mp4';
 
   factory StoryMedia.fromJson(Map<String, dynamic> j) {
     return StoryMedia(
       id: (j['id'] as num).toInt(),
       storyId: (j['story_id'] as num).toInt(),
       mediaUrl: j['media_url'] as String? ?? '',
+      contentType: j['content_type'] as String? ?? 'image/jpeg',
       position: (j['position'] as num?)?.toInt() ?? 0,
       createdAt: DateTime.tryParse(j['created_at'] as String? ?? '') ??
           DateTime.fromMillisecondsSinceEpoch(0),

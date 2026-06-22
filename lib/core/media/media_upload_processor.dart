@@ -13,18 +13,22 @@ abstract final class MediaUploadLimits {
   static const skipImageCompressionBelowBytes = 300 * 1024;
   static const maxVideoDurationMs = 60 * 1000;
   static const maxVideoDurationSec = 60;
+  static const maxStoryVideoDurationMs = 15 * 1000;
+  static const maxStoryVideoDurationSec = 15;
   static const largeFileWarningBytes = 10 * 1024 * 1024;
 }
 
 class VideoDurationExceededException implements Exception {
-  VideoDurationExceededException(this.durationMs);
+  VideoDurationExceededException(this.durationMs, {this.maxDurationSec});
 
   final int durationMs;
+  final int? maxDurationSec;
+
+  int get _limitSec => maxDurationSec ?? MediaUploadLimits.maxVideoDurationSec;
 
   @override
   String toString() =>
-      'Video is ${(durationMs / 1000).ceil()}s long; max is '
-      '${MediaUploadLimits.maxVideoDurationSec}s.';
+      'Video is ${(durationMs / 1000).ceil()}s long; max is $_limitSec s.';
 }
 
 class ProcessedVideoUpload {
@@ -62,11 +66,17 @@ abstract final class MediaUploadProcessor {
   }
 
   /// Reads video metadata and throws [VideoDurationExceededException] when over limit.
-  static Future<int> readVideoDurationMs(String path) async {
+  static Future<int> readVideoDurationMs(
+    String path, {
+    int maxDurationMs = MediaUploadLimits.maxVideoDurationMs,
+  }) async {
     final info = await VideoCompress.getMediaInfo(path);
     final durationMs = info.duration?.toInt() ?? 0;
-    if (durationMs > MediaUploadLimits.maxVideoDurationMs) {
-      throw VideoDurationExceededException(durationMs);
+    if (durationMs > maxDurationMs) {
+      throw VideoDurationExceededException(
+        durationMs,
+        maxDurationSec: maxDurationMs ~/ 1000,
+      );
     }
     return durationMs;
   }
@@ -74,7 +84,24 @@ abstract final class MediaUploadProcessor {
   /// Transcodes video to ~720p medium quality for network upload.
   static Future<ProcessedVideoUpload> compressVideoForUpload(String path) async {
     final durationMs = await readVideoDurationMs(path);
+    return _compressVideoAtPath(path, durationMs);
+  }
 
+  /// Story videos are capped at [MediaUploadLimits.maxStoryVideoDurationMs].
+  static Future<ProcessedVideoUpload> compressVideoForStoryUpload(
+    String path,
+  ) async {
+    final durationMs = await readVideoDurationMs(
+      path,
+      maxDurationMs: MediaUploadLimits.maxStoryVideoDurationMs,
+    );
+    return _compressVideoAtPath(path, durationMs);
+  }
+
+  static Future<ProcessedVideoUpload> _compressVideoAtPath(
+    String path,
+    int durationMs,
+  ) async {
     await VideoCompress.setLogLevel(0);
     final info = await VideoCompress.compressVideo(
       path,
