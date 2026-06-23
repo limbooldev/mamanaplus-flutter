@@ -90,13 +90,22 @@ class SocialRepository {
   /// Compresses, uploads, and attaches a story video slide (max 15s).
   Future<Map<String, int>> uploadStoryVideoFromPath(String path) async {
     final processed = await MediaUploadProcessor.compressVideoForStoryUpload(path);
+    final thumbFile = await MediaUploadProcessor.storyVideoThumbnailFile(
+      processed.path,
+    );
+    final thumbBytes = await thumbFile.readAsBytes();
+    final thumbKey = await uploadSocialMediaBytes(thumbBytes, 'image/jpeg');
     final bytes = await File(processed.path).readAsBytes();
     final key = await uploadSocialMediaBytes(
       bytes,
       processed.mimeType,
       durationMs: processed.durationMs,
     );
-    return addStoryMedia(key, contentType: processed.mimeType);
+    return addStoryMedia(
+      key,
+      contentType: processed.mimeType,
+      thumbnailUrl: thumbKey,
+    );
   }
 
   /// Uploads a story image slide from a local file path.
@@ -359,12 +368,15 @@ class SocialRepository {
   Future<Map<String, int>> addStoryMedia(
     String mediaUrl, {
     String contentType = 'image/jpeg',
+    String? thumbnailUrl,
   }) async {
     final res = await _dio.post<Map<String, dynamic>>(
       '/v1/social/stories/media',
       data: {
         'media_url': mediaUrl,
         'content_type': contentType,
+        if (thumbnailUrl != null && thumbnailUrl.isNotEmpty)
+          'thumbnail_url': thumbnailUrl,
       },
     );
     return {

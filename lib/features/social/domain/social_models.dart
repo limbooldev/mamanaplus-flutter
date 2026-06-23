@@ -214,22 +214,23 @@ class StoryRing {
     required this.userId,
     required this.displayName,
     required this.storyId,
-    this.coverUrl,
+    this.avatarMediaKey,
     required this.hasUnseen,
   });
 
   final int userId;
   final String displayName;
   final int storyId;
-  final String? coverUrl;
+  final String? avatarMediaKey;
   final bool hasUnseen;
 
   factory StoryRing.fromJson(Map<String, dynamic> j) {
+    final avatar = j['avatar_media_key'] as String?;
     return StoryRing(
       userId: (j['user_id'] as num).toInt(),
       displayName: j['display_name'] as String? ?? '',
       storyId: (j['story_id'] as num).toInt(),
-      coverUrl: j['cover_url'] as String?,
+      avatarMediaKey: avatar != null && avatar.isNotEmpty ? avatar : null,
       hasUnseen: j['has_unseen'] == true,
     );
   }

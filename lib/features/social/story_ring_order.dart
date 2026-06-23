@@ -27,7 +27,7 @@ List<StoryRing> orderStoryRingsForFeed(List<StoryRing> raw, int? myId) {
           userId: myId,
           displayName: 'Your story',
           storyId: 0,
-          coverUrl: null,
+          avatarMediaKey: null,
           hasUnseen: false,
         ),
       );

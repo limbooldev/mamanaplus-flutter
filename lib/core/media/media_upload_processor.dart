@@ -98,6 +98,15 @@ abstract final class MediaUploadProcessor {
     return _compressVideoAtPath(path, durationMs);
   }
 
+  /// First-frame JPEG thumbnail for story ring covers.
+  static Future<File> storyVideoThumbnailFile(String videoPath) {
+    return VideoCompress.getFileThumbnail(
+      videoPath,
+      quality: 80,
+      position: 0,
+    );
+  }
+
   static Future<ProcessedVideoUpload> _compressVideoAtPath(
     String path,
     int durationMs,

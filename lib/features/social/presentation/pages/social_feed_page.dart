@@ -279,33 +279,18 @@ class _StoryStrip extends StatelessWidget {
                       Container(
                         padding: const EdgeInsets.all(3),
                         decoration: ringDecoration,
-                        child: CircleAvatar(
-                          radius: 32,
-                          backgroundColor:
-                              AppColors.primary.withValues(alpha: 0.2),
-                          child: (s.coverUrl == null || s.coverUrl!.isEmpty)
-                              ? (s.isAddPlaceholder
-                                  ? const Icon(Icons.add, size: 32)
-                                  : Text(
-                                      s.displayName.isNotEmpty
-                                          ? s.displayName[0].toUpperCase()
-                                          : '?',
-                                      style: GoogleFonts.inter(
-                                        fontSize: 20,
-                                        fontWeight: FontWeight.w700,
-                                      ),
-                                    ))
-                              : ClipOval(
-                                  child: SizedBox(
-                                    width: 64,
-                                    height: 64,
-                                    child: SocialPostImage(
-                                      mediaRef: s.coverUrl,
-                                      fit: BoxFit.cover,
-                                    ),
-                                  ),
-                                ),
-                        ),
+                        child: s.isAddPlaceholder
+                            ? CircleAvatar(
+                                radius: 32,
+                                backgroundColor:
+                                    AppColors.primary.withValues(alpha: 0.2),
+                                child: const Icon(Icons.add, size: 32),
+                              )
+                            : UserAvatar(
+                                displayName: s.displayName,
+                                avatarMediaKey: s.avatarMediaKey,
+                                size: 64,
+                              ),
                       ),
                     ],
                   ),
