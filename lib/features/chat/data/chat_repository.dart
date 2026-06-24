@@ -57,6 +57,13 @@ class ChatRepository {
 
   Stream<int> get sendBlockedByPeerFor => _sendBlockedByPeerCtrl.stream;
 
+  /// Emits `(outboxLocalId, progress)` where progress is 0.0–1.0 during PUT upload.
+  final StreamController<MapEntry<String, double>> _uploadProgressCtrl =
+      StreamController<MapEntry<String, double>>.broadcast();
+
+  Stream<MapEntry<String, double>> get uploadProgressStream =>
+      _uploadProgressCtrl.stream;
+
   /// Prevents the same outbox row from being delivered twice when reconnect
   /// triggers concurrent flushes and an in-flight optimistic send overlaps.
   final Set<String> _outboxSendInFlight = {};
@@ -183,8 +190,8 @@ class ChatRepository {
       contentType: contentType,
       storyMediaId: storyMediaId,
     );
-    final row = await _loadOutboxRow(localId);
-    if (row != null) await _deliverOutboxRow(row);
+    final row = await loadOutboxRow(localId);
+    if (row != null) await deliverOutboxRow(row);
   }
 
   /// Optimistic media send. Inserts the outbox row first (renders the bubble
@@ -200,16 +207,32 @@ class ChatRepository {
     int? replyToMessageId,
     String? caption,
   }) async {
+    if (kind == 'video') {
+      // Insert outbox row immediately so the bubble appears while compression runs.
+      await enqueuePendingMediaSend(
+        localId: localId,
+        conversationId: conversationId,
+        mediaPath: path,
+        mediaMime: mime,
+        mediaKind: kind,
+        mediaDurationMs: durationMs,
+        replyToMessageId: replyToMessageId,
+        caption: caption,
+      );
+      unawaited(
+        _compressAndDeliverVideo(
+          localId: localId,
+          conversationId: conversationId,
+          path: path,
+        ),
+      );
+      return;
+    }
+
     var effectivePath = path;
     var effectiveMime = mime;
-    var effectiveDuration = durationMs;
 
-    if (kind == 'video') {
-      final processed = await MediaUploadProcessor.compressVideoForUpload(path);
-      effectivePath = processed.path;
-      effectiveMime = processed.mimeType;
-      effectiveDuration = processed.durationMs;
-    } else if (kind == 'image' && MediaUploadProcessor.isCompressibleImageMime(mime)) {
+    if (kind == 'image' && MediaUploadProcessor.isCompressibleImageMime(mime)) {
       final processed = await MediaUploadProcessor.compressImageFile(
         path,
         mimeType: mime,
@@ -224,12 +247,123 @@ class ChatRepository {
       mediaPath: effectivePath,
       mediaMime: effectiveMime,
       mediaKind: kind,
-      mediaDurationMs: effectiveDuration,
+      mediaDurationMs: durationMs,
       replyToMessageId: replyToMessageId,
       caption: caption,
     );
-    final row = await _loadOutboxRow(localId);
-    if (row != null) await _deliverOutboxRow(row);
+    final row = await loadOutboxRow(localId);
+    if (row != null) await deliverOutboxRow(row);
+  }
+
+  /// Loads a single outbox row by [localId].
+  Future<MessageOutboxData?> loadOutboxRow(String localId) =>
+      _loadOutboxRow(localId);
+
+  /// Retries a failed pending send (compression for raw video, upload otherwise).
+  Future<void> retryPendingSend({
+    required String localId,
+    required int conversationId,
+  }) async {
+    final row = await loadOutboxRow(localId);
+    if (row == null) return;
+    await _clearOutboxFailure(localId, conversationId);
+    if (row.mediaKind == 'video' && row.mediaMime != 'video/mp4') {
+      unawaited(
+        _compressAndDeliverVideo(
+          localId: localId,
+          conversationId: conversationId,
+          path: row.mediaPath!,
+        ),
+      );
+      return;
+    }
+    await deliverOutboxRow(row);
+  }
+
+  Future<void> _clearOutboxFailure(String localId, int conversationId) async {
+    await (_db.update(_db.messageOutbox)
+          ..where((t) => t.localId.equals(localId)))
+        .write(const MessageOutboxCompanion(lastErrorAt: Value(null)));
+    _outboxChangesCtrl.add(conversationId);
+  }
+
+  Future<void> _updateOutboxMediaPath({
+    required String localId,
+    required int conversationId,
+    required String path,
+    required String mime,
+    required int durationMs,
+  }) async {
+    await (_db.update(_db.messageOutbox)
+          ..where((t) => t.localId.equals(localId)))
+        .write(
+      MessageOutboxCompanion(
+        mediaPath: Value(path),
+        mediaMime: Value(mime),
+        mediaDurationMs: Value(durationMs),
+      ),
+    );
+    _outboxChangesCtrl.add(conversationId);
+  }
+
+  Future<void> _compressAndDeliverVideo({
+    required String localId,
+    required int conversationId,
+    required String path,
+  }) async {
+    if (!_tryBeginOutboxSend(localId)) return;
+    try {
+      ProcessedVideoUpload processed;
+      try {
+        processed = await MediaUploadProcessor.compressVideoForUpload(path);
+      } catch (e) {
+        final row = await _loadOutboxRow(localId);
+        if (row == null) return;
+        if (_isSendBlockedError(e)) {
+          _sendBlockedByPeerCtrl.add(conversationId);
+          await _deleteOutbox(localId, conversationId);
+        } else {
+          await _markOutboxFailed(localId, conversationId);
+        }
+        return;
+      }
+
+      final stillThere = await _loadOutboxRow(localId);
+      if (stillThere == null) {
+        try {
+          final compressed = File(processed.path);
+          if (compressed.existsSync()) await compressed.delete();
+        } catch (_) {}
+        return;
+      }
+
+      await _updateOutboxMediaPath(
+        localId: localId,
+        conversationId: conversationId,
+        path: processed.path,
+        mime: processed.mimeType,
+        durationMs: processed.durationMs,
+      );
+
+      final row = await _loadOutboxRow(localId);
+      if (row == null) return;
+      await _deliverOutboxRowBody(row);
+      await _deleteOutbox(localId, conversationId);
+      // Belt-and-suspenders: fire one extra notification so the cubit's
+      // _outboxSub definitely triggers a _reloadLocal even if the event from
+      // _deleteOutbox was processed while a concurrent DB read was still in
+      // flight (which could leave the pending state visible).
+      _outboxChangesCtrl.add(conversationId);
+    } catch (e) {
+      if (_isSendBlockedError(e)) {
+        _sendBlockedByPeerCtrl.add(conversationId);
+        await _deleteOutbox(localId, conversationId);
+      } else {
+        await _markOutboxFailed(localId, conversationId);
+      }
+    } finally {
+      _endOutboxSend(localId);
+    }
   }
 
   Future<void> _deleteOutbox(String localId, int conversationId) async {
@@ -326,7 +460,7 @@ class ChatRepository {
       _db.messageOutbox,
     )..where((t) => t.conversationId.equals(conversationId))).get();
     for (final row in rows) {
-      await _deliverOutboxRow(row);
+      await deliverOutboxRow(row);
     }
   }
 
@@ -334,7 +468,7 @@ class ChatRepository {
   Future<void> flushAllOutbox() async {
     final rows = await _db.select(_db.messageOutbox).get();
     for (final row in rows) {
-      await _deliverOutboxRow(row);
+      await deliverOutboxRow(row);
     }
   }
 
@@ -355,43 +489,21 @@ class ChatRepository {
   }
 
   /// Single delivery path for optimistic sends and reconnect flushes.
-  Future<void> _deliverOutboxRow(MessageOutboxData row) async {
+  Future<void> deliverOutboxRow(MessageOutboxData row) async {
+    if (row.mediaKind == 'video' && row.mediaMime != 'video/mp4') {
+      unawaited(
+        _compressAndDeliverVideo(
+          localId: row.localId,
+          conversationId: row.conversationId,
+          path: row.mediaPath!,
+        ),
+      );
+      return;
+    }
     if (!_tryBeginOutboxSend(row.localId)) return;
     try {
-      final current = await _loadOutboxRow(row.localId);
-      if (current == null) return;
-
-      final isMedia =
-          current.mediaPath != null && current.mediaPath!.isNotEmpty;
-      if (isMedia) {
-        final file = File(current.mediaPath!);
-        if (!file.existsSync()) {
-          // Media file is gone (e.g. cache cleared); drop the row to avoid an
-          // unending retry loop.
-          await _deleteOutbox(current.localId, current.conversationId);
-          return;
-        }
-        final bytes = await file.readAsBytes();
-        await _uploadAndSendMediaFromBytes(
-          conversationId: current.conversationId,
-          bytes: bytes,
-          mimeType: current.mediaMime ?? 'application/octet-stream',
-          kind: current.mediaKind ?? 'image',
-          durationMs: current.mediaDurationMs,
-          replyToMessageId: current.replyToMessageId,
-          caption: current.mediaCaption,
-        );
-      } else {
-        final m = await _remote.sendMessage(
-          current.conversationId,
-          body: current.body,
-          replyToMessageId: current.replyToMessageId,
-          storyMediaId: current.storyMediaId,
-          contentType: current.contentType,
-        );
-        await cacheMessages(current.conversationId, [m]);
-      }
-      await _deleteOutbox(current.localId, current.conversationId);
+      await _deliverOutboxRowBody(row);
+      await _deleteOutbox(row.localId, row.conversationId);
     } catch (e) {
       if (_isSendBlockedError(e)) {
         _sendBlockedByPeerCtrl.add(row.conversationId);
@@ -401,6 +513,42 @@ class ChatRepository {
       }
     } finally {
       _endOutboxSend(row.localId);
+    }
+  }
+
+  Future<void> _deliverOutboxRowBody(MessageOutboxData row) async {
+    final current = await _loadOutboxRow(row.localId);
+    if (current == null) return;
+
+    final isMedia = current.mediaPath != null && current.mediaPath!.isNotEmpty;
+    if (isMedia) {
+      final file = File(current.mediaPath!);
+      if (!file.existsSync()) {
+        // Media file is gone (e.g. cache cleared); drop the row to avoid an
+        // unending retry loop.
+        await _deleteOutbox(current.localId, current.conversationId);
+        return;
+      }
+      final bytes = await file.readAsBytes();
+      await _uploadAndSendMediaFromBytes(
+        conversationId: current.conversationId,
+        bytes: bytes,
+        mimeType: current.mediaMime ?? 'application/octet-stream',
+        kind: current.mediaKind ?? 'image',
+        durationMs: current.mediaDurationMs,
+        replyToMessageId: current.replyToMessageId,
+        caption: current.mediaCaption,
+        outboxLocalId: current.localId,
+      );
+    } else {
+      final m = await _remote.sendMessage(
+        current.conversationId,
+        body: current.body,
+        replyToMessageId: current.replyToMessageId,
+        storyMediaId: current.storyMediaId,
+        contentType: current.contentType,
+      );
+      await cacheMessages(current.conversationId, [m]);
     }
   }
 
@@ -934,6 +1082,7 @@ class ChatRepository {
     int? durationMs,
     int? replyToMessageId,
     String? caption,
+    String? outboxLocalId,
   }) async {
     var uploadBytes = bytes;
     var uploadMime = mimeType;
@@ -968,6 +1117,14 @@ class ChatRepository {
       headers: headers,
       bytes: uploadBytes,
       bearerToken: access,
+      onSendProgress: outboxLocalId != null
+          ? (sent, total) {
+              if (total <= 0) return;
+              _uploadProgressCtrl.add(
+                MapEntry(outboxLocalId, sent / total),
+              );
+            }
+          : null,
     );
     if (!isLocal) {
       await _remote.completeMediaUpload(objectKey: objectKey);
@@ -1097,6 +1254,7 @@ class ChatRepository {
     _reconnectSub?.cancel();
     _outboxChangesCtrl.close();
     _sendBlockedByPeerCtrl.close();
+    _uploadProgressCtrl.close();
   }
 }
 

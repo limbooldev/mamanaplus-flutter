@@ -560,10 +560,12 @@ class ThreadCubit extends Cubit<ThreadState> {
     } else if (_resolvedConversationType == 'private') {
       unawaited(_loadDmBlockStatus());
     }
-    await _reloadMessagesFromRemote();
-
-    // Watch outbox so the optimistic bubble appears immediately when [send]
-    // inserts the row, and disappears as soon as the server response is cached.
+    // Subscribe to outbox changes BEFORE the remote fetch so events fired
+    // during the network round-trip (e.g. a video upload completing while the
+    // initial page load is still in flight) are never silently dropped on the
+    // broadcast stream.  Previously this subscription was created after the
+    // await, which meant _outboxChangesCtrl events from _deleteOutbox could
+    // fire with no listener and be lost, leaving the pending bubble stuck.
     _outboxSub =
         _repo.outboxChangedFor.where((id) => id == conversationId).listen((_) {
       unawaited(_reloadLocal());
@@ -574,6 +576,15 @@ class ThreadCubit extends Cubit<ThreadState> {
         .listen((_) {
       emit(state.copyWith(blockedByPeer: true, error: null));
     });
+
+    await _reloadMessagesFromRemote();
+
+    // After the remote fetch completes, do one extra local reload to pick up
+    // any outbox changes (successful uploads, failures, etc.) that raced with
+    // the network round-trip and whose stream events we already handled above.
+    // Without this, the state might still reflect a stale pending row that was
+    // cleared during the fetch window.
+    await _reloadLocal();
 
     // Every time the WebSocket re-establishes, re-fetch messages from REST. The
     // refetch is critical:
@@ -1062,6 +1073,18 @@ class ThreadCubit extends Cubit<ThreadState> {
   Future<void> cancelPendingMessage(String localId) async {
     try {
       await _repo.cancelPendingSend(
+        localId: localId,
+        conversationId: conversationId,
+      );
+      await _reloadLocal();
+    } catch (e) {
+      emit(state.copyWith(error: e.toString()));
+    }
+  }
+
+  Future<void> retryPendingMessage(String localId) async {
+    try {
+      await _repo.retryPendingSend(
         localId: localId,
         conversationId: conversationId,
       );

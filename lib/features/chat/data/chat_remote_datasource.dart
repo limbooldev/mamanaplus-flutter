@@ -325,6 +325,7 @@ class ChatRemoteDataSource {
     required Map<String, String> headers,
     required List<int> bytes,
     String? bearerToken,
+    void Function(int sent, int total)? onSendProgress,
   }) async {
     final dio = Dio(
       BaseOptions(
@@ -343,6 +344,7 @@ class ChatRemoteDataSource {
       uploadUrl,
       data: Uint8List.fromList(bytes),
       options: Options(headers: h),
+      onSendProgress: onSendProgress,
     );
   }
 

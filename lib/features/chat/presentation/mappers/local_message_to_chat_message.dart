@@ -442,7 +442,10 @@ List<Message> mapPendingOutboxToChatMessages(
     if (mediaPath != null && mediaPath.isNotEmpty) {
       final source = 'file://$mediaPath';
       final durMs = row.mediaDurationMs ?? 0;
-      final mediaMeta = _withOutboxCaptionMeta(meta, row.mediaCaption);
+      var mediaMeta = _withOutboxCaptionMeta(meta, row.mediaCaption);
+      if (row.lastErrorAt != null && row.attempts > 0) {
+        mediaMeta = {...mediaMeta, 'pendingFailed': true};
+      }
       switch (row.mediaKind) {
         case 'video':
           return Message.video(

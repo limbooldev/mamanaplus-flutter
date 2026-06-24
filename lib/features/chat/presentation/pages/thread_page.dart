@@ -103,6 +103,7 @@ class _ThreadScaffoldState extends State<_ThreadScaffold>
   late final InMemoryChatController _chatController;
   Timer? _typingIdleTimer;
   String _lastChatSyncSig = '';
+  int _lastPendingCount = 0;
   var _muteLoaded = false;
   var _muted = false;
   var _showEmojiPanel = false;
@@ -1140,22 +1141,42 @@ class _ThreadScaffoldState extends State<_ThreadScaffold>
                 if (state.loading && state.messages.isEmpty) {
                   return const Center(child: CircularProgressIndicator());
                 }
+                // Track whether a pending item just resolved so we can bypass
+                // the debounce and sync immediately (avoids the UI staying stuck
+                // on the pending bubble after upload while WS presence/reconnect
+                // events keep resetting the 16 ms timer).
+                final pendingCountDrop =
+                    state.pending.length < _lastPendingCount;
+                _lastPendingCount = state.pending.length;
+
                 final sig = _chatSignature(state);
                 if (sig != _lastChatSyncSig) {
                   _lastChatSyncSig = sig;
-                  // Debounce: when multiple states fire in rapid succession
-                  // (e.g. during init — local load, remote fetch, header hydration,
-                  // presence load all emit within the same frame), cancel the
-                  // previous pending sync and only process the latest state.
                   final capturedState = state;
                   _syncDebounce?.cancel();
-                  _syncDebounce = Timer(const Duration(milliseconds: 16), () {
+                  if (pendingCountDrop) {
+                    // A pending message was resolved — skip the debounce and
+                    // sync on the very next frame so the delivered bubble appears
+                    // without any perceptible delay.
                     WidgetsBinding.instance.addPostFrameCallback((_) {
                       if (mounted) {
                         unawaited(_syncChatMessages(capturedState));
                       }
                     });
-                  });
+                  } else {
+                    // Debounce: when multiple states fire in rapid succession
+                    // (e.g. during init — local load, remote fetch, header
+                    // hydration, presence load all emit within the same frame),
+                    // cancel the previous pending sync and only process the
+                    // latest state.
+                    _syncDebounce = Timer(const Duration(milliseconds: 16), () {
+                      WidgetsBinding.instance.addPostFrameCallback((_) {
+                        if (mounted) {
+                          unawaited(_syncChatMessages(capturedState));
+                        }
+                      });
+                    });
+                  }
                 }
                 final isDark = theme.brightness == Brightness.dark;
                 _captureKeyboardHeight(context);
@@ -1694,6 +1715,18 @@ class _ThreadScaffoldState extends State<_ThreadScaffold>
                       final bubble =
                           isSentByMe ? theme.colors.primary : theme.colors.surfaceContainerHigh;
                       final fg = isSentByMe ? theme.colors.onPrimary : theme.colors.onSurface;
+                      final cubit = context.read<ThreadCubit>();
+                      final pendingLocalId =
+                          pendingLocalIdFromChatMessageId(message.id);
+                      final isPending = pendingLocalId != null;
+                      final hasFailed =
+                          message.metadata?['pendingFailed'] == true;
+                      Stream<double>? uploadProgress;
+                      if (isPending) {
+                        uploadProgress = cubit.chatRepository.uploadProgressStream
+                            .where((e) => e.key == pendingLocalId)
+                            .map((e) => e.value);
+                      }
                       return Align(
                         alignment:
                             isSentByMe ? Alignment.centerRight : Alignment.centerLeft,
@@ -1705,6 +1738,14 @@ class _ThreadScaffoldState extends State<_ThreadScaffold>
                             bubble: bubble,
                             foreground: fg,
                             isSentByMe: isSentByMe,
+                            uploadProgress: uploadProgress,
+                            onCancel: isPending && isSentByMe && !hasFailed
+                                ? () => cubit.cancelPendingMessage(pendingLocalId)
+                                : null,
+                            hasFailed: hasFailed,
+                            onRetry: isPending && isSentByMe && hasFailed
+                                ? () => cubit.retryPendingMessage(pendingLocalId)
+                                : null,
                             onStatusTap: isSentByMe
                                 ? _groupSeenTapHandler(context, message)
                                 : null,

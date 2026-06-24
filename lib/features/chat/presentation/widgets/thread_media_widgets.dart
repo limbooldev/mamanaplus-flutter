@@ -6,6 +6,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_chat_core/flutter_chat_core.dart';
 import 'package:provider/provider.dart';
 import 'package:just_audio/just_audio.dart';
+import 'package:video_compress/video_compress.dart';
 import 'package:video_player/video_player.dart';
 
 import '../../data/chat_repository.dart';
@@ -621,6 +622,10 @@ class ThreadVideoBubble extends StatefulWidget {
     required this.isSentByMe,
     this.onStatusTap,
     this.senderNameHeader,
+    this.uploadProgress,
+    this.onCancel,
+    this.hasFailed = false,
+    this.onRetry,
   });
 
   final VideoMessage message;
@@ -630,16 +635,216 @@ class ThreadVideoBubble extends StatefulWidget {
   final bool isSentByMe;
   final VoidCallback? onStatusTap;
   final Widget? senderNameHeader;
+  final Stream<double>? uploadProgress;
+  final VoidCallback? onCancel;
+  final bool hasFailed;
+  final VoidCallback? onRetry;
 
   @override
   State<ThreadVideoBubble> createState() => _ThreadVideoBubbleState();
 }
 
 class _ThreadVideoBubbleState extends State<ThreadVideoBubble> {
-  // The inline bubble never initialises a VideoPlayerController — tapping
-  // immediately opens the full-screen player which handles initialisation
-  // there. This avoids spawning N ExoPlayer instances simultaneously when
-  // a thread with several video messages is first opened.
+  File? _localThumbnail;
+  bool _thumbnailLoading = false;
+
+  bool get _isPendingLocal => widget.message.source.startsWith('file://');
+
+  @override
+  void initState() {
+    super.initState();
+    if (_isPendingLocal) {
+      unawaited(_loadLocalThumbnail());
+    }
+  }
+
+  @override
+  void didUpdateWidget(ThreadVideoBubble oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final wasPending = oldWidget.message.source.startsWith('file://');
+    if (wasPending && !_isPendingLocal) {
+      // Message transitioned from pending (local file) to delivered (server URL).
+      // Force a full rebuild so the pending overlay and thumbnail are cleared.
+      setState(() {
+        _localThumbnail = null;
+        _thumbnailLoading = false;
+      });
+      return;
+    }
+    if (_isPendingLocal &&
+        oldWidget.message.source != widget.message.source &&
+        _localThumbnail == null &&
+        !_thumbnailLoading) {
+      unawaited(_loadLocalThumbnail());
+    }
+  }
+
+  Future<void> _loadLocalThumbnail() async {
+    if (_thumbnailLoading || _localThumbnail != null) return;
+    _thumbnailLoading = true;
+    final uri = Uri.parse(widget.message.source);
+    final videoPath = uri.toFilePath();
+    try {
+      final thumb = await VideoCompress.getFileThumbnail(
+        videoPath,
+        quality: 80,
+        position: 0,
+      );
+      if (!mounted) return;
+      setState(() {
+        _localThumbnail = thumb;
+        _thumbnailLoading = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _thumbnailLoading = false);
+    }
+  }
+
+  void _handleTap() {
+    if (_isPendingLocal) {
+      if (widget.hasFailed) {
+        widget.onRetry?.call();
+      }
+      return;
+    }
+    openChatFullscreenVideo(
+      context,
+      url: widget.message.source,
+      accessToken: widget.accessToken,
+    );
+  }
+
+  Widget _buildPendingOverlay() {
+    if (widget.hasFailed) {
+      return Material(
+        color: Colors.black38,
+        child: InkWell(
+          onTap: widget.onRetry,
+          child: Center(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  Icons.refresh,
+                  size: 40,
+                  color: Colors.white.withValues(alpha: 0.95),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  'Retry',
+                  style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.95),
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    final progressStream = widget.uploadProgress;
+    if (progressStream != null) {
+      return StreamBuilder<double>(
+        stream: progressStream,
+        builder: (context, snapshot) {
+          final value = snapshot.data;
+          return ColoredBox(
+            color: Colors.black38,
+            child: Center(
+              child: SizedBox(
+                width: 52,
+                height: 52,
+                child: CircularProgressIndicator(
+                  value: value != null && value > 0 ? value.clamp(0.0, 1.0) : null,
+                  strokeWidth: 3,
+                  color: Colors.white,
+                  backgroundColor: Colors.white24,
+                ),
+              ),
+            ),
+          );
+        },
+      );
+    }
+
+    return ColoredBox(
+      color: Colors.black26,
+      child: Center(
+        child: SizedBox(
+          width: 36,
+          height: 36,
+          child: CircularProgressIndicator(
+            strokeWidth: 3,
+            color: Colors.white.withValues(alpha: 0.95),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildVideoPreview() {
+    if (_isPendingLocal) {
+      return Stack(
+        fit: StackFit.expand,
+        children: [
+          if (_localThumbnail != null)
+            Image.file(
+              _localThumbnail!,
+              fit: BoxFit.cover,
+              errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+            )
+          else
+            DecoratedBox(
+              decoration: BoxDecoration(
+                color: widget.foreground.withValues(alpha: 0.08),
+              ),
+            ),
+          _buildPendingOverlay(),
+          if (widget.onCancel != null && !widget.hasFailed)
+            Positioned(
+              top: 6,
+              right: 6,
+              child: Material(
+                color: Colors.black54,
+                shape: const CircleBorder(),
+                clipBehavior: Clip.antiAlias,
+                child: InkWell(
+                  onTap: widget.onCancel,
+                  child: const Padding(
+                    padding: EdgeInsets.all(4),
+                    child: Icon(Icons.close, size: 18, color: Colors.white),
+                  ),
+                ),
+              ),
+            ),
+        ],
+      );
+    }
+
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: widget.foreground.withValues(alpha: 0.08),
+      ),
+      child: Stack(
+        fit: StackFit.expand,
+        alignment: Alignment.center,
+        children: [
+          Icon(
+            Icons.play_circle_fill,
+            size: 52,
+            color: Colors.white.withValues(alpha: 0.92),
+            shadows: const [
+              Shadow(blurRadius: 8, color: Colors.black54),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -673,30 +878,8 @@ class _ThreadVideoBubbleState extends State<ThreadVideoBubble> {
                 height: kChatInlineVideoH,
                 child: GestureDetector(
                   behavior: HitTestBehavior.opaque,
-                  onTap: () => openChatFullscreenVideo(
-                    context,
-                    url: widget.message.source,
-                    accessToken: widget.accessToken,
-                  ),
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      color: widget.foreground.withValues(alpha: 0.08),
-                    ),
-                    child: Stack(
-                      fit: StackFit.expand,
-                      alignment: Alignment.center,
-                      children: [
-                        Icon(
-                          Icons.play_circle_fill,
-                          size: 52,
-                          color: Colors.white.withValues(alpha: 0.92),
-                          shadows: const [
-                            Shadow(blurRadius: 8, color: Colors.black54),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
+                  onTap: _handleTap,
+                  child: _buildVideoPreview(),
                 ),
               ),
             ),
