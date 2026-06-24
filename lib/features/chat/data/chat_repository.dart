@@ -1034,6 +1034,27 @@ class ChatRepository {
     return downloadMediaToCache(objectKey, fallbackExtension: fallback);
   }
 
+  /// Returns a JPEG thumbnail for [objectKey], generating and caching it on first use.
+  Future<File> getOrCreateVideoThumbnail(String objectKey) async {
+    final root = await getTemporaryDirectory();
+    final dir = Directory(p.join(root.path, 'media_cache'));
+    await dir.create(recursive: true);
+    final safe = objectKey.replaceAll(RegExp(r'[^A-Za-z0-9._-]'), '_');
+    final thumbFile = File(p.join(dir.path, '${safe}_thumb.jpg'));
+    if (thumbFile.existsSync() && thumbFile.lengthSync() > 0) {
+      return thumbFile;
+    }
+    final videoFile = await downloadMediaToCache(
+      objectKey,
+      fallbackExtension: 'mp4',
+    );
+    final generated = await MediaUploadProcessor.storyVideoThumbnailFile(
+      videoFile.path,
+    );
+    await generated.copy(thumbFile.path);
+    return thumbFile;
+  }
+
   /// Downloads a media object to the temp cache dir, reusing an existing file when present.
   Future<File> downloadMediaToCache(
     String objectKey, {

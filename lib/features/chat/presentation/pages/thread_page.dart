@@ -1734,6 +1734,7 @@ class _ThreadScaffoldState extends State<_ThreadScaffold>
                           constraints: BoxConstraints(maxWidth: maxBubbleW),
                           child: ThreadVideoBubble(
                             message: message,
+                            chatRepository: cubit.chatRepository,
                             accessToken: widget.accessToken,
                             bubble: bubble,
                             foreground: fg,

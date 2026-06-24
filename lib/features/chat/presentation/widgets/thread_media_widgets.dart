@@ -616,6 +616,7 @@ class ThreadVideoBubble extends StatefulWidget {
   const ThreadVideoBubble({
     super.key,
     required this.message,
+    required this.chatRepository,
     required this.accessToken,
     required this.bubble,
     required this.foreground,
@@ -629,6 +630,7 @@ class ThreadVideoBubble extends StatefulWidget {
   });
 
   final VideoMessage message;
+  final ChatRepository chatRepository;
   final String accessToken;
   final Color bubble;
   final Color foreground;
@@ -646,16 +648,26 @@ class ThreadVideoBubble extends StatefulWidget {
 
 class _ThreadVideoBubbleState extends State<ThreadVideoBubble> {
   File? _localThumbnail;
+  File? _serverThumbnail;
   bool _thumbnailLoading = false;
+  var _wasWaitingForNetwork = false;
 
   bool get _isPendingLocal => widget.message.source.startsWith('file://');
 
   @override
   void initState() {
     super.initState();
-    if (_isPendingLocal) {
-      unawaited(_loadLocalThumbnail());
+    _loadThumbnail();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final waiting = context.watch<NetworkStatusCubit>().state;
+    if (_wasWaitingForNetwork && !waiting && !_isPendingLocal) {
+      _loadServerThumbnail(force: true);
     }
+    _wasWaitingForNetwork = waiting;
   }
 
   @override
@@ -664,18 +676,24 @@ class _ThreadVideoBubbleState extends State<ThreadVideoBubble> {
     final wasPending = oldWidget.message.source.startsWith('file://');
     if (wasPending && !_isPendingLocal) {
       // Message transitioned from pending (local file) to delivered (server URL).
-      // Force a full rebuild so the pending overlay and thumbnail are cleared.
       setState(() {
         _localThumbnail = null;
+        _serverThumbnail = null;
         _thumbnailLoading = false;
       });
+      unawaited(_loadServerThumbnail());
       return;
     }
-    if (_isPendingLocal &&
-        oldWidget.message.source != widget.message.source &&
-        _localThumbnail == null &&
-        !_thumbnailLoading) {
+    if (oldWidget.message.source != widget.message.source) {
+      _loadThumbnail();
+    }
+  }
+
+  void _loadThumbnail() {
+    if (_isPendingLocal) {
       unawaited(_loadLocalThumbnail());
+    } else {
+      unawaited(_loadServerThumbnail());
     }
   }
 
@@ -693,6 +711,30 @@ class _ThreadVideoBubbleState extends State<ThreadVideoBubble> {
       if (!mounted) return;
       setState(() {
         _localThumbnail = thumb;
+        _thumbnailLoading = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _thumbnailLoading = false);
+    }
+  }
+
+  Future<void> _loadServerThumbnail({bool force = false}) async {
+    if (_isPendingLocal) return;
+    if (!force && (_thumbnailLoading || _serverThumbnail != null)) return;
+    final objectKey = parseObjectKeyFromMediaDownloadUrl(widget.message.source);
+    if (objectKey == null) return;
+    _thumbnailLoading = true;
+    if (force) {
+      setState(() => _serverThumbnail = null);
+    }
+    try {
+      final thumb = await widget.chatRepository.getOrCreateVideoThumbnail(
+        objectKey,
+      );
+      if (!mounted) return;
+      setState(() {
+        _serverThumbnail = thumb;
         _thumbnailLoading = false;
       });
     } catch (_) {
@@ -825,15 +867,27 @@ class _ThreadVideoBubbleState extends State<ThreadVideoBubble> {
       );
     }
 
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: widget.foreground.withValues(alpha: 0.08),
-      ),
-      child: Stack(
-        fit: StackFit.expand,
-        alignment: Alignment.center,
-        children: [
-          Icon(
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        if (_serverThumbnail != null)
+          Image.file(
+            _serverThumbnail!,
+            fit: BoxFit.cover,
+            errorBuilder: (_, __, ___) => DecoratedBox(
+              decoration: BoxDecoration(
+                color: widget.foreground.withValues(alpha: 0.08),
+              ),
+            ),
+          )
+        else
+          DecoratedBox(
+            decoration: BoxDecoration(
+              color: widget.foreground.withValues(alpha: 0.08),
+            ),
+          ),
+        Center(
+          child: Icon(
             Icons.play_circle_fill,
             size: 52,
             color: Colors.white.withValues(alpha: 0.92),
@@ -841,8 +895,8 @@ class _ThreadVideoBubbleState extends State<ThreadVideoBubble> {
               Shadow(blurRadius: 8, color: Colors.black54),
             ],
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 
