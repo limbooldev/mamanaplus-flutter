@@ -6,7 +6,7 @@ import '../../data/social_repository.dart';
 import '../../domain/social_models.dart';
 import '../cubit/social_explore_cubit.dart';
 import '../widgets/social_media_widgets.dart';
-import 'social_post_page.dart';
+import 'explore_feed_page.dart';
 
 class SocialExplorePage extends StatelessWidget {
   const SocialExplorePage({super.key});
@@ -99,7 +99,7 @@ class _ExploreBody extends StatelessWidget {
                         MaterialPageRoute<void>(
                           builder: (_) => RepositoryProvider.value(
                             value: context.read<SocialRepository>(),
-                            child: SocialPostPage(postId: p.id),
+                            child: ExploreFeedPage(seedPost: p),
                           ),
                         ),
                       );

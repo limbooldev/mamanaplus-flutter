@@ -201,6 +201,25 @@ class SocialRepository {
     return _items(res.data ?? {}, SocialPost.fromJson);
   }
 
+  Future<List<SocialPost>> relatedExplore({
+    required int seedPostId,
+    int page = 1,
+  }) async {
+    final res = await _dio.get<Map<String, dynamic>>(
+      '/v1/social/explore/related',
+      queryParameters: {'seed_post_id': seedPostId, 'page': page},
+    );
+    return _items(res.data ?? {}, SocialPost.fromJson);
+  }
+
+  Future<void> recordPostViews(List<int> postIds) async {
+    if (postIds.isEmpty) return;
+    await _dio.post<void>(
+      '/v1/social/views',
+      data: {'post_ids': postIds},
+    );
+  }
+
   Future<SocialPost> getPost(int id) async {
     final res = await _dio.get<Map<String, dynamic>>('/v1/social/posts/$id');
     return SocialPost.fromJson(res.data!);

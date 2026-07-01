@@ -13,6 +13,7 @@ class SocialPost {
     required this.commentCount,
     required this.likedByViewer,
     required this.bookmarked,
+    this.tags = const [],
     required this.createdAt,
   });
 
@@ -29,6 +30,7 @@ class SocialPost {
   final int commentCount;
   final bool likedByViewer;
   final bool bookmarked;
+  final List<String> tags;
   final DateTime createdAt;
 
   SocialPost copyWith({
@@ -45,6 +47,7 @@ class SocialPost {
     int? commentCount,
     bool? likedByViewer,
     bool? bookmarked,
+    List<String>? tags,
     DateTime? createdAt,
   }) {
     return SocialPost(
@@ -61,6 +64,7 @@ class SocialPost {
       commentCount: commentCount ?? this.commentCount,
       likedByViewer: likedByViewer ?? this.likedByViewer,
       bookmarked: bookmarked ?? this.bookmarked,
+      tags: tags ?? this.tags,
       createdAt: createdAt ?? this.createdAt,
     );
   }
@@ -80,6 +84,10 @@ class SocialPost {
       commentCount: (j['comment_count'] as num?)?.toInt() ?? 0,
       likedByViewer: j['liked_by_viewer'] == true,
       bookmarked: j['bookmarked'] == true,
+      tags: (j['tags'] as List?)
+              ?.map((e) => e.toString())
+              .toList(growable: false) ??
+          const [],
       createdAt: DateTime.tryParse(j['created_at'] as String? ?? '') ??
           DateTime.fromMillisecondsSinceEpoch(0),
     );
